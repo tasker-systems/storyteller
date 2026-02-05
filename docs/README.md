@@ -6,7 +6,7 @@ All design documentation for the storyteller project lives here, organized into 
 
 ### [Foundation](foundation/) — Philosophy and Principles
 
-Eight documents that establish the intellectual and architectural foundations of the system. These are essays, not specifications — they articulate *what* we are building and *why*, drawing on narratology, phenomenology, anthropology, game design, and the craft of fiction writing.
+Nine documents that establish the intellectual and architectural foundations of the system. These are essays, not specifications — they articulate *what* we are building and *why*, drawing on narratology, phenomenology, anthropology, network theory, game design, and the craft of fiction writing.
 
 **Start here** if you want to understand the project's vision.
 
@@ -18,6 +18,7 @@ Eight documents that establish the intellectual and architectural foundations of
 | `narrative_graph.md` | Gravitational model replacing branching trees — scenes have mass, stories have shape |
 | `world_design.md` | Coherence principle, mutual production of material conditions and social forms, authorial ingress points |
 | `anthropological_grounding.md` | Intellectual genealogy from Amazonian anthropological research into system design |
+| `power.md` | Power as relational, emergent, and non-moral — the mechanism of change in the system |
 | `project_organization.md` | Eleven work streams across three phases |
 | `open_questions.md` | Eleven unresolved design challenges, honestly framed |
 

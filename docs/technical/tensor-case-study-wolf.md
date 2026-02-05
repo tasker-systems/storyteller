@@ -358,35 +358,67 @@ echo: encountering_true_power
 
 ## 6. Relational Web (Wolf ↔ Key Characters)
 
+*Revised to reflect the power framework from `docs/foundation/power.md`. Power is no longer stored on edges — it is emergent from the configuration of substrate dimensions and structural position. Information state and configuration annotations have been added.*
+
 ### Wolf → Sarah
 
-```
+```yaml
 trust:
-  competence: 0.3 → 0.7 (rising sharply after the other bank)
+  competence: 0.3 → 0.7    # (rising sharply after the other bank)
   intentions: 0.6          # she means what she says; she is transparent
   loyalty: N/A             # not a category the Wolf applies to mortals
 
 affection: 0.0 → 0.2      # barely; something is forming that has no name
 
 debt: 0.0                  # he owes her nothing; she owes him protection
+  note: "But protection creates its own economy — does keeping
+         someone alive generate obligation in the keeper?"
 
-power:
-  initial: Wolf >> Sarah   # he is ancient supernatural; she is a child
-  shifting: Wolf > Sarah   # she can see what he cannot
-  note: "The power dynamic is the most important relational dimension.
-         Its shift is the Wolf's primary character arc."
+history:
+  depth: thin              # days of travel
+  quality: transforming
+  temporal_layer: topsoil — but the other-bank is becoming sediment
+  key_events:
+    - routine_travel: unremarkable [topsoil, fading]
+    - the_other_bank: defining [topsoil, crystallizing into sediment]
 
-history: thin              # days of travel; but the other-bank is a
-                           # defining shared experience
-
-projection: she_is_a_mortal_child
+projection:
+  wolf_projects_onto_sarah: "She is a mortal child."
   accuracy: decreasing     # she is more than this
   resistance_to_update: moderate  # his primordial beliefs resist
+
+information_state:
+  knows: Sarah loves Tommy; she is brave; she is mortal; she is afraid;
+    she can see hidden paths he cannot (after the other bank)
+  does_not_know: Sarah has Kate's blessing; Sarah's capacity exceeds
+    anything in his experience of mortals; what Sarah's seeing means
+    for the hierarchy he inhabits; whether she is unique or the first
+    sign that the rules are changing
+  note: "The Wolf's knowledge of Sarah is experiential, not analytical.
+         He knows what he has observed. He does not interpret through
+         frameworks — he responds."
+
+configuration: >
+  Duty-bound guardian encountering the incomprehensible. The Wolf's
+  structural position (ancient, supernatural, powerful) should produce
+  total dominance over a mortal child. But Sarah's capability — her
+  seeing — disrupts the hierarchy that defines his identity. The
+  emergent dynamic is shifting from command to something he has no
+  name for: the recognition one gives to a power that exceeds one's
+  own in a domain one thought was entirely one's own. This is not
+  deference (he does not defer to mortals) or respect (too cognitive)
+  — it is the instinctual response of a predator discovering that
+  the prey can do something the predator cannot. The configuration
+  is unprecedented in his experience, which is what makes it
+  transformative. The "nascent connection" forming between them is
+  not a separate relational dimension — it is an emergent property
+  of this specific configuration: surprise + recognition + the
+  intimacy of shared danger.
 ```
 
 ### Wolf → Adam
 
-```
+```yaml
 trust:
   competence: 0.8
   intentions: 0.6          # Adam's motives are complex; the Wolf knows this
@@ -394,26 +426,81 @@ trust:
 
 affection: 0.1             # minimal; this is a working relationship
 
-power: Adam > Wolf         # Adam is the Gate; the Wolf came through him
+debt: 0.5                  # the Wolf came through Adam; Adam gave him form
+  type: existential
+  note: "The Wolf exists in his current form because Adam called him.
+         This is not a debt that can be repaid."
 
-history: long              # the Wolf has served Adam before
+history:
+  depth: long              # the Wolf has served Adam before
+  temporal_layer: primordial — this is structural, not accumulated
 
-projection: adam_is_the_gate
+projection:
+  wolf_projects_onto_adam: "Adam is the Gate."
   accuracy: high
+
+information_state:
+  knows: Adam serves the Ghostlight Queen; Adam's instructions are
+    contradictory; Adam controls the Wolf's form and purpose
+  does_not_know: The full scope of Adam's plan; whether Adam would
+    sacrifice the Wolf; what Adam truly thinks of Sarah's chances
+  note: "The Wolf knows more about Adam than most characters in the
+         web, but his knowledge is functional — he knows what Adam
+         does, not why."
+
+configuration: >
+  Bound service with limited understanding. The Wolf serves Adam
+  because Adam called him into form — an existential debt that
+  structures the entire relationship. The Wolf's loyalty is to the
+  binding, not to Adam's person. He follows contradictory instructions
+  because he is not built to refuse them, but the contradictions
+  create a space where autonomous choice becomes necessary — and this
+  space is where the Wolf's character arc lives. Adam holds structural
+  power through the binding; the Wolf holds operational knowledge of
+  the Wood. The configuration is hierarchical but not totalizing —
+  Adam cannot micromanage a dream of wolves.
 ```
 
 ### Wolf → Ghostlight Queen
 
-```
+```yaml
 trust:
   competence: 0.9
   intentions: 0.3          # the Queen's purposes are her own
   loyalty: 0.5             # through Adam, not direct
 
-power: Queen >> Wolf       # absolute hierarchy
+affection: 0.0
 
-projection: the_queen_is_law
+debt: 0.3                  # indirect — through Adam's binding
+  type: structural
+
+history:
+  depth: unknown           # the Wolf's relationship to the Queen
+                           # is mediated through Adam
+  temporal_layer: primordial — she is a condition, not a relationship
+
+projection:
+  wolf_projects_onto_queen: "The Queen is law."
   accuracy: unknown
+
+information_state:
+  knows: The Queen is above Adam in the hierarchy; she has plans for
+    Sarah and Tommy; her power is absolute in the Shadowed Wood
+  does_not_know: The Queen's actual nature; her specific plans;
+    whether the Wolf is expendable in those plans
+  note: "The Wolf's knowledge of the Queen is almost entirely mediated
+         through Adam. She is a structural reality, not a relational
+         presence."
+
+configuration: >
+  Structural subordination without relationship. The Wolf relates to
+  the Queen as weather relates to climate — she is the condition under
+  which he operates, not a being he engages with. The hierarchy is
+  absolute but impersonal: not coercion (she does not need to coerce)
+  but ontological (she is simply above him in the order of things).
+  This configuration produces obedience without loyalty — the Wolf
+  would not choose to serve her, but the concept of choosing does
+  not fully apply.
 ```
 
 ---
@@ -447,7 +534,59 @@ projection: the_queen_is_law
 
 ---
 
-## 8. Design Implications for the Tensor Model
+## 8. Architectural Note: Storage, Activation, and Frame
+
+*Added to reflect the power framework (`docs/foundation/power.md`) and the hexagonal architecture for separating what we store from what we present.*
+
+### The Three Layers for an Alien Entity
+
+The Wolf's tensor raises the hexagonal architecture question with particular force. His internal representation (persistence layer) uses reinterpreted axes, a primordial temporal layer, and supernatural capacity domains — all of which are meaningful for storage and state reasoning but would be confusing or overwhelming as direct input to a Character Agent.
+
+**Persistence layer** (full tensor, ~1,500-2,000 tokens): Sparser than Sarah's. The complexity lives in the strangeness of what's there, not in additional dimensions. The Storykeeper reads this for state updates; the geological layers (primordial especially) resist change under most conditions.
+
+**Activation layer** (scene-relevant subset, ~600-900 tokens): What the Storykeeper selects for the current scene. Described in Section 7 above. For the Wolf, activation is even more important than for Sarah because so much of his tensor is primordial (stable, always present) — the interesting variation happens in the thin topsoil layer and in which primordial elements become foregrounded by context.
+
+**Frame layer** (psychological frame, ~200-400 tokens): What the ML inference model computes for the Character Agent. For the Wolf, this is where the "expression guidance" from Section 7 already pointed — those notes were proto-frames.
+
+### Psychological Frames for the Example Scenes
+
+The Wolf's frames must do something Sarah's frames don't: they must orient an LLM to inhabit a non-human consciousness. The frame isn't just "here's what matters right now" — it's "here's what it feels like to be this entity right now."
+
+**Scene: Routine Travel Through the Wood**
+
+> You are moving through your Wood on familiar paths with a mortal child who tires and hungers and needs rest you do not need. You watch for danger because that is what you are. She is your charge — protect her, guide her to the Witch, see that she fails. You hold these instructions without experiencing them as contradiction, because you are not built for reasoning about instructions; you are built for execution. The Wood speaks to you in scents and sounds the child cannot perceive. She asks questions sometimes. You answer with the minimum because words come through a mouth not designed for them. You are patient. Mortals tire. Speak rarely — one word, two words. "Come." "Stop." Do not explain. You are not unkind. You are not built for conversation.
+
+**Scene: The Other Bank**
+
+> The child sees a path you cannot see. This is impossible. You know every path in this Wood — you ARE the Wood's knowledge of itself, its law embodied. But she is walking toward something real, something your senses confirm must be there even though your eyes find nothing. Your certainty — the oldest thing in you after the dream of wolves itself — is cracking. You do not understand this feeling. When she places her hand on your shoulder and guides you, something shifts in the hierarchy that defines your existence. You follow not because you choose to but because she can see and you cannot, and the part of you that recognizes power recognizes that this is power. A deep growl rises — not at her, at the world that hid this from you. You are experiencing something new, and you have no category for it. Let that newness show in hesitation, in the unfamiliar quality of your attention toward her.
+
+### What the Wolf's Frames Reveal About the Architecture
+
+Comparing the Wolf's frames to Sarah's reveals a design principle: **the frame's register should match the entity's mode of being.**
+
+Sarah's frames use introspective language — she feels, she thinks, she knows. The Wolf's frames use somatic and spatial language — he moves, he senses, he recognizes. Sarah's frames reference emotions by name. The Wolf's frames describe states without naming them — "something shifts in the hierarchy" rather than "you feel respect." This is not a limitation of the Wolf's frame; it is an accurate rendering of an entity that does not experience named emotions.
+
+This means the ML inference layer must produce frames in different registers for different entity types. The same underlying computation (reading substrate + topology + context → computing configuration) must output in the entity's own psychological language. This is a significant requirement for the inference model — it must learn not just *what* to compute but *how to speak* for each entity class.
+
+### The Nascent Connection as Emergent Configuration
+
+The original case study identified a need for a "nascent_connection" dimension (Section 8.4, now Section 9.4) for relationships that don't yet have a category. The power framework resolves this: the connection forming between the Wolf and Sarah is not a new stored dimension. It is an **emergent property of their configuration** — the specific interaction of surprise + recognition + shared danger + duty that is producing something neither party has a name for.
+
+The frame for "The Other Bank" renders this without naming it: "You are experiencing something new, and you have no category for it." The inference layer recognizes the configuration (duty-bound guardian whose hierarchy has been disrupted by the charge's unexpected capability) and renders its emergent quality. The Wolf's Character Agent then performs that quality — the hesitation, the unfamiliar attention — without being told "you are forming a connection."
+
+This is the separation of concerns at work. The computational-predictive layer recognizes the pattern. The agentic-generative layer performs its felt quality. Neither needs the label "nascent connection" to function — the label is analytical, for us; the frame is experiential, for the agent.
+
+### Echoes as Power Events
+
+The Wolf's echo mechanism (Section 5.4) describes an "encountering true power" echo triggered when Sarah demonstrates capabilities exceeding his perception. In the power framework, this echo is a **configuration shift event**: the archetypal pattern ("the moment when the hierarchy shifts") is activated by Sarah's seeing, and its activation doesn't just change how the Wolf feels — it changes the power configuration of the relationship.
+
+Before the echo fires: the Wolf's structural position (ancient, supernatural, territorial knowledge) produces a configuration of protective command. After the echo fires: Sarah's demonstrated capability disrupts the hierarchy, and the configuration shifts to something unprecedented — the nascent recognition described above. The echo is the mechanism by which bedrock/primordial patterns meet topsoil reality and the configuration transforms.
+
+For the ML inference layer, this means echo detection must be part of the frame computation pipeline: detect echo conditions → fire echo → recompute configuration → produce updated frame. The frame should show the *effect* of the echo (the Wolf's disrupted certainty) without showing the mechanism (the echo fired because the scene matched an archetypal pattern).
+
+---
+
+## 9. Design Implications for the Tensor Model
 
 ### What Works
 
@@ -465,7 +604,7 @@ projection: the_queen_is_law
 
 3. **Non-verbal expression guidance**: Human Character Agents express through dialogue and described action. The Wolf's Character Agent needs explicit guidance about *how* to express — growls, posture, silence, the threatening quality of his speech. This might be a `expression_mode` field on the tensor.
 
-4. **Relational model for non-reciprocal bonds**: The Wolf→Sarah relationship is forming but has no human analog. "Affection" is the wrong word. "Respect" is too cognitive. The relational web needs a `nascent_connection` dimension for relationships that don't yet have a category.
+4. **Relational model for non-reciprocal bonds**: The Wolf→Sarah relationship is forming but has no human analog. "Affection" is the wrong word. "Respect" is too cognitive. *Resolved*: the power framework (see Section 8) shows that this nascent connection is an emergent property of the relational configuration, not a stored dimension. The frame computation layer renders it as felt quality ("something new, no category for it") rather than labeled data.
 
 ### What Breaks
 

@@ -432,7 +432,52 @@ player_character_mode: authored_protagonist
 
 ---
 
-## 8. Open Questions Surfaced by This Case Study
+## 8. Architectural Note: Storage, Activation, and Frame
+
+*Added to reflect the power framework (`docs/foundation/power.md`) and the hexagonal architecture insight about separating what we store from what we present.*
+
+### The Three Layers
+
+The tensor as specified above is the **persistence layer** — the full internal domain model of who Sarah is. It is rich, geologically stratified, and designed to accumulate experience over time. But different consumers of this data need different views:
+
+**Persistence layer** (full tensor, ~2,500-3,000 tokens): What the story designer authored plus what has accumulated through play. Changes slowly, governed by the geological temporal model. Read/written by the Storykeeper for state reasoning and updates. This is the hexagonal architecture's domain core.
+
+**Activation layer** (scene-relevant subset, ~800-1,200 tokens): What the Storykeeper selects as relevant for the current scene — the context-dependent activation described in Section 7 above. This is an intermediate representation: a projection of the full tensor through scene context. The ML inference layer reads this alongside the relational web configuration and network topology.
+
+**Frame layer** (psychological frame, ~200-400 tokens): What the ML inference model computes from the activated tensor + relational web configuration + network position + scene context. This is what the Character Agent actually receives. It is not a data structure — it is a compressed rendering of the psychological landscape the character is navigating, expressed in natural language that an LLM can inhabit.
+
+### Psychological Frames for the Example Scenes
+
+The context-dependent activation examples in Section 7 describe the activation layer. Here is what the frame layer would look like for each — the actual prompt fragment a Character Agent would receive:
+
+**Scene: Sitting at Tommy's Sickbed**
+
+> You are sitting with your dying brother and the grief is a weight in your chest, but underneath it there is iron — the part of you that does what needs to be done. You have cried all the tears you have. What remains is determination. You love him with everything you are and you are terrified that your love won't be enough, that there is a boundary past which your thinking cannot reach. Your mother's prayers drift from the stream but the warmth doesn't touch the cold place where Tommy is going. You don't know why he pulled away from you before the illness — that confusion lives underneath the grief, a splinter you can feel but can't reach. If someone suggests action, you lean into it. If someone counsels patience, something in you resists.
+
+**Scene: The Other Bank (Crossing the Stream)**
+
+> You can see a path the Wolf cannot. This is terrifying and clarifying in equal measure. Something in you — the part that has always noticed things, the part that watched your mother at the stream a thousand times — is awake and sure in a way you've never felt before. Your feet know this path. The Wolf is powerful, ancient, capable of rending the world — but right now he is uncertain and you are not. You don't fully understand what this means, but you know that this is yours: this seeing, this sureness. You are leading a creature of starlight and violence by the shoulder. You are twelve years old and afraid and you have never been more yourself. The part of you that needs to be seen as more than a child is not performing — it is simply being what it is.
+
+### What the Frame Compresses
+
+Note what happened between the activation layer and the frame layer:
+
+- The activation layer for "The Other Bank" lists ~12 tensor dimensions with values. The frame compresses these into a psychological landscape the agent can inhabit.
+- The frame incorporates relational configuration (the shifting dynamic with the Wolf) without naming it as data — it renders the relationship as felt experience.
+- The frame activates the shadow want ("desire to be seen as more than a child") not as a labeled dimension but as an emotional undertone.
+- The frame doesn't tell the agent what to do. It tells the agent who they are *right now*, and trusts the agent's generative capacity to produce behavior that emerges from that landscape.
+
+This is the separation between computational-predictive and agentic-generative: the ML inference layer does the math (which dimensions matter, how the relational configuration shapes the scene, what power dynamics are operative). The Character Agent does the art (what Sarah says, how she moves, what she notices, how she surprises us).
+
+### Echoes as Power Events
+
+The echo mechanism (Section 5.4) needs an additional connection: echoes are not only emotional events but **power configuration events**. When Sarah's "uncanny at the stream" echo fires at the Other Bank, it activates her supernatural perception — which is what lets her see the hidden path — which inverts the power configuration with the Wolf. The echo doesn't just change how Sarah feels; it changes who holds capability in the relationship.
+
+This means the ML inference layer must track echo potential as part of its computation. When an echo fires, the frame it produces should reflect the shifted configuration, not just the shifted emotion. The frame for "The Other Bank" implicitly does this ("the Wolf is uncertain and you are not") — the insight is that this shift is *produced by* the echo, and the inference layer should recognize the causal chain: echo activation → capability shift → configuration change → frame update.
+
+---
+
+## 9. Open Questions Surfaced by This Case Study
 
 1. **Axis count and token budget**: This tensor has ~25 distinct axes/dimensions before relationships. That's manageable for a protagonist but may be excessive for secondary characters. Do we need a "character complexity tier" system (full tensor for protagonists, reduced for supporting, minimal for minor)?
 
@@ -444,7 +489,7 @@ player_character_mode: authored_protagonist
 
 5. **Authored protagonist tension**: The `authored_protagonist` mode is novel. It needs more design — specifically, how the Narrator communicates soft resistance when the player's choices diverge from the character's bedrock. This connects to Open Question #5 (Action Granularity).
 
-6. **Relational asymmetry representation**: This case study defers the full relational web to a companion document. But the format question is live: is each relationship edge a struct with named fields, or a vector, or a nested tensor? The relational web is dense enough that format matters for token budget.
+6. **Relational asymmetry representation**: *Resolved*. The relational web case study (`relational-web-tfatd.md`) uses structs with named fields per directed edge, including substrate dimensions (trust[3], affection, debt, history, projection, information_state) and a configuration annotation. Power is emergent from the configuration, not stored. Each edge is ~250-400 tokens; the psychological frame compresses scene-relevant relationships to ~200-400 tokens total. See `docs/foundation/power.md` for the full argument.
 
 ---
 

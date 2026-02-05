@@ -33,7 +33,7 @@ See [`docs/README.md`](docs/README.md) for a full guide.
 ```
 storyteller/
 ├── docs/
-│   ├── foundation/          # Design philosophy and principles (8 documents)
+│   ├── foundation/          # Design philosophy and principles (9 documents)
 │   ├── technical/           # Specifications and case studies (5 documents)
 │   └── storybook/           # Source creative material
 │       ├── extracted/       # Content extracted via doc-tools

@@ -81,7 +81,19 @@ How the work is structured — eleven streams across three phases.
 - Phase 1 (Foundation and Architecture), Phase 2 (Core Systems), Phase 3 (Integration, Tooling, Content)
 - The principle: build the smallest thing that teaches you something
 
-### 8. [Open Questions](open_questions.md)
+### 8. [Power](power.md)
+
+The nature of power — relational, non-moral, emergent from network configuration rather than stored as property.
+
+- Power as the mechanism of change, not a possession of actors
+- Theoretical positioning: Latour (ANT), Deleuze/Guattari, Foucault — influences, not competing frameworks
+- Push hands: power requires contact, yielding is as much an expression as advancing
+- Power as emergent from substrate dimensions (trust, debt, information asymmetry) and network topology
+- Multi-vocal nodes, multi-valent edges: configurations, not parallel dimensions
+- The psychological frame: computational-predictive layer producing frames for agentic-generative performance
+- The ethical dimension: communicability distance as the condition for structural harm
+
+### 9. [Open Questions](open_questions.md)
 
 What we do not yet know — eleven major unresolved design challenges.
 

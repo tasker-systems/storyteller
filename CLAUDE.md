@@ -99,4 +99,5 @@ Design documentation in `docs/foundation/`:
 | `character_modeling.md` | Tensor representation, relational webs, temporal layers |
 | `world_design.md` | Coherence principle, mutual production model, authorial ingress points, communicability gradient for entities |
 | `anthropological_grounding.md` | Intellectual genealogy: Amazonian shamanism, exchange networks, embodiment → system design |
+| `power.md` | Power as relational, emergent, non-moral — mechanism of change, psychological frames, network topology |
 | `open_questions.md` | Unresolved design decisions |
