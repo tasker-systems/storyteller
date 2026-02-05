@@ -22,15 +22,18 @@ Merleau-Ponty's phenomenological insight that the boundary between subject and w
 
 Every element in a character tensor is typed. The type determines its structure, its temporal behavior, its role in frame computation, and how it participates in the intertwining with the relational web.
 
+**Naming conventions**: Type names are chosen to avoid collision with common language keywords and to be self-documenting in code. `PersonalValue` rather than `Value` (a keyword in many languages and ambiguous); `CharacterCapacity` rather than `Capacity` (similarly overloaded). The case studies use shorter names for readability; implementation uses the qualified names.
+
 ### 1. PersonalityAxis
 
 Bipolar spectra that describe enduring dispositional tendencies. These are the most structurally regular elements — they share a common representation format.
 
 ```
 PersonalityAxis {
-  id: string                     // unique identifier
-  label: (string, string)        // pole names, e.g., ("optimism", "pessimism")
+  id: AxisId                     // unique identifier, the computational lookup key
+  labels: (String, String)       // pole names for humans/LLMs, e.g., ("optimism", "pessimism")
   category: AxisCategory         // temperament | moral | cognitive | social
+  tags: HashSet<AxisTag>         // semantic tags for compositional trigger matching
   central_tendency: f32          // [-1.0, 1.0] — default position
   variance: f32                  // [0.0, 1.0] — how much it shifts under pressure
   range: (f32, f32)              // floor and ceiling
@@ -40,11 +43,21 @@ PersonalityAxis {
   // Non-human extension: axis labels may be reinterpreted
   // e.g., warmth/reserve → connection/isolation for the Wolf
   // The structure is identical; the semantic poles differ.
-  reinterpretation_note: string? // optional note for non-standard semantics
+  reinterpretation_note: String? // optional note for non-standard semantics
 }
 
 AxisCategory = temperament | moral | cognitive | social
+
+// Tags enable compositional trigger matching — triggers can target by tag
+// rather than by specific axis id, allowing more general rules like
+// "any situation involving emotional vulnerability shifts social axes toward warmth"
+AxisTag = Social | Emotional | Cognitive | VulnerabilityResponsive | ThreatResponsive
+        | InterpersonalTrust | SelfRegulation | ...  // extensible vocabulary
 ```
+
+**On labels vs. id**: The `id` is the computational lookup key — how the system finds and references this axis. The `labels` tuple is metadata for human readers, LLM prompts, and frame synthesis. These serve different purposes: `id: "warmth_reserve"` is for code; `labels: ("warmth", "reserve")` is for generating natural language like "Sarah's reserve melts into warmth."
+
+**On tags**: Tags enable triggers to work semantically rather than by explicit axis reference. A trigger authored as `{ condition: EmotionalVulnerability, affects: Tag(Social), shift: +0.3 }` would shift *all* social axes toward their positive pole, without the author needing to enumerate them. This supports compositional matching and makes tensors more maintainable as they grow.
 
 **Computational semantics**: The `central_tendency` is where the character sits by default. The `variance` describes the width of likely shifts. The `range` is the hard boundary — the character cannot be pushed beyond this regardless of context. Contextual triggers modulate the position within the range for a specific scene.
 
@@ -85,25 +98,42 @@ AxisCategory = temperament | moral | cognitive | social
 }
 ```
 
-### 2. Capacity
+### 2. CharacterCapacity
 
 Unipolar intensities describing what the character can do, marked by domain.
 
 ```
-Capacity {
-  id: string
+CharacterCapacity {
+  id: CapacityId
   domain: CapacityDomain         // physical | intellectual | social |
                                  //   creative | supernatural | territorial
   level: f32                     // [0.0, 1.0]
   temporal_layer: TemporalLayer  // typically sediment or bedrock
-  limitations: [string]          // typed constraints on the capacity
+
+  // Typed limitations for computational use (World Agent, Reconciler):
+  limitations: [CapacityLimitation]
+
+  // Textual context for frame synthesis (LLM consumption):
+  limitation_notes: [String]     // human-readable elaboration
 
   // Non-human extension
-  capacity_domain_note: string?  // e.g., "supernatural — not measured on human scale"
+  capacity_domain_note: String?  // e.g., "supernatural — not measured on human scale"
 }
 
 CapacityDomain = physical | intellectual | social | creative | supernatural | territorial
+
+// Typed limitations enable computational reasoning about what's possible
+CapacityLimitation =
+  | Innate                                    // cannot be learned or taught
+  | NotConsciouslyControlled                  // triggers but can't be directed
+  | ContextDependent(conditions: [SettingFeature])  // only works in certain conditions
+  | Exhaustible { recovery_rate: f32 }        // depletes with use, recovers over time
+  | RequiresCondition(condition: TypedCondition)    // must be met to use
+  | Opposed(by: CapacityId)                   // another capacity can counter this
+  | ...  // extensible
 ```
+
+**On typed vs. textual limitations**: Limitations serve two audiences. The World Agent needs typed limitations to validate actions ("Can Sarah use supernatural perception here? Check `ContextDependent([Water, LiminalSpace])`"). The frame synthesis step needs textual notes to produce natural language ("Your sight has always been different — it comes unbidden, especially near water"). Both are necessary; conflating them loses either computational precision or narrative richness.
 
 **Computational semantics**: Capacities determine what actions are *possible* for the character, feeding into the World Agent's constraint framework and the Reconciler's conflict resolution. They also contribute to the power framework — a character's capabilities in a domain affect the emergent power configuration.
 
@@ -114,21 +144,29 @@ CapacityDomain = physical | intellectual | social | creative | supernatural | te
   domain: supernatural,
   level: 0.8,
   temporal_layer: bedrock,
-  limitations: ["innate, not learned", "not consciously controlled",
-                "activated by liminal spaces, especially water"]
+  limitations: [
+    Innate,
+    NotConsciouslyControlled,
+    ContextDependent([Water, LiminalSpace])
+  ],
+  limitation_notes: [
+    "innate, not learned — she has always seen things others cannot",
+    "not consciously controlled — it comes when it comes",
+    "activated by liminal spaces, especially water"
+  ]
 }
 ```
 
-### 3. Value
+### 3. PersonalValue
 
-Directional commitments that filter perception and shape behavior. Values are not bipolar — they are convictions with varying strength that the character holds (consciously or not).
+Directional commitments that filter perception and shape behavior. Values are not bipolar — they are convictions with varying strength that the character holds at varying levels of awareness.
 
 ```
-Value {
-  id: string
+PersonalValue {
+  id: ValueId
   strength: f32                  // [0.0, 1.0]
   temporal_layer: TemporalLayer  // typically bedrock or sediment
-  conscious: bool                // does the character know they hold this?
+  awareness: AwarenessLevel      // gradient of conscious accessibility
 
   // How this value filters perception:
   perception_filter: PerceptionFilter?
@@ -139,12 +177,26 @@ Value {
   challenged_by: [TypedCondition] // conditions that pressure this value
 }
 
+// Awareness is a gradient, not a binary — this affects how values surface
+// in frames and how they interact with revelations and echoes
+AwarenessLevel =
+  | Articulate      // can state this value explicitly ("I believe people should act")
+  | Recognizable    // would recognize if pointed out ("I guess I do judge people who don't act")
+  | Preconscious    // could surface with right prompting, not yet recognized
+  | Defended        // actively hidden from self, would resist recognition
+  | Structural      // below the threshold of possible awareness (bedrock/primordial)
+
 PerceptionFilter {
-  domain: string                 // what kind of events this filters
-  bias: string                   // how it colors interpretation
+  domain: String                 // what kind of events this filters
+  bias: String                   // how it colors interpretation
   // e.g., domain: "others_actions", bias: "judges by whether they act"
 }
 ```
+
+**On awareness as gradient**: A boolean `conscious` field loses important distinctions. A `Defended` value that surfaces through an echo is dramatically different from a `Preconscious` value becoming `Recognizable` through conversation. The awareness level affects:
+- How the value appears in psychological frames (explicit vs. undertone vs. absent)
+- How the character responds to having the value pointed out (agreement, recognition, resistance, incomprehension)
+- What kinds of events can shift the awareness level (echoes can surface `Defended` values; gentle conversation might surface `Preconscious` ones)
 
 **Computational semantics**: Values are the character's interpretive lenses. When the ML inference layer computes a frame, values determine how the character will *read* a situation — not just what they feel but what they notice, what they judge, what they dismiss. The `perception_filter` is what makes values computationally active rather than decorative.
 
@@ -154,7 +206,7 @@ PerceptionFilter {
   id: "people_should_do_what_needs_doing",
   strength: 0.9,
   temporal_layer: bedrock,
-  conscious: true,   // she could articulate this
+  awareness: Articulate,   // she could state this explicitly
   perception_filter: {
     domain: "others_actions",
     bias: "judges others by whether they act when action is needed"
@@ -171,7 +223,7 @@ Goal-directed states with explicit layering (surface/deep/shadow), urgency, and 
 
 ```
 Motivation {
-  id: string
+  id: MotivationId
   layer: MotivationLayer         // surface | deep | shadow
   intensity: f32                 // [0.0, 1.0]
   urgency: f32                   // [0.0, 1.0] — time pressure
@@ -184,11 +236,74 @@ Motivation {
   served_by: [ElementRef]        // surface wants that serve this deep want
 
   // Activation conditions for shadow wants:
-  activation_conditions: [TypedCondition]?  // when does this surface?
+  activation_conditions: [ActivationCondition]?  // when does this surface?
 }
 
 MotivationLayer = surface | deep | shadow
 ```
+
+#### Factual vs. Interpretive Conditions
+
+Activation conditions fall into two categories that are processed differently:
+
+```
+ActivationCondition =
+  // === FACTUAL CONDITIONS ===
+  // Checked by event system / state queries. These are objective facts
+  // about the world state that can be determined with certainty.
+  // The World Agent can validate these; they don't require judgment.
+
+  | Factual(TriggerCondition)
+    // Examples:
+    //   Factual(CharacterPresent("adam"))        — Adam is in the scene
+    //   Factual(Revelation("tommy_has_child"))   — this info was revealed
+    //   Factual(AccumulatedStress(0.7))          — stress crossed threshold
+    //   Factual(SettingFeature(Water))           — water is present
+
+  // === INTERPRETIVE CONDITIONS ===
+  // Evaluated by ML inference layer during frame computation. These require
+  // subjective judgment about meaning, behavior, or context. They cannot
+  // be reduced to world-state queries.
+
+  | Interpretive {
+      description: String,              // human-readable for authoring
+      semantic_pattern: SemanticPattern, // structured hint for ML inference
+      confidence_threshold: f32,        // [0.0, 1.0] — how certain must inference be?
+  }
+
+SemanticPattern =
+  | BehaviorReading { behavior_type: String }
+    // "concealment", "evasion", "vulnerability", "aggression"
+    // ML layer observes character behavior and infers pattern
+
+  | ThematicResonance { theme: String }
+    // "abandonment", "betrayal", "sacrifice", "homecoming"
+    // ML layer recognizes when scene/situation rhymes with theme
+
+  | RelationalDynamic { dynamic: String }
+    // "power_imbalance", "growing_intimacy", "trust_erosion", "dependence"
+    // ML layer reads the relational configuration and infers dynamic
+
+  | EmotionalUndercurrent { emotion: String }
+    // "suppressed_anger", "hidden_grief", "denied_fear", "unacknowledged_love"
+    // ML layer infers emotional subtext beneath surface interaction
+
+  | SituationalPattern { pattern: String }
+    // "being_left_behind", "forced_to_wait", "excluded_from_knowledge"
+    // ML layer recognizes structural similarity to historical patterns
+```
+
+**Why this distinction matters**:
+
+1. **Factual conditions** fire immediately when events occur — they subscribe to the event bus and react in real-time. The World Agent can validate them. They're objective.
+
+2. **Interpretive conditions** are evaluated during frame computation — the ML layer reads the full context (scene, tensor, relational web) and *judges* whether the pattern is present. They're subjective, require inference, and may fire with varying confidence.
+
+3. **Shadow want activation is interpretive-heavy** — a shadow want surfaces not because a specific event occurred, but because the *meaning* of the situation resonates with something buried. This is appropriate: shadows emerge through felt sense, not logical trigger.
+
+4. **The ledger records both** — factual events as facts, interpretive judgments as metadata ("ML layer inferred concealment_behavior from Adam's responses with confidence 0.73"). This enables debugging and understanding why a shadow surfaced.
+
+5. **Authoring flexibility** — story designers can author interpretive conditions in natural language (`description: "encountering someone who seems to be hiding something"`), with the `semantic_pattern` providing structured guidance to the ML layer. This allows depth for both carefully authored major characters and LLM-generated incidental characters (a shopkeeper, a traveling merchant) who still need psychological texture.
 
 **Computational semantics**: The motivation structure is where the tensor becomes most dramatically productive. The ML inference layer reads the motivation graph to compute *what the character is trying to do* in a scene — and, crucially, what they are trying to do *without knowing it*. Shadow motivations with `activation_conditions` produce the "disproportionate response" moments that make characters feel real.
 
@@ -204,9 +319,25 @@ MotivationLayer = surface | deep | shadow
   supports: [],
   contradicts: ["find_tommy"],  // she wants to save him AND she's furious at him
   activation_conditions: [
-    Condition::Revelation("tommy_secret_life"),
-    Condition::EncounteringSomeoneWhoConceals,
-    Condition::AccumulatedStress(threshold: 0.7)
+    // Factual: specific revelation fires this immediately
+    Factual(Revelation("tommy_secret_life")),
+
+    // Factual: accumulated stress crosses threshold
+    Factual(AccumulatedStress(threshold: 0.7)),
+
+    // Interpretive: encountering concealment behavior (requires ML judgment)
+    Interpretive {
+      description: "encountering someone who seems to be hiding something",
+      semantic_pattern: BehaviorReading { behavior_type: "concealment" },
+      confidence_threshold: 0.6
+    },
+
+    // Interpretive: situation that rhymes with being left behind
+    Interpretive {
+      description: "being in a situation where someone has left or is leaving",
+      semantic_pattern: SituationalPattern { pattern: "being_left_behind" },
+      confidence_threshold: 0.7
+    }
   ]
 }
 ```
@@ -217,27 +348,34 @@ Current conditions with decay models. These are always topsoil — volatile, res
 
 ```
 EmotionalState {
-  id: string
+  id: EmotionalStateId
   valence: Valence               // positive | negative | mixed
   intensity: f32                 // [0.0, 1.0]
   decay_model: DecayModel
   temporal_layer: topsoil        // always starts as topsoil
 
-  triggers: [TypedCondition]     // what sustains or reactivates
-  sediment_threshold: f32?       // intensity * duration at which this
-                                 // transitions from topsoil to sediment
+  triggers: [ActivationCondition]     // what sustains or reactivates (factual or interpretive)
+  sediment_threshold: f32?            // intensity * duration at which this
+                                      // transitions from topsoil to sediment
 }
 
 Valence = positive | negative | mixed
 
 DecayModel {
-  rate: DecayRate                // fast | slow | stable | accumulating
-  half_life_scenes: u32?         // for fast/slow: how many scenes to halve
-  sustained_by: [TypedCondition] // conditions that prevent decay
+  rate: DecayRate                     // fast | slow | stable | accumulating
+  half_life_scenes: u32?              // for fast/slow: how many scenes to halve
+  sustained_by: [ActivationCondition] // conditions that prevent decay
 }
 
 DecayRate = fast | slow | stable | accumulating
 ```
+
+**On factual vs. interpretive conditions for emotions**: Emotional states can be sustained or triggered by both types:
+- **Factual**: `TommyStillLost` is a world-state query — is Tommy still missing? The World Agent knows this.
+- **Factual**: `SettingFeature(Sickbed)` — the sickbed is physically present in this scene.
+- **Interpretive**: The *emotional weight* of seeing the sickbed — not just its presence but its meaning to Sarah — requires ML judgment about resonance.
+
+This matters because grief might be sustained by the factual condition (Tommy is still lost) but *intensified* by the interpretive condition (the scene feels like loss, even if Tommy isn't mentioned).
 
 **Computational semantics**: Emotional states are the most volatile tensor elements. They decay between scenes (unless sustained), accumulate under prolonged conditions, and occasionally cross the sediment threshold to become sustained patterns. The decay model is what the Storykeeper uses to update tensors between scenes.
 
@@ -250,10 +388,36 @@ DecayRate = fast | slow | stable | accumulating
   decay_model: {
     rate: slow,
     half_life_scenes: 8,
-    sustained_by: [Condition::TommyStillLost, Condition::SeeingSickbed]
+    sustained_by: [
+      // Factual: world-state query — is Tommy still missing?
+      Factual(WorldState { query: "tommy_status", equals: "lost" }),
+
+      // Factual: the sickbed is physically in this scene
+      Factual(SettingFeature(Sickbed)),
+
+      // Interpretive: scene feels like loss/absence even without explicit trigger
+      Interpretive {
+        description: "being in a place or situation that feels like absence",
+        semantic_pattern: ThematicResonance { theme: "loss" },
+        confidence_threshold: 0.5
+      }
+    ]
   },
   temporal_layer: topsoil,
-  triggers: [Condition::TommyMentioned, Condition::SeeingSickbed],
+  triggers: [
+    // Factual: Tommy is mentioned
+    Factual(EventOccurred(TopicMentioned { topic: "tommy" })),
+
+    // Factual: seeing the sickbed
+    Factual(SettingFeature(Sickbed)),
+
+    // Interpretive: encountering reminders of what's lost
+    Interpretive {
+      description: "encountering something that reminds her of Tommy or home",
+      semantic_pattern: SituationalPattern { pattern: "reminder_of_loss" },
+      confidence_threshold: 0.6
+    }
+  ],
   sediment_threshold: 0.6   // if sustained above 0.6 for many scenes,
                              // becomes sedimentary grief-pattern
 }
@@ -265,12 +429,12 @@ Dormant resonance structures that activate when current experience maps onto his
 
 ```
 EchoPattern {
-  id: string
-  historical_pattern: string      // what happened — human-readable description
+  id: EchoId
+  historical_pattern: String      // what happened — human-readable description
   dormant_layer: TemporalLayer    // sediment | bedrock | primordial
 
-  trigger_conditions: [TypedCondition]  // what activates this echo
-  trigger_threshold: f32          // [0.0, 1.0] — how many conditions must match
+  trigger_conditions: [ActivationCondition]  // what activates this echo
+  trigger_threshold: f32          // [0.0, 1.0] — proportion of conditions that must match
 
   activated_state: EmotionalState // what surfaces when the echo fires
   resonance_dimensions: [ResonanceDimension]
@@ -281,9 +445,17 @@ EchoPattern {
   // For non-human entities:
   echo_type: EchoType            // personal | archetypal
 }
+```
+
+**On echo triggers**: Echoes are paradigmatically interpretive — they fire when current experience *rhymes with* historical patterns, which is a judgment about meaning, not a fact about the world. However, echoes can also have factual triggers:
+- **Factual**: `SettingFeature(Water)` — water is present, and water is where Sarah's uncanny perception activates
+- **Interpretive**: The situation *feels like* abandonment — requires ML judgment about thematic resonance
+
+The `trigger_threshold` determines how many conditions must match. For interpretive conditions, the confidence scores are factored in: a condition with 0.5 confidence contributes 0.5 toward the threshold, not 1.0.
 
 ResonanceDimension = sensory | emotional | relational | thematic | spatial
 
+```
 EchoType = personal | archetypal
 // personal: from individual experience (Sarah's stream memories)
 // archetypal: from collective/primordial patterns (Wolf's hierarchy disruption)
@@ -510,27 +682,190 @@ SceneContext {
 }
 ```
 
-### Trigger Matching
+### Event-Driven Architecture
 
-Contextual triggers on tensor elements are matched against scene properties:
+The trigger system manages four distinct concepts:
+
+1. **Narrative Events** — things that happen in the story (objective facts, recorded in a ledger)
+2. **Interpretive Judgments** — ML inferences about meaning (subjective, confidence-weighted, also recorded)
+3. **Trigger Conditions** — patterns that match against events or judgments (predicates, authored on tensors)
+4. **Mandated Shifts** — narrative beats that *must* produce specific changes (guarantees, authored on narrative graph)
 
 ```
-TypedCondition =
+// === NARRATIVE EVENTS (FACTUAL) ===
+// Events are published to a bus when things happen in the story.
+// These are objective facts that can be determined with certainty.
+// The World Agent can validate these.
+
+NarrativeEvent =
+  | SceneEntered { scene_id: SceneId, characters: Vec<CharacterId> }
+  | SceneExited { scene_id: SceneId, character: CharacterId }
+  | ActionResolved { actor: CharacterId, action: Action, outcome: Outcome }
+  | InformationRevealed { recipient: CharacterId, content: RevelationId }
+  | RelationshipShifted { from: CharacterId, to: CharacterId, dimension: Dimension, delta: f32 }
+  | EmotionExpressed { character: CharacterId, emotion: EmotionType, intensity: f32 }
+  | CapabilityDemonstrated { character: CharacterId, capacity: CapacityId }
+  | PhysicalContact { characters: (CharacterId, CharacterId) }
+  | ThresholdCrossed { character: CharacterId, threshold: ThresholdId }
+  | ... // extensible
+
+// === INTERPRETIVE JUDGMENTS ===
+// Produced by the ML inference layer during frame computation.
+// These are subjective inferences about meaning, behavior, or context.
+// They require judgment and have varying confidence levels.
+
+InterpretiveJudgment {
+  id: JudgmentId
+  timestamp: Timestamp
+  scene_context: SceneId
+  character_evaluated: CharacterId      // whose behavior/situation was interpreted
+  evaluating_for: CharacterId           // whose tensor conditions are being checked
+  pattern_matched: SemanticPattern      // what pattern was inferred
+  confidence: f32                       // [0.0, 1.0] — how certain is the inference?
+  evidence_summary: String              // human-readable explanation of why
+  triggered_conditions: Vec<ConditionRef>  // which interpretive conditions this satisfied
+}
+
+// Examples of interpretive judgments:
+//   "Adam's responses suggest concealment (confidence: 0.73)"
+//   "Scene resonates with abandonment theme (confidence: 0.81)"
+//   "Relational dynamic shows growing trust erosion (confidence: 0.65)"
+
+// === THE EVENT LEDGER ===
+// Maintains history of both factual events and interpretive judgments.
+// Both are queryable, but they have different epistemic status.
+
+EventLedger {
+  // Factual events — objective, World Agent validated
+  events: Vec<(Timestamp, NarrativeEvent)>
+
+  // Interpretive judgments — subjective, ML inference produced
+  judgments: Vec<InterpretiveJudgment>
+
+  // Supports queries like:
+  //   "what revelations has Sarah received?" (factual)
+  //   "when did Sarah last interact with Adam?" (factual)
+  //   "has the ML layer ever inferred concealment from Adam?" (interpretive)
+  //   "what patterns have been detected in Sarah's situation?" (interpretive)
+}
+
+// === TWO PROCESSING PATHS ===
+//
+// FACTUAL PATH (real-time, event-driven):
+//   NarrativeEvent published → Event bus → Factual subscriptions check →
+//   Matching subscriptions fire → Effects applied → Ledger updated
+//
+// INTERPRETIVE PATH (during frame computation):
+//   Frame computation begins → ML layer reads context →
+//   Interpretive conditions evaluated → Judgments produced →
+//   Matching conditions fire → Effects applied → Ledger updated
+//
+// Both paths can trigger the same effects (axis shifts, echo activation, etc.)
+// but they operate on different timescales and with different certainty.
+
+// === TRIGGER SUBSCRIPTIONS ===
+// Tensor elements subscribe to patterns. Factual subscriptions react
+// immediately to events; interpretive subscriptions are evaluated
+// during frame computation.
+
+TriggerSubscription {
+  subscriber: ElementRef           // which tensor element owns this subscription
+  condition: ActivationCondition   // Factual(...) or Interpretive {...}
+  on_match: TriggerEffect          // what happens when matched
+  persistence: SubscriptionPersistence  // one-shot vs. ongoing
+}
+
+SubscriptionPersistence = OneShot | Ongoing | UntilCondition(ActivationCondition)
+
+TriggerEffect =
+  | ShiftAxis { axis: AxisRef, direction: f32, magnitude: f32 }
+  | ActivateElement { element: ElementRef }
+  | SurfaceEmotion { state: EmotionalState }
+  | FireEcho { echo: EchoRef }
+  | TransitionAwareness { value: ValueRef, to: AwarenessLevel }
+  | SurfaceShadow { motivation: MotivationRef }  // bring shadow want to awareness
+  | ... // extensible
+
+// === MANDATED SHIFTS ===
+// Authored on the narrative graph, not the tensor. These are guarantees
+// that the system must honor when conditions are met. Mandates can use
+// either factual or interpretive conditions.
+
+NarrativeMandatedShift {
+  id: MandateId
+  trigger_scene: SceneId?              // fires when this scene is reached
+  trigger_condition: ActivationCondition?  // factual or interpretive
+  effects: Vec<MandatedEffect>         // what must happen
+  narrative_justification: String      // why this is mandated (for debugging/authoring)
+}
+
+MandatedEffect =
+  | TensorShift { character: CharacterId, element: ElementRef, delta: f32 }
+  | RelationshipShift { from: CharacterId, to: CharacterId, dimension: Dimension, delta: f32 }
+  | RevealInformation { to: CharacterId, content: RevelationId }
+  | ActivateEcho { character: CharacterId, echo: EchoRef }
+  | SurfaceShadow { character: CharacterId, motivation: MotivationRef }
+  | ... // extensible
+```
+
+**The separation matters because**:
+- **Factual events** are *what happened* — objective, World Agent validated, immediately processed, queryable ground truth
+- **Interpretive judgments** are *what was inferred* — subjective, ML-produced, confidence-weighted, evaluated during frame computation, also queryable but with different epistemic status
+- **Subscriptions** are *what would cause a shift* — can be factual (real-time reactive) or interpretive (frame-time evaluative), part of the tensor, character-specific
+- **Mandates** are *what must happen* — authored guarantees, part of the narrative graph, story-level requirements, can use either condition type
+
+This enables rich debugging:
+- "Why did Sarah's shadow anger surface?" → Trace to: interpretive judgment (concealment detected from Adam, confidence 0.73) matched her `BehaviorReading { "concealment" }` condition
+- "Why did the Wolf's protection instinct activate?" → Trace to: factual event `PhysicalContact(sarah, threat)` matched his factual subscription
+- "Why did Tommy's revelation hit so hard?" → Trace to: mandated shift on scene "beth_encounter" guaranteed echo activation
+
+### Trigger Matching
+
+Contextual triggers on tensor elements are matched against scene properties and events:
+
+```
+// TriggerCondition is what factual subscriptions match against.
+// These are objective conditions that the World Agent can validate.
+TriggerCondition =
+  // Match against current scene state:
   | SettingFeature(feature: SettingFeature)
   | CharacterPresent(character: CharacterId)
   | ConfigurationType(config: ConfigType)
   | EmotionalRegister(register: EmotionalRegister)
-  | ThematicResonance(theme: Theme)
   | StakeInvolved(stake: Stake)
-  | PhysicalContact(character: CharacterId)
-  | CapabilityDemonstrated(character: CharacterId)
-  | EmotionalDisplay(display: string)
-  | Revelation(content: string)
-  | AccumulatedStress(threshold: f32)
-  | Compound(conditions: [TypedCondition], mode: All | Any)
 
+  // Match against events:
+  | EventOccurred(event_pattern: EventPattern)
+  | EventSequence(patterns: Vec<EventPattern>, within: Duration?)
+  | TopicMentioned { topic: String }  // a topic/name was spoken or referenced
+
+  // Match against world state (World Agent queryable):
+  | WorldState { query: String, equals: String }  // e.g., "tommy_status" == "lost"
+  | Revelation(content: RevelationId)             // specific information was revealed
+
+  // Match against accumulated state:
+  | AccumulatedStress(threshold: f32)
+  | RelationshipState { with: CharacterId, dimension: Dimension, threshold: f32 }
+  | LedgerQuery(query: LedgerQuery)  // "has X ever happened?"
+
+  // Composition:
+  | Compound(conditions: [TriggerCondition], mode: All | Any | Sequence)
+  | Not(condition: TriggerCondition)
+
+// EventPattern matches against NarrativeEvents
+EventPattern =
+  | AnyEvent(event_type: EventType)
+  | SpecificEvent(event: NarrativeEvent)
+  | EventWithActor(actor: CharacterId, event_type: EventType)
+  | EventInvolving(character: CharacterId)  // actor or recipient
+  | TopicMentioned { topic: String }        // convenience for topic events
+```
+
+**Legacy Trigger struct** (retained for backward compatibility with existing case studies, but now understood as shorthand for a TriggerSubscription):
+
+```
 Trigger {
-  condition: TypedCondition
+  condition: TriggerCondition
   shift_axis: ElementRef?        // which axis to shift (for personality axes)
   shift_direction: f32           // positive or negative
   magnitude: f32                 // how much to shift
@@ -606,10 +941,10 @@ The schema is validated by demonstrating that it can represent the full tensor f
 
 | Case Study Element | Schema Type | Captured? |
 |---|---|---|
-| `warmth_reserve` axis with triggers | PersonalityAxis | Yes — bipolar, contextual triggers typed |
-| `loyalty_to_family: 0.95` | Value with supports/suppresses | Yes — supports find_tommy, suppresses anger_at_tommy |
+| `warmth_reserve` axis with triggers | PersonalityAxis | Yes — bipolar, tags for compositional matching, contextual triggers as subscriptions |
+| `loyalty_to_family: 0.95` | PersonalValue with supports/suppresses | Yes — supports find_tommy, suppresses anger_at_tommy, awareness: Articulate |
 | `fear_that_she_is_not_enough` | Motivation (shadow) with mirrors | Yes — mirrors prove_herself_capable, activation_conditions typed |
-| `supernatural_perception: 0.8` | Capacity (supernatural domain) | Yes — enables seeing_hidden_paths |
+| `supernatural_perception: 0.8` | CharacterCapacity (supernatural domain) | Yes — typed limitations + notes, enables seeing_hidden_paths |
 | `grief: 0.8` with decay | EmotionalState with DecayModel | Yes — slow decay, sustained_by conditions |
 | `echo: tommy_withdrawing` | EchoPattern with config_shift | Yes — trigger conditions typed, configuration shift on fire |
 | The Other Bank activation | Frame via pipeline | Yes — trigger matching → echo → activation → configuration → frame |
@@ -619,10 +954,10 @@ The schema is validated by demonstrating that it can represent the full tensor f
 | Case Study Element | Schema Type | Captured? |
 |---|---|---|
 | `connection_isolation` reinterpreted axis | PersonalityAxis with reinterpretation_note | Yes |
-| `duty_is_identity` primordial value | Value with temporal_layer: primordial | Yes |
+| `duty_is_identity` primordial value | PersonalValue with temporal_layer: primordial, awareness: Structural | Yes |
 | `ensure_sarah_fails` contradicting `protect_sarah` | Motivation.contradicts relationship | Yes |
 | `curiosity_about_sarah` shadow want | Motivation (shadow, forming) | Yes |
-| World-rending power (supernatural) | Capacity with domain: supernatural | Yes |
+| World-rending power (supernatural) | CharacterCapacity with domain: supernatural | Yes |
 | Archetypal echo | EchoPattern with echo_type: archetypal | Yes |
 | Nascent connection (emergent) | Not a stored element — emergent from configuration | Correct — not represented as element |
 | Frame register: somatic/spatial | PsychologicalFrame.register: non_human | Yes |
