@@ -61,7 +61,19 @@ How worlds are built — the coherence principle, authorial ingress points, and 
 - Entity representation spectrum: characters, presences, conditions, props
 - The World Agent as translator for the non-character world
 
-### 6. [Project Organization](project_organization.md)
+### 6. [Anthropological Grounding](anthropological_grounding.md)
+
+The intellectual genealogy of the system — how anthropological research into Amazonian shamanism, exchange networks, and embodiment shaped the project's core design concepts.
+
+- Layered worldbuilding as mutual production (geography → history → cultural forms → embodied experience)
+- The mediation spectrum (contact/translation/transport) as ancestor of the communicability gradient
+- The body as nexus: character tensors as the site where history, relationship, and experience intersect
+- Exchange networks as relational webs: asymmetry, multiplicity, position generating capacity
+- Montage and the Narrator: healing through juxtaposition as narrative assembly
+- The shaman's position and the World Agent: translation between worlds
+- Historical sorcery and the echo phenomenon: the past rising through the present
+
+### 7. [Project Organization](project_organization.md)
 
 How the work is structured — eleven streams across three phases.
 
@@ -69,7 +81,7 @@ How the work is structured — eleven streams across three phases.
 - Phase 1 (Foundation and Architecture), Phase 2 (Core Systems), Phase 3 (Integration, Tooling, Content)
 - The principle: build the smallest thing that teaches you something
 
-### 7. [Open Questions](open_questions.md)
+### 8. [Open Questions](open_questions.md)
 
 What we do not yet know — eleven major unresolved design challenges.
 

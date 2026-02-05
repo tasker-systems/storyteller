@@ -98,4 +98,5 @@ Design documentation in `docs/foundation/`:
 | `narrative_graph.md` | Gravitational model, attractor basins, scene design |
 | `character_modeling.md` | Tensor representation, relational webs, temporal layers |
 | `world_design.md` | Coherence principle, mutual production model, authorial ingress points, communicability gradient for entities |
+| `anthropological_grounding.md` | Intellectual genealogy: Amazonian shamanism, exchange networks, embodiment → system design |
 | `open_questions.md` | Unresolved design decisions |
