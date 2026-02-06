@@ -189,13 +189,21 @@ The entity budget is a practical constraint. In a richly described scene, dozens
 
 ### Graph Position
 
-Where this scene sits in the narrative DAG and what that position implies.
+Where this scene sits in the narrative graph and what that position implies.
+
+The narrative graph is a **directed graph**, not a directed *acyclic* graph. Settings can be revisited — the player can return to the house, walk the same path twice, re-enter the village. But the graph is formally acyclic *at the scene level*: a revisited setting produces a new scene node, composed differently based on what has happened elsewhere. You return to the house, but the house is different now — John sits alone, Kate's absence fills the room, and the scene that unfolds has different stakes, different cast, different warmed data. The graph cycles through settings but progresses through scenes.
+
+Some scenes are genuinely non-re-enterable — irreversible thresholds where the story has moved past the possibility of return. Kate's farewell, the crossing into the Wood. These are marked as such in the graph, and the system respects their finality.
+
+See "Scene, Setting, and the Geography of Time" below for the full treatment of this distinction.
 
 ```
 SceneGraphPosition {
   scene_id: SceneId,
+  setting_ref: SettingId,                   // the geographic location hosting this scene
   scene_type: SceneType,                    // gravitational, connective, gate, threshold
   narrative_mass: NarrativeMass,            // computed mass (authored + structural + dynamic)
+  re_enterable: bool,                       // can this setting host a new scene on return?
 
   anterior_nodes: Vec<AnteriorConnection>,  // scenes that could have led here
   posterior_nodes: Vec<PosteriorConnection>,  // scenes that might follow
@@ -302,7 +310,7 @@ Actions that fall outside the rendered space are not forbidden — they are *unr
 
 A player who counts blades of grass in a scene about a dying boy gets a response — but a thin one. The Narrator acknowledges the action and gently redirects attention: "The grass is damp with morning dew. Inside, you can hear Tom's breathing — shallow, uneven." The rendered space has texture and grain; the interesting paths are *more responsive* than the uninteresting ones. This is how the system guides without railroading.
 
-**The edge of the rendered space** is where the scene meets the narrative graph. "I leave the house and walk north" is a valid action, but it moves the player toward a scene exit — a departure trajectory. If the trajectory is unlocked, the scene transitions. If it's not (because a gate hasn't fired, or conditions aren't met), the world offers gentle resistance: "The road north disappears into mist — thick, the kind that turns you around. Something about this place isn't finished yet."
+**The edge of the rendered space** is where the scene meets the narrative graph. "I leave the house and walk north" is a valid action — but what it *means* depends on the kind of departure it represents. Leaving is sometimes trivial, sometimes significant, and sometimes irreversible. See "The Spectrum of Departure" below.
 
 ### The Three-Tier Constraint Framework in Practice
 
@@ -313,6 +321,117 @@ Within the rendered space, the constraint framework from `system_architecture.md
 **Soft constraints** — character capacity in context. Your character *could* do this, but it would be difficult, costly, or out of character. The Narrator renders these as internal friction: "You could say it. The words are right there. But something stops you — a tightness in your chest, the memory of the last time you said something you couldn't take back."
 
 **Perceptual constraints** — what can be sensed. You can't see what's behind a closed door. You can't hear a whispered conversation from across a room. But you can *try* — and the system rewards the attempt with whatever partial information is available. "You press your ear to the door. You catch fragments — a man's voice, angry, and another voice you almost recognize, calm as still water."
+
+---
+
+## Scene, Setting, and the Geography of Time
+
+### The Distinction
+
+A **setting** is a place. A **scene** is a dramatic situation at that place, at a particular time, with a particular cast, stakes, and narrative context. The distinction matters because settings persist and can be revisited, while scenes are unique — shaped by the player's accumulated history.
+
+```
+Setting {
+  id: SettingId,
+  name: String,                             // "the farmhouse," "the riverbank," "the abandoned village"
+  description: String,                      // persistent description (modified by world state changes)
+  features: Vec<SettingFeature>,            // from vocabulary
+  zone: NarrativeZoneId,                    // which narrative zone this belongs to
+  geography: GeographicRelations,           // spatial relationships to other settings
+  state: SettingState,                      // current persistent state (entities, modifications)
+  visit_history: Vec<VisitRecord>,          // when and under what circumstances the player has been here
+}
+
+GeographicRelations {
+  adjacent_to: Vec<(SettingId, TraversalType)>,   // nearby settings and how to reach them
+  within: Option<SettingId>,                       // parent setting (village within forest)
+  contains: Vec<SettingId>,                        // child settings
+  narrative_distance: HashMap<SettingId, f32>,     // how far in narrative terms (not just physical)
+}
+
+TraversalType =
+  | Walking { duration: Duration }          // straightforward travel
+  | Difficult { difficulty: f32, requires: Vec<Condition> }  // requires effort or capability
+  | Conditional { gate: TriggerPredicate }  // only available when conditions are met
+  | Irreversible                            // one-way (crossing into the Wood)
+```
+
+When a player enters (or returns to) a setting, the system generates a **scene** at that setting:
+
+```
+scene = generate_scene(
+  setting: Setting,
+  narrative_context: NarrativeContext,       // what the player carries
+  graph_position: GraphPosition,            // where we are in the narrative
+  visit_history: Vec<VisitRecord>,          // previous visits to this setting
+) -> Scene
+```
+
+A first visit to the farmhouse produces S1 (Tom Lies Still and Dying) — a gravitational scene with full authored specification. A return visit after three days in the Wood produces a different scene at the same setting — different cast (maybe John alone), different stakes (you now know things), different emotional register. The setting is the same place; the scene is a new dramatic moment.
+
+### Re-entry and Revisitation
+
+Not all settings support re-entry in the same way:
+
+**Freely re-enterable**: Many settings — especially connective ones — can be visited repeatedly. The market, the crossroads, the campsite. Each visit generates a new scene appropriate to the current narrative context. These scenes may be lighter (connective-type) or may carry new narrative weight if the world has changed.
+
+**Conditionally re-enterable**: Some settings change based on events. The village that was welcoming on first visit might be hostile on return (if the player incurred a debt). The house might be empty after a departure. The Storykeeper tracks setting state and generates appropriate scenes on return.
+
+**Non-re-enterable**: Some settings are locked to a specific narrative moment. Kate's farewell at the threshold is not a place you can return to — it is a moment. The scene and the setting are fused; the setting effectively ceases to exist as a visitable place once the threshold is crossed. These are marked `re_enterable: false` in the graph.
+
+**Changed on return**: Some of the most powerful narrative moments come from returning to a place and finding it different. The house you left three days ago now has a different feel — quieter, emptier, charged with what has happened since you left. The system should render return visits with awareness of the player's history with the place: what happened here before, what has changed, what memories the setting evokes.
+
+### Chronology and Geography
+
+The narrative graph has two axes that interact: **chronological** (the sequence of narrative events, the story's temporal progression) and **geographic** (the spatial relationships between settings, the map of the world).
+
+The chronological axis drives the narrative graph — scenes follow scenes, the story progresses, thresholds are crossed. This axis is largely acyclic: the story moves forward. But the geographic axis allows cycles — the player moves through space, and space is not consumed by passage. You can walk a path twice.
+
+The interaction between these axes produces interesting dynamics:
+
+- **Geographic proximity, chronological distance**: The farmhouse is next door, but three days of story-time and a journey through the Wood separate you from when you were last there. The scene generated at the farmhouse reflects this chronological distance — it is *the same place, later*.
+
+- **Geographic distance, chronological compression**: The journey between settings is real (connective scenes), but its duration can vary. A well-traveled road compresses time; a difficult passage through unknown terrain expands it.
+
+- **Geographic inaccessibility**: Not all geographically-near settings are accessible. The Shadowed Wood may be adjacent to the farm, but entering it requires crossing a threshold. The abandoned village may be visible from the path, but entering it is a choice with consequences. Geography alone does not determine accessibility — narrative conditions gate movement between settings.
+
+---
+
+## The Spectrum of Departure
+
+Leaving a scene is not a single kind of action. It exists on a spectrum from trivial to irreversible, and the system handles each differently.
+
+### Trivial Movement
+
+Walking from one part of a setting to another, or traveling between nearby settings during connective play. This is just geographic traversal — the player moves through space, and the system generates appropriate connective content.
+
+"I walk down to the stream" during a scene at the farmhouse is movement within a setting, handled as a rendered-space action. "I walk to the village" during connective play is a setting transition that generates a new connective scene.
+
+The system does not resist trivial movement. It is the ordinary flow of play.
+
+### Casual Departure
+
+Leaving a scene that has more to offer, but without profound narrative consequence. The player walks away from a conversation at the market, leaves a room they were exploring, decides to take a different path.
+
+The system should signal what the player is leaving behind — subtly, through the Narrator's craft. "You turn from the merchant's stall. Behind you, the old woman is still talking, her voice trailing after you like smoke — something about a name you almost recognized." The player can return (if the setting is re-enterable) or move on. The scene's unrealized goals remain in the narrative graph as potentially reachable through other paths or future returns.
+
+### Significant Departure
+
+Leaving a scene in the middle of something that matters — walking away from an argument, leaving during a confession, departing while someone is dying. The system must signal that this departure carries consequences, without forbidding it.
+
+**Signaling**: The Narrator leans into the weight of the moment. "You stand. Behind you, Adam's voice hardens — 'The girl walks away. As expected.' The words follow you out the door." The atmosphere, the characters' reactions, the quality of the narration all communicate: *this matters, and the world noticed*.
+
+**Consequences**: The scene continues without the player. Characters who were present act on their own goals and motivations. The argument concludes (perhaps differently than it would have with the player present). The confession is unheard (and the confessor knows it). The dying person's last moments happen without witness. These outcomes are computed by the Character Agents and Storykeeper, and they modify the narrative state — when the player returns or encounters these characters again, the consequences of their departure are real.
+
+**Re-entry**: If the setting is re-enterable, the player may return — but to a different scene. The argument is over. The confessor has closed off. The moment has passed. Some significant departures are recoverable (you can apologize, re-engage, try again); others leave a mark that persists. The Storykeeper determines which.
+
+### Irreversible Threshold
+
+Departures that cannot be undone — crossing into the Shadowed Wood, leaving home for the quest, the moment of no return.
+
+These are explicitly marked in the narrative graph. The system signals their irreversibility through narrative weight — the farewell scene, the sense of finality, the atmospheric shift as the player crosses the boundary. The Narrator may make the threshold felt: "You look back once. The house is already smaller, already further, already a memory. The Wood is ahead, and it has been waiting."
+
+The player should understand — through narrative signaling, not UI warnings — that this is a one-way door. The topographic display may reinforce this: the sense that the landscape behind is closing, that the path forward has a different quality than the path back.
 
 ---
 
@@ -649,14 +768,16 @@ Frame computation at scene entry is the tensor schema's pipeline in action. The 
 
 2. **Scene duration**: How long should a scene last in player turns? Gravitational scenes might run 10-30 turns; connective scenes might run 3-8. But these numbers should emerge from play-testing, not be prescribed. The exit condition system (goal completion, trajectory selection, Storykeeper judgment) should naturally produce appropriate durations.
 
-3. **Multi-scene locations**: A location (the village, the forest) may host multiple scenes over time. How does the system handle returning to a place? The setting persists (with entity state changes), but the scene is new — different goals, different cast, different stakes. The warmed data should reflect the player's history with this place.
+3. **Topographic display implementation**: The narrative topography concept needs concrete UI design. What does the player actually see? A textual summary? A visual map? An atmospheric overlay? This is a UX question with architectural implications — the system must produce the data that the display consumes.
 
-4. **Topographic display implementation**: The narrative topography concept needs concrete UI design. What does the player actually see? A textual summary? A visual map? An atmospheric overlay? This is a UX question with architectural implications — the system must produce the data that the display consumes.
+4. **Scene nesting**: Can scenes contain sub-scenes? A conversation within a larger scene, a flashback triggered by an echo, a brief interaction that's part of a longer sequence. Nesting adds expressiveness but complicates the lifecycle model. It may be simpler to model these as state changes within a single scene rather than nested scenes.
 
-5. **Scene nesting**: Can scenes contain sub-scenes? A conversation within a larger scene, a flashback triggered by an echo, a brief interaction that's part of a longer sequence. Nesting adds expressiveness but complicates the lifecycle model. It may be simpler to model these as state changes within a single scene rather than nested scenes.
+5. **Graduated response calibration**: The unsuccessful engagement response system needs careful tuning. Too aggressive and the player feels railroaded. Too passive and they feel lost. The graduation rate should probably adapt to the player's established engagement pattern — a player who has been deeply engaged and suddenly goes quiet gets more patience than one who has been disengaged from the start.
 
-6. **Player-initiated departure vs. story-initiated**: When the player says "I leave," the system must decide: is this a departure trajectory (move to next scene) or a rendered-space action (the player tries to leave but the world resists)? The answer depends on whether departure conditions are met and whether the story has reasons to hold the player. This is a Storykeeper judgment call.
+6. **Connective scene mass distribution**: The narrative graph case study noted that connective space has "differently distributed mass." The scene model needs to operationalize this — how is mass distributed across turns in a connective scene? Is it uniform, or does it concentrate around specific interaction opportunities?
 
-7. **Graduated response calibration**: The unsuccessful engagement response system needs careful tuning. Too aggressive and the player feels railroaded. Too passive and they feel lost. The graduation rate should probably adapt to the player's established engagement pattern — a player who has been deeply engaged and suddenly goes quiet gets more patience than one who has been disengaged from the start.
+7. **Setting state complexity**: Settings that persist and can be revisited need state management. How much state does a setting carry? Entity states, atmospheric changes, physical modifications (the door is now broken), social changes (the village is now hostile). The World Agent manages this, but the data model for setting state needs specification.
 
-8. **Connective scene mass distribution**: The narrative graph case study noted that connective space has "differently distributed mass." The scene model needs to operationalize this — how is mass distributed across turns in a connective scene? Is it uniform, or does it concentrate around specific interaction opportunities?
+8. **Off-screen scene consequences**: When a player departs a scene significantly (walking away from the argument), the system must compute what happened without them. How deeply does the system simulate off-screen events? Character Agents acting on their goals without player presence? Storykeeper determining outcomes? This connects to the off-screen propagation model in `character_modeling.md`.
+
+9. **Return scene generation**: When the player returns to a setting, the system generates a new scene. How does this generation work? For authored settings (the farmhouse), the designer may have authored multiple scene variants keyed to narrative state. For connective settings, the system generates from templates. But the boundary between these — a return to an authored setting under conditions the designer didn't anticipate — requires the Storykeeper and World Agent to collaborate on generating an appropriate scene.
