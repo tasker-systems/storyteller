@@ -86,6 +86,20 @@ Unified Entity model — everything in the system is an Entity with a component-
 - Non-character entities participate in power dynamics through communicability and topology
 - Direct mapping to Bevy ECS (entities, components, systems)
 
+#### [scene-model.md](scene-model.md)
+
+The Scene as the fundamental unit of play — anatomy, lifecycle, action space, and the ludic contract.
+
+**Key decisions made here**:
+- Scene as bounded creative constraint (prevents aimlessness and context overwhelm)
+- Scene anatomy: cast, setting, stakes/goals, entity budget, graph position, warmed data
+- Rendered space: bounded meaningful action space defined by affordances, characters, entities, information, constraints
+- Scene lifecycle: entry (frame computation + context warming), active play (turn cycle), exit (trajectory selection)
+- Four scene types: authored gravitational, authored gate, connective (procedurally generated), threshold
+- Ludic contract: Narrator as active guide, topographic signaling (not quest logs), narrative position awareness
+- Graduated unsuccessful engagement response: invitation → character initiative → world pressure → gravitational escalation → narrative contraction
+- Gravitational expression through character behavior, environmental signals, narrative coincidence, pacing
+
 ### Relational Web Case Study
 
 #### [relational-web-tfatd.md](relational-web-tfatd.md)
