@@ -61,6 +61,31 @@ Every message type exchanged between agents, with schemas, token budgets, and in
 - Full turn cycle: 3 serial LLM calls (single character), 4 (multi-character with parallel CharacterAgents)
 - Information boundary is the most critical design element per message type
 
+### Schema Specifications
+
+#### [tensor-schema-spec.md](tensor-schema-spec.md)
+
+Formal type system for character tensors, relational edges, and scene contexts — the structured representation that bridges case studies and computation.
+
+**Key content**:
+- Six element types: PersonalityAxis, CharacterCapacity, PersonalValue, Motivation, EmotionalState, EchoPattern
+- Temporal layer semantics, inter-element relationships, the Intertwining (ports between inner and outer)
+- Event-driven architecture with factual vs. interpretive conditions
+- Frame computation pipeline (5 steps)
+- Seven resolved design decisions: closed vocabularies, sensible defaults, entity model, training data, set-theoretic triggers, formal schema, performance architecture
+
+#### [entity-model.md](entity-model.md)
+
+Unified Entity model — everything in the system is an Entity with a component-driven lifecycle.
+
+**Key decisions made here**:
+- Single Entity type with component configuration (not a type hierarchy)
+- Promotion/demotion lifecycle: ephemeral → persistent → full → decay → dissolution
+- Communicability profile as four dimensions (surface area, translation friction, timescale, reciprocity)
+- Decay mechanics with narrative weight as the key measure
+- Non-character entities participate in power dynamics through communicability and topology
+- Direct mapping to Bevy ECS (entities, components, systems)
+
 ### Relational Web Case Study
 
 #### [relational-web-tfatd.md](relational-web-tfatd.md)

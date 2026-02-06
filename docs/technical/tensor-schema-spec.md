@@ -848,9 +848,11 @@ TriggerCondition =
   | RelationshipState { with: CharacterId, dimension: Dimension, threshold: f32 }
   | LedgerQuery(query: LedgerQuery)  // "has X ever happened?"
 
-  // Composition:
-  | Compound(conditions: [TriggerCondition], mode: All | Any | Sequence)
-  | Not(condition: TriggerCondition)
+  // Composition (see Design Decision 5 for the full set-theoretic model):
+  // Atomic TriggerConditions are composed via TriggerPredicate operations
+  // (All, Any, Not, Difference, Threshold) rather than inline Compound.
+  // The old Compound(All | Any | Sequence) is superseded.
+  // Temporal ordering uses TemporalPredicate (After, Sequence, Since).
 
 // EventPattern matches against NarrativeEvents
 EventPattern =
@@ -964,18 +966,215 @@ The schema is validated by demonstrating that it can represent the full tensor f
 
 ---
 
-## Open Questions
+## Design Decisions
 
-1. **Vocabulary enumeration**: The typed conditions (SettingFeature, EmotionalRegister, Theme, etc.) need concrete vocabulary lists. How open or closed should these vocabularies be? Closed vocabularies enable reliable trigger matching but may be too rigid; open vocabularies are flexible but make matching harder.
+The following questions were identified during schema development and have been resolved. Each decision has architectural implications that propagate through the system.
 
-2. **Inter-element relationship inference**: Should the story designer specify all element relationships explicitly, or should some be inferred? A shadow motivation that mirrors a deep want could potentially be detected by the system rather than authored.
+### 1. Vocabulary Architecture: Closed, Extensible Enums
 
-3. **Entity type taxonomy**: The schema handles human and non-human (Wolf) characters. What about Presences (the Shadowed Wood), Conditions (the economy), or Props elevated to narrative significance? Do they use a subset of the same schema or a different one?
+**Decision**: Typed vocabularies (SettingFeature, EmotionalRegister, Theme, CapacityDomain, etc.) are **closed enums** with a **pluggable extension mechanism** at compile or cross-linking time.
 
-4. **Training data for the ML layer**: The frame computation pipeline is specified but the ML model needs training data. The case studies provide 2-4 examples each. How do we generate sufficient training data? Options include: synthetic generation from authored tensors, manual frame authoring for diverse scenarios, or bootstrapping from LLM-generated frames that are then validated.
+**Rationale**: The event-driven trigger system, the Rust type system, and the need for computational efficiency all favor closed vocabularies. Enum-based matching is fast, exhaustive, and caught by the compiler. The trigger system's set-theoretic evaluation (see below) requires that conditions be discrete, matchable atoms — open-ended string matching would undermine both performance and reliability.
 
-5. **Trigger compositionality**: Complex trigger conditions (Compound with All/Any) could become arbitrarily complex. What is the practical limit? Do we need a trigger language or is the typed condition set sufficient?
+**Extension mechanism**: Story-specific vocabulary extensions are registered at compile time via a trait-based plugin system. A story designer working on Bramblehoof can define `SettingFeature::FeyWild` or `Theme::CrushedCreativity` without modifying the core vocabulary. The trigger matching system handles unknown extension variants via a generic fallback path.
 
-6. **Schema evolution**: As more case studies are developed (Bramblehoof, Vretil characters), the schema will face new pressures. The type system should be extensible without breaking existing representations. How do we manage schema versioning?
+**Implication**: Vocabulary definitions become part of the story designer's deliverable, alongside narrative graphs, tensors, and scene definitions. The core vocabulary provides a substantial base; extensions are additive.
 
-7. **Performance budgets**: The frame computation pipeline has 5 steps. What are the latency and token budgets for each step? The pipeline must complete within acceptable time for interactive play.
+```
+// Core vocabulary — closed enum in storyteller-core
+SettingFeature =
+  | Water | Forest | Mountain | Cave | Building | Road | Bridge
+  | LiminalSpace | Sickbed | Hearth | Battlefield | Market
+  | Night | Dawn | Dusk | Storm | Calm | Cold | Heat
+  | ...  // enumerated, not open-ended
+
+// Story extension — registered at compile/link time
+// e.g., in a Bramblehoof story crate:
+SettingFeature::ext =
+  | FeyWild | CorruptedLeyLine | TavernStage | ForgottenShrine
+
+// Each vocabulary term can carry structured metadata:
+VocabularyEntry<T> {
+  variant: T,                    // the enum variant itself
+  semantic_tags: HashSet<Tag>,   // for compositional trigger matching
+  description: String,           // for LLM consumption / frame synthesis
+  implied_features: Vec<T>,      // e.g., Cave implies Darkness, Enclosed
+}
+```
+
+**Metadata within vocabularies**: Each vocabulary term can carry structured metadata — semantic tags (for compositional matching), human-readable descriptions (for frame synthesis), and implied features (Cave implies Darkness). This gives closed vocabularies the specificity of open ones without sacrificing type safety.
+
+### 2. Authoring Model: Sensible Defaults, Deep Management Available
+
+**Decision**: The system provides **sensible defaults and low-friction authoring** at every level. Fine-grained nuance is possible but never required. Inter-element relationships, contextual triggers, and even character traits can be inferred from common types or filled with structured pseudo-random generation, then refined by the author if desired.
+
+**Rationale**: A character with a `Motivation(shadow)` that mirrors a `Motivation(deep)` can be detected by structural analysis — if two motivations have overlapping domains and opposing valences, the system can propose a `Mirrors` relationship. Similarly, a character with high `loyalty_to_family` and a missing family member can generate default emotional states and echo patterns. The author's role is to confirm, override, or deepen — not to specify every relationship from scratch.
+
+**Provenance tracking**: Every inferred or defaulted element carries a provenance tag:
+
+```
+Provenance =
+  | Authored                     // designer specified explicitly
+  | Inferred { rule: InferenceRule, confidence: f32 }
+  | Generated { seed: u64, template: TemplateId }
+  | Confirmed { original: Box<Provenance> }  // author reviewed and accepted
+  | Overridden { original: Box<Provenance> }  // author reviewed and changed
+```
+
+This enables the authoring toolchain to surface "things the system guessed" for review, distinguish between "author hasn't looked at this" and "author confirmed this," and support iterative refinement without losing the history of how elements were produced.
+
+**Implication**: The tensor schema's element types (PersonalityAxis, Motivation, etc.) all gain an optional `provenance: Provenance` field. Inference rules are defined alongside the schema as a companion system.
+
+### 3. Entity Model: Everything Is an Entity
+
+**Decision**: **Everything in the system is an Entity.** A cup on a shelf, a crying widow, a mountain range, and a protagonist all share a single underlying Entity type. What differs is their *component configuration* — which capabilities, communicability dimensions, and persistence characteristics they currently have.
+
+This collapses the taxonomy from `world_design.md` (Characters → Presences → Conditions → Props) into a **promotion/demotion lifecycle** on a single type.
+
+**Lifecycle**:
+
+```
+(not yet an entity)        — part of narrative description, no persistence
+       ↓ interaction/engagement
+Ephemeral Entity           — created when engaged with, minimal components
+       ↓ sustained interaction / narrative weight
+Persistent Entity          — tracked, may have tensor elements, decay-resistant
+       ↓ accumulated meaning / communicability
+Full Entity                — rich tensor, relational web edges, frame-eligible
+
+// And the reverse:
+Full Entity → Persistent → Ephemeral → (dissolved)
+  via decay, distance, disengagement, narrative irrelevance
+```
+
+**Decay**: Entities that are not interacted with or retained decay along a distance/time curve. The flower given away to a stranger, the stone skipped across water — these dissolve back into narrative description. Decay rates are configurable per entity and per story.
+
+**Communicability as configuration**: The four dimensions from `world_design.md` — surface area, translation friction, timescale, capacity to turn toward — become **component values** on an entity, not a separate type hierarchy. A mountain has high surface area, high translation friction, geological timescale, and turns toward everything equally. These values determine what the entity can do in the system: whether it can participate in power dynamics, whether it can have relational web edges, whether it needs a psychological frame.
+
+**Bevy ECS implication**: Entities are literal ECS entities. Their "tier" is determined by which components are attached. Promotion adds components (a tensor slice, a relational edge, a communicability profile). Demotion removes them. The system queries for entities by component presence, not by type tag.
+
+**Implication for this schema**: The tensor element types defined in this document are components that *any* entity can acquire — not just characters. A Presence (the Shadowed Wood) might acquire a small set of PersonalityAxes (mood, hostility) and EmotionalStates (darkening) without needing the full Character tensor. The schema is already component-shaped; the Entity model makes this explicit.
+
+See `entity-model.md` for the full Entity lifecycle specification.
+
+### 4. Training Data: Combinatorial Generation Matrices
+
+**Decision**: Training data for the ML inference layer is produced through **combinatorial generation matrices** — structured dimensions (genre, tone, narrative type, common tensions, relational dynamics and their inverses) that can be combined and recombined to produce significantly different patterns.
+
+**Approach**:
+
+1. **Define generation dimensions**: genre (dark fantasy, literary, comedic, etc.), tone (tense, lyrical, bleak, warm), narrative tension types (betrayal, sacrifice, homecoming, loss), relational dynamics (trust-building, power-inversion, dependence, separation), character archetypes (with tensor templates).
+
+2. **Build combinatorial matrices**: Each combination of dimensions produces a scenario skeleton — a character configuration, a scene context, and a set of expected frame outputs.
+
+3. **Use LLM sub-agents to generate**: Given a scenario skeleton, LLM agents produce concrete tensor data, scene contexts, and candidate psychological frames as serializable outputs (JSONL or similar structured format).
+
+4. **Validate against schema**: Generated data must conform to the formal schema (see Decision 6). Non-conforming output is rejected automatically. Conforming output enters a review pipeline.
+
+5. **Human review and refinement**: Generated scenarios are reviewed for quality, plausibility, and narrative coherence. Accepted scenarios become training data; rejected ones inform the generation templates.
+
+**Plot mechanics**: The attractor basin model and power framework provide structural templates for plot dynamics — how tensions escalate, where power configurations shift, when echoes should fire. These structural patterns, combined with the generation dimensions, produce training scenarios that are both diverse and narratively grounded.
+
+**Implication**: The tensor schema must be serialization-friendly from the start. Every type needs a clean JSON representation, reinforcing Decision 6.
+
+### 5. Trigger Language: Set-Theoretic Composition of Atomic Conditions
+
+**Decision**: Trigger conditions are **atomic, discrete predicates** composed via **set-theoretic operations** (union, intersection, difference, complement). The `Compound` type is replaced with explicit set operations. Evaluation is bounded: each trigger predicate is evaluated against the **truth set** — the current state of all conditions known to be true at evaluation time.
+
+**The truth set**: At any moment, the system maintains a set of propositions that are currently true — characters present, setting features active, events that have occurred, world state values, accumulated thresholds crossed. This is the factual truth set. The ML inference layer extends it with confidence-weighted interpretive judgments during frame computation.
+
+**Atomic conditions**: Each `TriggerCondition` and `ActivationCondition` variant is a single, discrete predicate that either matches or does not match against the truth set. These are the atoms.
+
+**Set composition**:
+
+```
+TriggerPredicate =
+  | Atom(condition: TriggerCondition)      // single condition
+  | All(predicates: Vec<TriggerPredicate>) // intersection — all must match
+  | Any(predicates: Vec<TriggerPredicate>) // union — at least one must match
+  | Not(predicate: TriggerPredicate)       // complement
+  | Difference(include: TriggerPredicate, exclude: TriggerPredicate)
+                                           // include AND NOT exclude
+  | Threshold(predicates: Vec<TriggerPredicate>, min_match: u32)
+                                           // at least N of M must match
+
+// Replaces the old Compound(conditions, mode: All | Any | Sequence)
+// Sequence is handled separately — see temporal constraints below.
+```
+
+**Temporal constraints**: Sequence (A then B then C within duration D) is not a set operation — it requires ordered evaluation against the event ledger. Temporal predicates query the ledger directly:
+
+```
+TemporalPredicate =
+  | After(event: EventPattern, predicate: TriggerPredicate)
+    // predicate must be true AND event must have occurred before now
+  | Sequence(events: Vec<EventPattern>, within: Duration?)
+    // events must have occurred in order, optionally within a time window
+  | Since(event: EventPattern, predicate: TriggerPredicate)
+    // predicate has been continuously true since event occurred
+```
+
+**Evaluation model**: Factual predicates are evaluated against the truth set in real-time as events arrive — this is a bounded set membership check, computationally equivalent to a SQL query against an indexed table. Interpretive predicates are evaluated during frame computation when the ML layer produces judgments that enter the truth set with confidence weights. For interpretive atoms, confidence is factored into threshold calculations: an atom with 0.6 confidence contributes 0.6 toward a `Threshold(min_match: 2)` requirement, not 1.0.
+
+**Practical limit**: Trigger predicates are constrained to a maximum nesting depth (configurable, default 4). This prevents pathological composition while allowing expressive conditions. The most common patterns — "A and B," "any of A, B, C," "A and not B" — are depth 1-2.
+
+### 6. Schema Specification: Formal, Additive, Extensible
+
+**Decision**: All schema types are formally specified using **JSONSchema** (or OpenAPI-compatible schema definitions). Schema evolution is **additive** — new fields, new enum variants, new element types. Breaking changes require a versioned migration.
+
+**Generation strategy**: The canonical type definitions live in Rust. JSONSchema is **derived from the Rust types** (via `schemars` or equivalent), not maintained separately. This ensures a single source of truth. The derived schemas are used by:
+
+- Authoring tools (validation of designer input)
+- Training data pipeline (validation of generated output)
+- LLM sub-agents (structured output schemas for generation)
+- Story import/export (serialization/deserialization)
+
+**Extensibility contract**: The schema distinguishes between:
+
+- **Core types** — defined in `storyteller-core`, stable, backwards-compatible
+- **Extension types** — defined per-story or per-plugin, registered at compile time (consistent with Decision 1)
+- **Optional fields** — new fields added with defaults, old data remains valid
+
+**Versioning**: Schema versions follow a `major.minor` convention. Minor versions are additive (new optional fields, new enum variants). Major versions may restructure (with migration tooling). The goal is to reach a stable `1.0` schema before significant content is authored against it.
+
+### 7. Performance Architecture: Scene-Boundary Framing, Parallel Input, Warmed Cache
+
+**Decision**: The performance problem is addressed architecturally rather than through per-step latency budgets. Three key mechanisms:
+
+**Scene-boundary framing**: Agents are not constantly refreshed. The foundational frame (tensor activation, relational configuration, psychological frame) is computed at **scene entry** — the UX scene-change mechanic provides a natural boundary for this work. Within a scene, incremental updates (event-driven axis shifts, echo activations) modify the frame rather than recomputing it from scratch. This amortizes the expensive pipeline over the scene duration.
+
+**Parallel input processing**: The player's text input is **not** a chat message to the Narrator. It is a signal broadcast to all foundational agents simultaneously:
+
+```
+PlayerInput → [
+  ClassifierAgents  → typed events (NarrativeEvent, action parsing)
+  Narrator          → narrative rendering (with scene context + frame)
+  Storykeeper       → narrative graph evaluation (position, gravity, gates)
+  Reconciler        → multi-character coordination (if applicable)
+  WorldAgent        → constraint validation, world-state updates
+]
+```
+
+Classifier agents are a pre-processing layer that parse player input into typed events before the other agents see it. This enables the event-driven trigger system to fire in real-time as the player acts, without waiting for the full agent processing pipeline.
+
+**Warmed cache**: The Narrator (and other agents) maintain access to **local cached context** — recent scene history, the current psychological frame, active relational configurations, relevant tensor subsets. This context is built at scene entry and incrementally updated. The Narrator should never need to "go look something up" during scene execution — everything needed for fluent narration is in the warmed cache.
+
+**Delegation model**: Most of the time, foundational agents are consciously delegating to one another. The Storykeeper recognizes that a player action is primarily a World Agent concern (physical constraint) and delegates; the World Agent recognizes that the constraint has narrative implications and signals the Storykeeper. This delegation is itself an event that other agents can observe and react to. The event bus carries both player-originated and agent-originated events.
+
+**Implication for the frame computation pipeline**: Steps 1-4 (trigger matching through configuration computation) execute at scene entry and produce the base frame. Step 5 (frame synthesis) produces the initial psychological frame. During the scene, events trigger incremental updates that modify the frame without re-running the full pipeline. A full recomputation only occurs at scene boundaries or when a sufficiently dramatic event (echo activation, revelation) warrants it.
+
+---
+
+## Open Considerations
+
+The design decisions above resolve the original open questions. The following considerations remain as areas for future specification — they are practical engineering questions that will be resolved during implementation rather than design questions that block architecture.
+
+1. **Vocabulary enumeration**: The core enum variants for each vocabulary type need to be concretely listed. The architecture is decided (closed + extensible); the specific terms require a vocabulary definition pass, likely during Bramblehoof workshop development.
+
+2. **Inference rule library**: The sensible-defaults system (Decision 2) needs a concrete library of inference rules — "if motivation X contradicts motivation Y, propose a Mirrors relationship." These rules will emerge from case study development.
+
+3. **Entity decay curves**: The Entity lifecycle (Decision 3) specifies decay but not the specific mathematical curves. These need calibration against play-testing.
+
+4. **Classifier agent design**: The parallel input architecture (Decision 7) introduces classifier agents as a pre-processing layer. Their design — how they parse natural language into typed events, what confidence thresholds they use, how they handle ambiguity — is a significant implementation concern.
+
+5. **Truth set implementation**: The set-theoretic trigger language (Decision 5) requires an efficient truth set data structure. Options include bitsets (for small vocabularies), indexed stores (for larger sets), or a lightweight embedded query engine. The choice depends on cardinality measurements during implementation.

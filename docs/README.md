@@ -26,12 +26,14 @@ Nine documents that establish the intellectual and architectural foundations of 
 
 Concrete data models, protocols, and formulas derived from applying the foundation principles to real creative content. These bridge philosophy and code.
 
-**Start here** if you want to understand the data structures and protocols.
+**Start here** if you want to understand the data structures and protocols. Seven documents:
 
 | Document | What it specifies |
 |---|---|
 | `tensor-case-study-sarah.md` | Full tensor for a human protagonist — establishes representation format |
 | `tensor-case-study-wolf.md` | Full tensor for a non-human entity — stress-tests and extends the model |
+| `tensor-schema-spec.md` | Formal type system for tensors, triggers, and frames — 7 resolved design decisions |
+| `entity-model.md` | Unified Entity model — everything is an Entity with component-driven lifecycle |
 | `narrative-graph-case-study-tfatd.md` | Story mapped as gravitational landscape — mass formulas, attractor basins |
 | `agent-message-catalog.md` | All 22 message types between agents with schemas and token budgets |
 | `relational-web-tfatd.md` | Asymmetric relational web for 6 characters across 6 dimensions |
