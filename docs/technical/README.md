@@ -100,6 +100,19 @@ The Scene as the fundamental unit of play — anatomy, lifecycle, action space, 
 - Graduated unsuccessful engagement response: invitation → character initiative → world pressure → gravitational escalation → narrative contraction
 - Gravitational expression through character behavior, environmental signals, narrative coincidence, pacing
 
+#### [event-system.md](event-system.md)
+
+The event lifecycle — how narrative events are classified, routed, and processed across agents.
+
+**Key decisions made here**:
+- Two-track classification: factual events (fast, deterministic) and interpretive events (slower, LLM-mediated, confidence-weighted)
+- Four-stage classification pipeline: structural parsing → factual classification → sensitivity matching → deep interpretation
+- Sensitivity map: pre-computed trigger targets built at scene entry for fast interpretive matching
+- Three priority tiers: immediate (this turn), scene-local (within the scene), deferred (scene boundary batch)
+- Agent subscription model with pattern-based routing and priority levels
+- Bounded cascade system with depth limits, refractory periods, and cycle detection
+- Provisional judgments refined asynchronously — one-turn lag is narratively acceptable
+
 ### Relational Web Case Study
 
 #### [relational-web-tfatd.md](relational-web-tfatd.md)
