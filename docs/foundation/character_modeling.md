@@ -65,9 +65,11 @@ No character exists in isolation. The relational web is a graph of connections b
 - **Trust**: how much one character trusts another â€” not as a single number but as a textured assessment: trust in competence vs. trust in intentions vs. trust in loyalty
 - **Affection**: the warmth, love, fondness, or indifference between characters â€” again, textured: one may feel deep affection but no respect, or respect without warmth
 - **Debt**: obligations, favors owed, promises made â€” the economy of interpersonal commitment
-- **Power**: the dynamic of authority, influence, dependency â€” who holds power over whom, and in what domains
-- **History**: the weight of shared experience â€” what they have been through together, what they have done to each other, what remains unresolved
-- **Projection**: what one character assumes or believes about another, which may differ significantly from reality â€” the idealized mentor, the demonized rival, the underestimated sibling
+- **History**: the weight of shared experience â€" what they have been through together, what they have done to each other, what remains unresolved
+- **Information state**: what one character knows or doesn't know about the other's circumstances, capabilities, and relationships â€" distinct from projection, which captures emotional imagination rather than factual knowledge
+- **Projection**: what one character assumes or believes about another, which may differ significantly from reality â€" the idealized mentor, the demonized rival, the underestimated sibling
+
+Power is notably absent from this list â€" not because it is unimportant but because it is emergent. Power arises from the *configuration* of these substrate dimensions and from the character's structural position in the network, not as a property to be stored. See `power.md` for the full argument.
 
 The relational web is maintained by the Storykeeper and provided to Character Agents in filtered form â€” each character sees the web from their own perspective, colored by their own biases and information state. Maren's view of her relationship with the player-character is not the same as the player-character's view of their relationship with Maren, and neither may be fully accurate.
 

@@ -1,0 +1,34 @@
+# =============================================================================
+# Storyteller — cargo-make Root Task Definitions
+# =============================================================================
+#
+# Unified task runner for the storyteller workspace.
+#
+# Quick Start:
+#   cargo make check    Run all quality checks
+#   cargo make test     Run all tests
+#   cargo make fix      Auto-fix all fixable issues
+#   cargo make build    Build everything
+#
+# See: cargo-make/main.toml for task definitions.
+
+extend = "./cargo-make/main.toml"
+
+[config]
+default_to_workspace = false
+skip_core_tasks = true
+
+[tasks.default]
+description = "Default: show available tasks"
+script = '''
+echo "Storyteller Engine - cargo-make Tasks"
+echo "======================================"
+echo ""
+echo "Common Tasks:"
+echo "  cargo make check    Run all quality checks"
+echo "  cargo make test     Run all tests"
+echo "  cargo make fix      Auto-fix all issues"
+echo "  cargo make build    Build everything"
+echo ""
+echo "Run 'cargo make --list-all-steps' for all tasks"
+'''

@@ -1,0 +1,52 @@
+[package]
+name = "storyteller-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Bevy ECS runtime — components, systems, agents, and orchestration for the storyteller engine"
+readme = "../README.md"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+keywords = ["storytelling", "narrative", "bevy", "ecs"]
+categories = ["game-engines"]
+
+[dependencies]
+storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
+
+# ECS runtime (sub-crates for minimal/headless usage)
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+
+# ML inference
+ort = { workspace = true }
+rayon = { workspace = true }
+crossbeam = { workspace = true }
+
+# Messaging
+lapin = { workspace = true }
+
+# Serialization and async
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+
+# Optional: cloud LLM providers
+reqwest = { workspace = true, optional = true }
+
+# Optional: local LLM inference
+candle-core = { workspace = true, optional = true }
+candle-nn = { workspace = true, optional = true }
+candle-transformers = { workspace = true, optional = true }
+
+[features]
+default = ["cloud-llm"]
+cloud-llm = ["dep:reqwest"]
+local-llm = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers"]
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

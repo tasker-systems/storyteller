@@ -1,0 +1,30 @@
+# =============================================================================
+# Storyteller — Base cargo-make Task Templates
+# =============================================================================
+# Shared task definitions extended by per-crate Makefile.toml files.
+# Borrowed from tasker-core patterns, adapted for storyteller.
+
+[tasks.base-rust-format-check]
+description = "Check Rust formatting"
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.base-rust-format-fix]
+description = "Fix Rust formatting"
+command = "cargo"
+args = ["fmt", "--all"]
+
+[tasks.base-rust-lint]
+description = "Run Clippy lints"
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[tasks.base-rust-test]
+description = "Run tests"
+command = "cargo"
+args = ["test", "--workspace", "--all-features"]
+
+[tasks.base-rust-docs]
+description = "Check documentation builds"
+command = "cargo"
+args = ["doc", "--no-deps", "--document-private-items"]

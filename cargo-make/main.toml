@@ -1,0 +1,74 @@
+# =============================================================================
+# Storyteller — Workspace-Level cargo-make Tasks
+# =============================================================================
+# Composite tasks that operate across the entire workspace.
+# Extended by the root Makefile.toml.
+
+extend = "./base-tasks.toml"
+
+[tasks.check]
+description = "Run all quality checks"
+dependencies = ["rust-fmt-check", "rust-clippy", "rust-docs"]
+
+[tasks.test]
+description = "Run all tests"
+dependencies = ["rust-test"]
+
+[tasks.fix]
+description = "Auto-fix formatting and lint issues"
+dependencies = ["rust-fmt-fix", "rust-clippy-fix"]
+
+[tasks.build]
+description = "Build all workspace crates"
+command = "cargo"
+args = ["build", "--workspace", "--all-features"]
+
+# --- Rust Sub-Tasks ---
+
+[tasks.rust-fmt-check]
+description = "Check Rust formatting"
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.rust-fmt-fix]
+description = "Fix Rust formatting"
+command = "cargo"
+args = ["fmt", "--all"]
+
+[tasks.rust-clippy]
+description = "Run Clippy lints"
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[tasks.rust-clippy-fix]
+description = "Fix Clippy issues"
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features", "--fix", "--allow-dirty", "--allow-staged"]
+
+[tasks.rust-test]
+description = "Run all Rust tests"
+command = "cargo"
+args = ["test", "--workspace", "--all-features"]
+
+[tasks.rust-docs]
+description = "Check documentation builds"
+command = "cargo"
+args = ["doc", "--workspace", "--no-deps", "--document-private-items"]
+
+# --- Shortcuts ---
+
+[tasks.c]
+alias = "check"
+description = "Shortcut for check"
+
+[tasks.t]
+alias = "test"
+description = "Shortcut for test"
+
+[tasks.f]
+alias = "fix"
+description = "Shortcut for fix"
+
+[tasks.b]
+alias = "build"
+description = "Shortcut for build"

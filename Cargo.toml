@@ -1,0 +1,154 @@
+[package]
+name = "storyteller"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-agent storytelling engine — narrative gravity, character tensors, and collaborative world-building"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+keywords = ["storytelling", "narrative", "agents", "bevy", "ecs"]
+categories = ["game-engines", "simulation"]
+
+[workspace]
+members = [
+    ".",
+    "storyteller-core",
+    "storyteller-engine",
+    "storyteller-api",
+    "storyteller-cli",
+]
+
+# =============================================================================
+# Workspace Dependencies
+# =============================================================================
+# Versions aligned with tasker-core where applicable.
+# Storyteller-specific dependencies noted separately.
+
+[workspace.dependencies]
+# --- Shared with tasker-core ---
+anyhow = "1.0"
+async-trait = "0.1"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+config = "0.15"
+crossbeam = "0.8"
+rayon = "1.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.8", features = [
+    "chrono",
+    "json",
+    "macros",
+    "migrate",
+    "postgres",
+    "runtime-tokio-rustls",
+    "uuid",
+] }
+thiserror = "2.0"
+tokio = { version = "1.49", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1.11", features = ["serde", "v4", "v7"] }
+
+# Messaging and RPC
+lapin = "3.7"
+tonic = "0.14"
+prost = "0.14"
+
+# --- Storyteller-specific ---
+# Use sub-crates directly for minimal/headless ECS usage (bevy umbrella
+# doesn't expose bevy_app/bevy_ecs as features in 0.15).
+bevy_app = "0.15"
+bevy_ecs = "0.15"
+ort = "2.0.0-rc.11"
+
+# Optional: local LLM inference
+candle-core = { version = "0.9" }
+candle-nn = { version = "0.9" }
+candle-transformers = { version = "0.9" }
+
+# =============================================================================
+# Workspace Lints
+# =============================================================================
+# Based on tasker-core conventions (Microsoft Universal + Rust API Guidelines).
+# Strategy: Incremental enablement — start with essentials.
+
+[workspace.lints.clippy]
+# Phase 1: Critical categories
+correctness = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+
+# Phase 2: Cargo metadata
+cargo = { level = "warn", priority = -1 }
+
+# Phase 3+: Enable incrementally as codebase matures
+# complexity = { level = "warn", priority = -1 }
+# perf = { level = "warn", priority = -1 }
+# style = { level = "warn", priority = -1 }
+# pedantic = { level = "warn", priority = -1 }
+
+# Restriction lints
+dbg_macro = "warn"
+undocumented_unsafe_blocks = "warn"
+
+# Permanent exceptions
+module_inception = "allow"
+multiple_crate_versions = "allow"
+uninlined_format_args = "allow"
+
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+redundant_imports = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+
+# =============================================================================
+# Root Crate (integration test coordinator)
+# =============================================================================
+
+[lib]
+crate-type = ["rlib"]
+name = "storyteller"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+storyteller-core = { path = "storyteller-core" }
+storyteller-engine = { path = "storyteller-engine" }
+storyteller-api = { path = "storyteller-api" }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
+
+# =============================================================================
+# Build Profiles
+# =============================================================================
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = "fat"
+panic = "abort"
+codegen-units = 1
+
+# Coverage profile (matches CI)
+[profile.coverage]
+inherits = "dev"
+debug = true
+overflow-checks = false
+incremental = false
+codegen-units = 1
+
+# Profiling profile — release optimization with debug symbols
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
+panic = "unwind"
