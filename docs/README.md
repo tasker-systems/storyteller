@@ -26,7 +26,7 @@ Nine documents that establish the intellectual and architectural foundations of 
 
 Concrete data models, protocols, and formulas derived from applying the foundation principles to real creative content. These bridge philosophy and code.
 
-**Start here** if you want to understand the data structures and protocols. Nine documents:
+**Start here** if you want to understand the data structures and protocols. Eleven documents:
 
 | Document | What it specifies |
 |---|---|
@@ -39,6 +39,8 @@ Concrete data models, protocols, and formulas derived from applying the foundati
 | `narrative-graph-case-study-tfatd.md` | Story mapped as gravitational landscape — mass formulas, attractor basins |
 | `agent-message-catalog.md` | All 22 message types between agents with schemas and token budgets |
 | `relational-web-tfatd.md` | Asymmetric relational web for 6 characters across 6 dimensions |
+| `technical-stack.md` | Technology choices — Bevy, PostgreSQL+AGE, RabbitMQ, gRPC, ML crates — with fit-for-purpose rationale |
+| `infrastructure-architecture.md` | How it all fits together — data lifecycle, durability model, session resilience, deployment |
 
 ### [Storybook](storybook/) — Source Material
 

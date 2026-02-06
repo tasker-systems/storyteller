@@ -126,6 +126,38 @@ Asymmetric relational web for all 6 TFATD characters.
 - The `debt` dimension is the plot engine in TFATD
 - Unknown/sparse values handled gracefully — better sparse than hallucinated
 
+### Infrastructure
+
+#### [technical-stack.md](technical-stack.md)
+
+Technology choices for the storyteller system — each technology's role, fit-for-purpose rationale, and alternatives considered.
+
+**Key decisions made here**:
+- Bevy ECS as core runtime (entity model, in-memory state, event system, scheduling)
+- PostgreSQL + Apache AGE as unified persistence (event ledger, checkpoints, session state, AND graph data)
+- AGE over NebulaGraph: Rust client ecosystem not production-ready; AGE eliminates cross-database joins and additional infrastructure
+- RabbitMQ for distributed messaging (tasker-core integration, workflow dispatch)
+- gRPC (tonic) for machine-to-machine communication (not REST — efficiency and type safety)
+- `ort` for custom ML model inference (train in Python, deploy via ONNX in Rust)
+- `candle` for local LLM inference (GGUF quantized models, development/testing)
+- `burn` as future consideration (all-Rust training + inference pipeline)
+- Shared crate ecosystem with tasker-core (sqlx, lapin, tokio, serde, tracing, tonic)
+
+#### [infrastructure-architecture.md](infrastructure-architecture.md)
+
+How the technology choices integrate into a coherent runtime — data flows, lifecycle, durability, resilience, deployment.
+
+**Key decisions made here**:
+- Agents run in-process (Bevy systems), not as microservices
+- Command sourcing: player input persisted before processing (never lost)
+- Three durability tiers: ephemeral (Bevy events), durable (PostgreSQL ledger), distributed (RabbitMQ → Tasker Core)
+- Scene entry loads from PostgreSQL/AGE → warms Bevy ECS (~130-370ms)
+- Scene exit flushes synchronously (entity state, checkpoints) then dispatches deferred work to tasker-core
+- Truth set is a materialized view reconstructable from the event ledger
+- Session resilience: server crash recovery via checkpoint + ledger replay, player disconnect with grace period, client-side input buffering
+- All three graph structures (relational web, narrative graph, setting topology) in a single AGE graph with cross-graph Cypher queries
+- LLM abstraction trait: `CloudLlmProvider`, `CandleLlmProvider`, `ExternalServerProvider` — agents don't know which is active
+
 ## Relationship to Other Documentation
 
 ```
