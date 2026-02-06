@@ -245,11 +245,19 @@ The primary path for custom model deployment: train in Python (PyTorch), export 
 - **Classifier agents** (Stages 1 and 3): If these graduate from rule-based heuristics to learned models, they export to ONNX and run through `ort`. Latency target: 10-100ms.
 - **Any future custom model**: The pattern is general — train anywhere, deploy through ONNX.
 
-**Inference is synchronous** in `ort`. In a tokio-based application, inference calls are wrapped in `tokio::task::spawn_blocking()`. This is standard for compute-bound operations and not an architectural limitation.
+**Compute isolation**: `ort` inference is synchronous and purely compute-bound (matrix operations, no I/O). It should not run on the tokio async runtime, which is optimized for I/O-bound cooperative tasks. The isolation strategy depends on the workload pattern:
 
-### Key Crate
+- **Batch inference at scene entry** (computing frames for all cast members): `rayon` parallel iterators with work-stealing. The cast members are independent — `cast.par_iter().map(compute_frame)` distributes across CPU cores naturally. `rayon` is built on `crossbeam` and manages its own thread pool, fully isolated from tokio.
+- **Incremental inference during play** (single-entity frame updates, classifier calls): `crossbeam` scoped threads allow the inference call to borrow tensor data directly from Bevy ECS components without cloning to satisfy `'static` bounds. A dedicated compute thread (or small pool) communicating via `crossbeam` channels keeps inference isolated from the async runtime while avoiding unnecessary copies.
+- **Fallback**: `tokio::task::spawn_blocking()` works but is the least precise option — the blocking thread pool is shared with actual I/O-blocking work and requires `'static` data (forcing clones). Acceptable for prototyping, not ideal for production.
 
-`ort` (v2.0.0-rc) — ONNX Runtime bindings for Rust. Supports 10+ execution providers (CUDA, TensorRT, CoreML, OpenVINO, etc.).
+The right strategy will be confirmed by profiling actual inference workloads. The architectural commitment is: `ort` inference runs on dedicated compute threads, not the async runtime.
+
+### Key Crates
+
+- `ort` (v2.0.0-rc) — ONNX Runtime bindings for Rust. Supports 10+ execution providers (CUDA, TensorRT, CoreML, OpenVINO, etc.).
+- `rayon` — Work-stealing parallelism for batch compute. Built on `crossbeam`.
+- `crossbeam` — Scoped threads, lock-free channels, concurrent primitives. Used directly for incremental inference and as the foundation under `rayon`.
 
 ### Large Language Models: candle + API
 
@@ -328,6 +336,8 @@ The storyteller project shares infrastructure conventions with the tasker-system
 |---|---|---|
 | `bevy` | latest | ECS runtime, event system, scheduling |
 | `ort` | 2.0-rc | ONNX Runtime for custom ML models |
+| `rayon` | latest | Work-stealing parallelism for batch inference |
+| `crossbeam` | latest | Scoped threads, channels for compute isolation |
 | `candle-core` | 0.9 | Local LLM inference |
 | `candle-transformers` | 0.9 | Transformer model implementations |
 
