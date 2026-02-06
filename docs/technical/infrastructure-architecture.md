@@ -390,6 +390,162 @@ This ensures the player's contribution is never lost, regardless of where in the
 
 ---
 
+## Observability and Turn Transparency
+
+### The Problem of Perceived Latency
+
+The turn cycle's worst-case latency is ~7 seconds (dominated by LLM calls in agent coordination and narrative rendering). Seven seconds of silence — a spinner, a blank screen — feels much longer than seven seconds of visible activity. The difference between "waiting" and "watching something happen" is the difference between frustration and engagement.
+
+The design principle here is borrowed from how reasoning-capable LLMs present their work: not as a black box that produces an answer, but as a process where thinking is visible. The storyteller system's turn cycle is doing substantive, meaningful work at each stage — classifying input, coordinating characters, composing narrative. Making that work legible (at the appropriate level of abstraction for the audience) transforms latency into transparency.
+
+### Three Observability Layers
+
+The same underlying pipeline state is observed at three levels, each filtered for its audience:
+
+#### Layer 1: System Observability (Infrastructure)
+
+Standard `tracing` spans + OpenTelemetry export. Every pipeline stage is an instrumented span:
+
+```
+turn_cycle (session=abc, turn=17)
+├── input_persistence                    3ms
+├── structural_parsing                  28ms
+├── factual_classification              41ms
+│   └── world_agent_validation          22ms
+├── sensitivity_matching                67ms
+│   └── matches: 3, provisional_judgments: 2
+├── agent_coordination                1847ms
+│   ├── storykeeper_evaluation         312ms
+│   ├── character_agent[wolf]          923ms  ← LLM call
+│   ├── character_agent[adam]         1104ms  ← LLM call (parallel)
+│   └── reconciler                     201ms
+├── deep_interpretation               1203ms  ← async, completed before render
+├── narrative_rendering               2104ms  ← LLM call
+│   └── tokens_generated: 287
+└── post_turn_reconciliation            89ms
+    └── provisional_replaced: 1, new_triggers: 0
+```
+
+**Audience**: Dashboards, alerting, performance tuning, postmortem. Exported via OpenTelemetry to whatever backend the deployment uses (Jaeger, Grafana Tempo, Datadog, etc.).
+
+**Already in the stack**: `tracing` and `opentelemetry` crates are in the shared dependency set. The implementation cost is annotating each pipeline stage with `#[instrument]` or manual span creation.
+
+#### Layer 2: Session Observability (Developer/Debug)
+
+Structured turn lifecycle events emitted in domain language — not infrastructure metrics but narrative-system semantics:
+
+```
+[turn 17] Input received: SpeechAct(player → wolf), classified in 28ms
+[turn 17] Factual: SpeechAct entered truth set. World Agent: no constraints.
+[turn 17] Sensitivity: matched wolf.echo_trust_betrayal (confidence 0.70)
+[turn 17] Sensitivity: matched sarah.value_loyalty (confidence 0.80)
+[turn 17] Provisional: TrustShift(player→wolf, negative, 0.15) at confidence 0.70
+[turn 17] Agent: Wolf frame updated (trust_competence provisional -0.15)
+[turn 17] Agent: Wolf response generated (923ms, 142 tokens)
+[turn 17] Agent: Adam response generated (1104ms, 98 tokens)
+[turn 17] Deep interp: TrustShift refined to 0.22 at confidence 0.85
+[turn 17] Reconciler: sequenced Wolf(primary), Adam(reactive)
+[turn 17] Narrator: rendering (2104ms, 287 tokens streamed)
+[turn 17] Post-turn: provisional replaced, no new triggers fired
+[turn 17] Total: 4.38s (2 LLM agent calls + 1 narrator render)
+```
+
+**Audience**: Developers during testing, play-testers with debug tools, automated quality analysis.
+
+**Transport**: Emitted as structured events on a debug channel (e.g., a dedicated WebSocket or gRPC stream that debug clients can subscribe to). Filtered out in production player-facing contexts. Also written to the event ledger with a `debug` tag for post-session analysis.
+
+**Value**: This is where you understand *why* the system responded the way it did. "The Wolf seemed cold because the trust shift was detected at Stage 3 and his frame was updated before his LLM call." Without this layer, tuning the system's narrative quality is guesswork.
+
+#### Layer 3: Player Observability (Experience)
+
+Two concurrent streams delivered to the player's client:
+
+**Progress stream**: Structured phase events that signal meaningful activity without revealing system internals. The game engine emits phase transitions; the client renders them however it chooses — ambient animations, atmospheric text, pulsing indicators, or nothing at all.
+
+```
+{ phase: "received",             elapsed_ms: 0    }  // input acknowledged
+{ phase: "world_listening",      elapsed_ms: 70   }  // classification complete
+{ phase: "characters_responding", elapsed_ms: 200  }  // agents processing
+{ phase: "composing",            elapsed_ms: 2100 }  // narrator generating
+{ phase: "complete",             elapsed_ms: 4380 }  // turn done
+```
+
+These phases are deliberately abstract and thematically neutral. The client could render `characters_responding` as "The Wolf considers your words..." or as a subtle animation of the scene, or as nothing at all — the server doesn't prescribe the presentation. The contract is: the server emits phase transitions, the client decides whether and how to present them.
+
+**Narrative stream**: The Narrator's output streamed token-by-token (or chunk-by-chunk) as the LLM generates it. This is the primary solution to perceived latency:
+
+```
+Timeline of what the player sees:
+
+  0ms      Input sent
+  70ms     [progress: world_listening]     — client shows subtle activity signal
+  200ms    [progress: characters_responding] — signal continues/changes
+  2100ms   [progress: composing]           — first narrative tokens begin appearing
+  2200ms   "The Wolf's ear flicks—"        — text streaming begins
+  2400ms   "a small, involuntary motion"
+  2700ms   "that says more than words."
+  3100ms   "He turns from you slowly,"
+  ...      (text continues flowing)
+  4380ms   [progress: complete]            — full response delivered
+```
+
+The player starts reading at ~2.1 seconds into the turn. The remaining ~2.3 seconds of generation happen while they're reading — perceived as the text "appearing" naturally, not as waiting. The total wall-clock time is 4.4 seconds, but the perceived wait is ~2 seconds (the pre-Narrator pipeline), and during that time the progress stream signals activity.
+
+**Transport**: The narrative stream requires a persistent bidirectional connection — WebSocket, gRPC server streaming, or Server-Sent Events. This is also the transport for player input. The progress stream can share the same connection as metadata alongside the narrative content, or use a separate lightweight channel.
+
+### Implementation Architecture
+
+```
+Game Engine (Bevy)
+  │
+  ├── TurnLifecycleSystem
+  │     Emits TurnPhase events at each pipeline stage transition
+  │     Carries timing data and phase identifiers
+  │
+  ├── Layer 1: tracing subscriber
+  │     Converts TurnPhase events to tracing spans
+  │     Exports via OpenTelemetry
+  │
+  ├── Layer 2: DebugObserver system
+  │     Subscribes to TurnPhase events + agent outputs
+  │     Formats domain-language debug messages
+  │     Writes to debug channel + event ledger
+  │
+  └── Layer 3: PlayerStreamSystem
+        Subscribes to TurnPhase events (filtered to abstract phases)
+        Receives Narrator streaming tokens
+        Multiplexes phase events + narrative tokens onto player connection
+```
+
+All three layers observe the same pipeline state (the `TurnPhase` Bevy events). They differ only in what they filter, how they format, and where they send. The pipeline itself is unchanged — observability is additive, not intrusive.
+
+### What the Client Decides
+
+The server emits structured data. The client makes all presentation decisions:
+
+- **Minimal client** (terminal, testing): Prints progress phases as text, streams narrative output.
+- **Rich client** (web, game UI): Renders progress as atmospheric animations, streams narrative with typewriter effect, shows ambient scene reactions during `characters_responding`.
+- **Debug client**: Shows Layer 2 detail alongside the narrative, with timing breakdowns, agent outputs, and event classification results.
+- **Accessibility client**: Uses progress phases for screen reader cues ("Characters are responding to you"), streams narrative text for reading.
+
+The server never prescribes presentation. It provides the semantic events; the client provides the experience.
+
+### Scene Entry Transparency
+
+The same pattern applies to scene entry (~130-370ms), which is shorter but also benefits from transparency:
+
+```
+{ phase: "entering_scene",       scene: "The Other Bank" }
+{ phase: "loading_world",        elapsed_ms: 30  }
+{ phase: "awakening_characters", elapsed_ms: 80  }
+{ phase: "scene_ready",          elapsed_ms: 180 }
+→ Narrator's opening description begins streaming
+```
+
+For longer scene entries (complex scenes with many cast members, large graph context), the progress stream keeps the player informed. The thematic phase names (`awakening_characters` rather than `computing_frames`) maintain the ludic register.
+
+---
+
 ## Graph Data Modeling
 
 ### Schema Organization in Apache AGE
