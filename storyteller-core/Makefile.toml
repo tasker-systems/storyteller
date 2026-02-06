@@ -1,0 +1,7 @@
+extend = "../cargo-make/base-tasks.toml"
+
+[config]
+default_to_workspace = false
+
+[env]
+CRATE_NAME = "storyteller-core"

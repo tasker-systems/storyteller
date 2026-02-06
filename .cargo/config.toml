@@ -1,0 +1,16 @@
+[alias]
+b = "build"
+r = "run"
+t = "test"
+c = "check"
+lint = "clippy --all-targets --all-features -- -D warnings"
+
+[env]
+WORKSPACE_PATH = { value = ".", relative = true }
+
+[profile.dev]
+incremental = false
+split-debuginfo = "unpacked"
+
+[profile.release]
+incremental = false

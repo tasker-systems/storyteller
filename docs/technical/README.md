@@ -126,6 +126,19 @@ Asymmetric relational web for all 6 TFATD characters.
 - The `debt` dimension is the plot engine in TFATD
 - Unknown/sparse values handled gracefully — better sparse than hallucinated
 
+### Crate Architecture
+
+#### [crate-architecture.md](crate-architecture.md)
+
+Rust workspace structure — five crates with strict layering, dependency graph, module layouts, and deployment strategy.
+
+**Key decisions made here**:
+- Four crates: `storyteller-core` (headless types/DB), `storyteller-engine` (Bevy ECS runtime), `storyteller-api` (deployment-agnostic axum routes), `storyteller-cli` (self-hosted binary)
+- Future `storyteller-shuttle` crate for Shuttle.dev deployment — same API, different infrastructure
+- `bevy_app` + `bevy_ecs` sub-crates (not the umbrella crate) for minimal/headless ECS
+- Feature flags: `cloud-llm` (default) and `local-llm` (optional candle) on the engine crate
+- Crate boundaries mirror the imperfect information principle from agent architecture
+
 ### Infrastructure
 
 #### [technical-stack.md](technical-stack.md)

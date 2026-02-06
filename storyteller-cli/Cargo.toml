@@ -1,0 +1,31 @@
+[package]
+name = "storyteller-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI binary and server entry points for the storyteller engine"
+readme = "../README.md"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+keywords = ["storytelling", "narrative", "cli"]
+categories = ["game-engines"]
+
+[dependencies]
+storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
+storyteller-engine = { path = "../storyteller-engine", version = "=0.1.0" }
+storyteller-api = { path = "../storyteller-api", version = "=0.1.0" }
+
+clap = { workspace = true }
+config = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# ECS runtime for App assembly
+bevy_app = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "storyteller-server"
+path = "src/bin/server.rs"

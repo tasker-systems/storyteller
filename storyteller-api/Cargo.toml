@@ -1,0 +1,28 @@
+[package]
+name = "storyteller-api"
+version = "0.1.0"
+edition = "2021"
+description = "Player-facing HTTP/WebSocket API for the storyteller engine — deployment-agnostic"
+readme = "../README.md"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+keywords = ["storytelling", "narrative", "api"]
+categories = ["game-engines", "web-programming"]
+
+[dependencies]
+storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
+storyteller-engine = { path = "../storyteller-engine", version = "=0.1.0" }
+
+# HTTP framework
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

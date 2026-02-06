@@ -26,7 +26,7 @@ Nine documents that establish the intellectual and architectural foundations of 
 
 Concrete data models, protocols, and formulas derived from applying the foundation principles to real creative content. These bridge philosophy and code.
 
-**Start here** if you want to understand the data structures and protocols. Eleven documents:
+**Start here** if you want to understand the data structures and protocols. Twelve documents:
 
 | Document | What it specifies |
 |---|---|
@@ -41,6 +41,7 @@ Concrete data models, protocols, and formulas derived from applying the foundati
 | `relational-web-tfatd.md` | Asymmetric relational web for 6 characters across 6 dimensions |
 | `technical-stack.md` | Technology choices — Bevy, PostgreSQL+AGE, RabbitMQ, gRPC, ML crates — with fit-for-purpose rationale |
 | `infrastructure-architecture.md` | How it all fits together — data lifecycle, durability model, session resilience, deployment |
+| `crate-architecture.md` | Rust workspace structure — five crates with strict layering, dependency graph, deployment strategy |
 
 ### [Storybook](storybook/) — Source Material
 
@@ -59,15 +60,17 @@ Creative works that serve as analytical references and workshop material.
 ## How It Fits Together
 
 ```
-Foundation (why)  →  Technical (how)  →  Implementation (code, not yet begun)
-                          ↑
-                     Storybook (what)
-                     source material that
-                     grounds specifications
-                     in real creative work
+Foundation (why)  →  Technical (how)  →  Implementation (code)
+                          ↑                    ↑
+                     Storybook (what)     Rust workspace
+                     source material      storyteller-core,
+                     that grounds         storyteller-engine,
+                     specifications       storyteller-api,
+                     in real creative     storyteller-cli
+                     work
 ```
 
-The foundation documents establish principles. The technical documents make those principles concrete through case studies against real stories. The implementation (Rust/Bevy workspace, not yet created) will build from the technical specifications. The storybook content is the material that keeps everything grounded — without real stories, the abstractions are untested.
+The foundation documents establish principles. The technical documents make those principles concrete through case studies against real stories. The implementation (Rust/Bevy workspace) builds from the technical specifications — see `technical/crate-architecture.md` for the workspace structure. The storybook content is the material that keeps everything grounded — without real stories, the abstractions are untested.
 
 ## Related Files (Repo Root)
 
