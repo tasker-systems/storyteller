@@ -1,11 +1,16 @@
 //! Character tensor types — multidimensional personality representation.
 //!
-//! See: `docs/technical/tensor-schema-spec.md`, `docs/technical/tensor-case-study-sarah.md`
+//! See: `docs/technical/tensor-schema-spec.md`, `docs/technical/tensor-case-study-sarah.md`,
+//!      `docs/foundation/emotional-model.md`
 //!
 //! Design decision: Tensor values are `[central_tendency, variance, range_low, range_high]`
 //! tuples on a [-1.0, 1.0] scale. Contextual triggers shift axes conditionally.
 //! Three temporal layers (topsoil, sediment, bedrock) plus primordial for
 //! ancient/non-human entities.
+//!
+//! Awareness levels are orthogonal to temporal layers — a bedrock trait can be
+//! Articulate, a topsoil emotion can be Defended. This determines how the
+//! frame computation surfaces emotional data in LLM prompts.
 
 /// A single tensor axis value with statistical distribution.
 ///
@@ -49,4 +54,31 @@ pub enum Provenance {
     Confirmed,
     /// Overridden from a previous value.
     Overridden,
+}
+
+/// How conscious a character is of a given emotional state or trait.
+///
+/// Orthogonal to temporal layer — a bedrock value can be Articulate,
+/// a topsoil emotion can be Defended. Determines how frame computation
+/// surfaces data in LLM prompts: Articulate states can be directly
+/// stated; Structural ones shape the frame without appearing in content.
+///
+/// See: `docs/foundation/emotional-model.md` § Awareness as Orthogonal Dimension
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AwarenessLevel {
+    /// Character can name and discuss this state. Frame may include direct statement.
+    Articulate,
+    /// Character would recognize this if pointed out. Frame includes it but not foregrounded.
+    Recognizable,
+    /// Manifests as behavioral tendency without conscious recognition.
+    /// Frame encodes as behavioral direction, not named emotion.
+    Preconscious,
+    /// Character actively avoids recognizing this state. Appears as absence,
+    /// compensation, or redirection. Frame must not make character more
+    /// self-aware than they are.
+    Defended,
+    /// Shapes perception and behavior without being available to introspection.
+    /// Frame encodes structurally (what the character notices, how they interpret)
+    /// without appearing as emotional content.
+    Structural,
 }

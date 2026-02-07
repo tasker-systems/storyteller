@@ -3,17 +3,30 @@
 //! Source: `docs/workshop/scene-the-flute-kept.md`,
 //!         `docs/workshop/character-bramblehoof.md`,
 //!         `docs/workshop/character-pyotir.md`
+//!         `docs/foundation/emotional-model.md`
 //!
 //! Two character agents with distinct emotional registers and information
 //! boundaries. The scene succeeds when subtext matters more than text.
+//!
+//! ## Emotional Model Integration
+//!
+//! Both character sheets include the full emotional model data from
+//! `emotional-model.md`:
+//! - `grammar_id`: Both use `plutchik_western`
+//! - `emotional_state`: Plutchik primary intensities with awareness levels
+//!   and authored mood-vector descriptions
+//! - `self_edge`: Self-referential edge with trust, affection, debt,
+//!   history pattern, projection, and self-knowledge
 
+use storyteller_core::grammars::PlutchikWestern;
 use storyteller_core::types::character::{
-    AxisShift, CastEntry, CharacterSheet, CharacterTensor, ContextualTrigger, SceneConstraints,
-    SceneData, SceneSetting, TriggerMagnitude,
+    AxisShift, CastEntry, CharacterSheet, CharacterTensor, ContextualTrigger, EmotionalPrimary,
+    EmotionalState, SceneConstraints, SceneData, SceneSetting, SelfEdge, SelfEdgeTrust,
+    SelfKnowledge, TriggerMagnitude,
 };
 use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::scene::{SceneId, SceneType};
-use storyteller_core::types::tensor::{AxisValue, Provenance, TemporalLayer};
+use storyteller_core::types::tensor::{AwarenessLevel, AxisValue, Provenance, TemporalLayer};
 
 /// Build the complete scene data for "The Flute Kept".
 pub fn scene() -> SceneData {
@@ -350,6 +363,82 @@ pub fn bramblehoof() -> CharacterSheet {
         },
     ];
 
+    let emotional_state = EmotionalState {
+        grammar_id: PlutchikWestern::GRAMMAR_ID.to_string(),
+        primaries: vec![
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::JOY.to_string(),
+                intensity: 0.4,
+                awareness: AwarenessLevel::Articulate,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::SADNESS.to_string(),
+                intensity: 0.5,
+                awareness: AwarenessLevel::Recognizable,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::TRUST.to_string(),
+                intensity: 0.6,
+                awareness: AwarenessLevel::Preconscious,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::DISGUST.to_string(),
+                intensity: 0.3,
+                awareness: AwarenessLevel::Recognizable,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::FEAR.to_string(),
+                intensity: 0.2,
+                awareness: AwarenessLevel::Preconscious,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::ANGER.to_string(),
+                intensity: 0.3,
+                awareness: AwarenessLevel::Recognizable,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::SURPRISE.to_string(),
+                intensity: 0.3,
+                awareness: AwarenessLevel::Articulate,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::ANTICIPATION.to_string(),
+                intensity: 0.6,
+                awareness: AwarenessLevel::Articulate,
+            },
+        ],
+        mood_vector_notes: vec![
+            "joy + trust → warmth toward Svyoritch, toward people (0.5)".to_string(),
+            "sadness + disgust → remorse-like quality: guilt about leaving, not doing enough (0.4)"
+                .to_string(),
+            "anger + anticipation → creative defiance channeled as mission (0.4)".to_string(),
+            "joy + anticipation → the bard's fundamental optimism (0.5)".to_string(),
+        ],
+    };
+
+    let self_edge = SelfEdge {
+        trust: SelfEdgeTrust {
+            competence: 0.7,
+            intentions: 0.8,
+            reliability: 0.5,
+        },
+        affection: 0.7,
+        debt: 0.4,
+        history_pattern: "arriving too late, leaving too soon".to_string(),
+        history_weight: 0.6,
+        projection_content: "the one who brings the music back".to_string(),
+        projection_accuracy: 0.5,
+        self_knowledge: SelfKnowledge {
+            knows: vec![
+                "his own joy, his craft, his mission".to_string(),
+                "his grief for Illyana".to_string(),
+            ],
+            does_not_know: vec![
+                "whether his presence helps or just reminds people of what they've lost (Preconscious)".to_string(),
+            ],
+        },
+    };
+
     CharacterSheet {
         entity_id: EntityId::new(),
         name: "Bramblehoof".to_string(),
@@ -379,6 +468,9 @@ pub fn bramblehoof() -> CharacterSheet {
         )
         .to_string(),
         tensor,
+        grammar_id: PlutchikWestern::GRAMMAR_ID.to_string(),
+        emotional_state,
+        self_edge,
         triggers,
         performance_notes: concat!(
             "Bramblehoof's arc in this scene is a failure of narrative. His instinct ",
@@ -690,6 +782,82 @@ pub fn pyotir() -> CharacterSheet {
         },
     ];
 
+    let emotional_state = EmotionalState {
+        grammar_id: PlutchikWestern::GRAMMAR_ID.to_string(),
+        primaries: vec![
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::JOY.to_string(),
+                intensity: 0.1,
+                awareness: AwarenessLevel::Structural,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::SADNESS.to_string(),
+                intensity: 0.7,
+                awareness: AwarenessLevel::Recognizable,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::TRUST.to_string(),
+                intensity: 0.2,
+                awareness: AwarenessLevel::Recognizable,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::DISGUST.to_string(),
+                intensity: 0.4,
+                awareness: AwarenessLevel::Defended,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::FEAR.to_string(),
+                intensity: 0.5,
+                awareness: AwarenessLevel::Preconscious,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::ANGER.to_string(),
+                intensity: 0.5,
+                awareness: AwarenessLevel::Defended,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::SURPRISE.to_string(),
+                intensity: 0.1,
+                awareness: AwarenessLevel::Recognizable,
+            },
+            EmotionalPrimary {
+                primary_id: PlutchikWestern::ANTICIPATION.to_string(),
+                intensity: 0.2,
+                awareness: AwarenessLevel::Preconscious,
+            },
+        ],
+        mood_vector_notes: vec![
+            "sadness + anger → something like envy, but more bewildered (0.6)".to_string(),
+            "fear + sadness → the dominant chord: despair held at arm's length (0.6)".to_string(),
+            "disgust + anger → contempt directed inward, at his own capitulation (0.4)".to_string(),
+            "sadness + disgust → remorse for giving up his music (0.5)".to_string(),
+        ],
+    };
+
+    let self_edge = SelfEdge {
+        trust: SelfEdgeTrust {
+            competence: 0.3,
+            intentions: 0.4,
+            reliability: 0.6,
+        },
+        affection: 0.2,
+        debt: 0.3,
+        history_pattern: "being told to put away childish things".to_string(),
+        history_weight: 0.8,
+        projection_content: "someone who works the land like everyone else".to_string(),
+        projection_accuracy: 0.7,
+        self_knowledge: SelfKnowledge {
+            knows: vec![
+                "his competence as a farmer, his duty, his losses".to_string(),
+            ],
+            does_not_know: vec![
+                "that Bramblehoof remembers him (Preconscious — he would be surprised that he mattered)".to_string(),
+                "that his music mattered (Defended — he cannot afford to believe this)".to_string(),
+                "that his creative capacity is bedrock, not topsoil (Structural — he thinks it withered; it has not)".to_string(),
+            ],
+        },
+    };
+
     CharacterSheet {
         entity_id: EntityId::new(),
         name: "Pyotir".to_string(),
@@ -730,6 +898,9 @@ pub fn pyotir() -> CharacterSheet {
         )
         .to_string(),
         tensor,
+        grammar_id: PlutchikWestern::GRAMMAR_ID.to_string(),
+        emotional_state,
+        self_edge,
         triggers,
         performance_notes: concat!(
             "Distance management is his primary relational tool. He calibrates how ",
@@ -767,6 +938,22 @@ pub fn pyotir() -> CharacterSheet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emotional_states_pass_grammar_validation() {
+        let grammar = storyteller_core::grammars::PlutchikWestern::new();
+        use storyteller_core::traits::EmotionalGrammar;
+
+        let bramble = bramblehoof();
+        grammar
+            .validate_state(&bramble.emotional_state)
+            .expect("Bramblehoof's emotional state should be valid");
+
+        let pyotir_sheet = pyotir();
+        grammar
+            .validate_state(&pyotir_sheet.emotional_state)
+            .expect("Pyotir's emotional state should be valid");
+    }
 
     #[test]
     fn scene_data_is_constructible() {
@@ -848,5 +1035,116 @@ mod tests {
         assert!(bramble.does_not_know.iter().any(|s| s.contains("family")));
         // Pyotir doesn't know about ley lines
         assert!(pyotir.does_not_know.iter().any(|s| s.contains("ley line")));
+    }
+
+    #[test]
+    fn both_characters_use_plutchik_western() {
+        let bramble = bramblehoof();
+        let pyotir = pyotir();
+
+        assert_eq!(bramble.grammar_id, PlutchikWestern::GRAMMAR_ID);
+        assert_eq!(pyotir.grammar_id, PlutchikWestern::GRAMMAR_ID);
+        assert_eq!(
+            bramble.emotional_state.grammar_id,
+            PlutchikWestern::GRAMMAR_ID
+        );
+        assert_eq!(
+            pyotir.emotional_state.grammar_id,
+            PlutchikWestern::GRAMMAR_ID
+        );
+    }
+
+    #[test]
+    fn emotional_states_have_eight_primaries() {
+        let bramble = bramblehoof();
+        let pyotir = pyotir();
+
+        // Plutchik's 8 primaries
+        assert_eq!(bramble.emotional_state.primaries.len(), 8);
+        assert_eq!(pyotir.emotional_state.primaries.len(), 8);
+
+        // Verify expected primaries exist
+        let bramble_ids: Vec<&str> = bramble
+            .emotional_state
+            .primaries
+            .iter()
+            .map(|p| p.primary_id.as_str())
+            .collect();
+        assert!(bramble_ids.contains(&PlutchikWestern::JOY));
+        assert!(bramble_ids.contains(&PlutchikWestern::SADNESS));
+        assert!(bramble_ids.contains(&PlutchikWestern::TRUST));
+        assert!(bramble_ids.contains(&PlutchikWestern::ANGER));
+    }
+
+    #[test]
+    fn awareness_levels_differ_between_characters() {
+        let bramble = bramblehoof();
+        let pyotir = pyotir();
+
+        // Bramblehoof's joy is Articulate — he knows he's joyful
+        let bramble_joy = bramble
+            .emotional_state
+            .primaries
+            .iter()
+            .find(|p| p.primary_id == PlutchikWestern::JOY)
+            .unwrap();
+        assert_eq!(bramble_joy.awareness, AwarenessLevel::Articulate);
+
+        // Pyotir's joy is Structural — almost gone from conscious experience
+        let pyotir_joy = pyotir
+            .emotional_state
+            .primaries
+            .iter()
+            .find(|p| p.primary_id == PlutchikWestern::JOY)
+            .unwrap();
+        assert_eq!(pyotir_joy.awareness, AwarenessLevel::Structural);
+
+        // Pyotir's anger is Defended — feels it but can't name the target
+        let pyotir_anger = pyotir
+            .emotional_state
+            .primaries
+            .iter()
+            .find(|p| p.primary_id == PlutchikWestern::ANGER)
+            .unwrap();
+        assert_eq!(pyotir_anger.awareness, AwarenessLevel::Defended);
+    }
+
+    #[test]
+    fn self_edges_reflect_character_psychology() {
+        let bramble = bramblehoof();
+        let pyotir = pyotir();
+
+        // Bramblehoof trusts his intentions highly but doubts his reliability
+        assert!(bramble.self_edge.trust.intentions > bramble.self_edge.trust.reliability);
+        assert!(bramble.self_edge.trust.intentions > 0.7);
+        assert!(bramble.self_edge.trust.reliability < 0.6);
+
+        // Pyotir's self-trust in intentions is low — he doesn't trust his own desires
+        assert!(pyotir.self_edge.trust.intentions < 0.5);
+
+        // Pyotir's projection is more "accurate" than Bramblehoof's —
+        // which is what makes it tragic (the prison is well-fitting)
+        assert!(pyotir.self_edge.projection_accuracy > bramble.self_edge.projection_accuracy);
+
+        // Both have self-knowledge gaps
+        assert!(!bramble.self_edge.self_knowledge.does_not_know.is_empty());
+        assert!(pyotir.self_edge.self_knowledge.does_not_know.len() >= 3);
+    }
+
+    #[test]
+    fn mood_vectors_are_authored() {
+        let bramble = bramblehoof();
+        let pyotir = pyotir();
+
+        // Both have mood-vector notes
+        assert!(!bramble.emotional_state.mood_vector_notes.is_empty());
+        assert!(!pyotir.emotional_state.mood_vector_notes.is_empty());
+
+        // Pyotir's dominant chord is despair held at arm's length
+        assert!(pyotir
+            .emotional_state
+            .mood_vector_notes
+            .iter()
+            .any(|n| n.contains("despair held at arm's length")));
     }
 }

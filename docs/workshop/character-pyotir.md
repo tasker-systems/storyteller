@@ -49,6 +49,67 @@ Temporal layers: topsoil (scene-volatile), sediment (months/years), bedrock (cor
 | Creative capacity | [0.60, 0.20, 0.30, 0.80] | Bedrock | **Still present.** This is the critical point. The capacity for music, for art, for the kind of seeing that Bramblehoof recognized in the boy — it never left. It was suppressed, not destroyed. It lives at bedrock, below the topsoil of resignation and practical focus. |
 | Creative expression | [0.10, 0.15, 0.00, 0.35] | Topsoil | Almost absent from daily life. The gap between capacity and expression is the wound — not an open wound, but a scar. The carved fence post, the tended herbs, these are the only visible traces. The flute is a trace of a different kind: he keeps it not as aspiration but as acknowledgment. |
 
+## Emotional Grammar: Plutchik Primary Mapping
+
+*Grammar: `plutchik_western`. See `docs/foundation/emotional-model.md`.*
+
+Pyotir's topsoil emotional state entering this scene:
+
+```
+Primary intensities (topsoil):
+  joy:          0.1  -- almost extinguished; flickers when music is mentioned
+  sadness:      0.7  -- deep, settled, approaching sedimentation
+  trust:        0.2  -- eroded by the village's indifference, the lord's betrayal
+  disgust:      0.4  -- at himself for wanting more than the village allows
+  fear:         0.5  -- of hoping again, of being noticed, of the death cult
+  anger:        0.5  -- suppressed; at the village, at the lord, at his own compliance
+  surprise:     0.1  -- nothing surprises him anymore; the world is predictable in cruelty
+  anticipation: 0.2  -- he expects nothing; expecting something is dangerous
+
+Awareness annotations:
+  sadness (0.7):      Recognizable — he would not deny it but does not dwell on it
+  anger (0.5):        Defended — he feels it but "doesn't know who he's angry at"
+  disgust (0.4):      Defended — directed inward, at his own capitulation; he would resist
+                      naming it
+  fear (0.5):         Preconscious — the fear of hoping manifests as practical focus,
+                      not as named fear
+  joy (0.1):          Structural — almost gone from conscious experience; surfaces only
+                      involuntarily (the flute on the hook, the carved fence post)
+
+Active mood-vectors (computed, not stored):
+  sadness + anger      → something like envy, but more bewildered (0.6)
+  fear + sadness       → the dominant chord: despair held at arm's length (0.6)
+  disgust + anger      → contempt directed inward, at his own capitulation (0.4)
+  sadness + disgust    → remorse for giving up his music (0.5)
+```
+
+### Self-Referential Edge
+
+```
+edge: Pyotir → Pyotir
+  trust:
+    competence: 0.3     -- he was good at music; he is adequate at farming
+    intentions: 0.4     -- he doesn't trust his own desires anymore
+    reliability: 0.6    -- he shows up; he does the work; that's what's left
+  affection: 0.2        -- he is hard on himself
+  debt: 0.3             -- owes his family labor; owes himself something he can't name
+  history:
+    pattern: "being told to put away childish things"
+    weight: 0.8
+  projection:
+    content: "someone who works the land like everyone else"
+    accuracy: 0.7       -- this is who he is now, and the accuracy of that makes it worse
+  information_state:
+    knows: his competence as a farmer, his duty, his losses
+    does_not_know: that Bramblehoof remembers him (Preconscious — he would be
+      surprised that he mattered to anyone outside the family);
+      that his music mattered (Defended — he cannot afford to believe this);
+      that his creative capacity is bedrock, not topsoil (Structural — he
+      thinks the capacity has withered; it has not)
+```
+
+**Self-edge in frame computation**: Pyotir's self-relationship is the wound the scene turns on. His `trust.intentions: 0.4` means he doesn't trust his own desires — wanting music, wanting more, wanting to be the person Bramblehoof remembers. His `projection: "someone who works the land"` at 0.7 accuracy is high enough to be settled identity, which is precisely what makes it tragic: the projection is accurate enough to be believed and wrong enough to be a prison. The information asymmetry — he doesn't know his creative capacity is bedrock — is the structural gap that creates the scene's subtext. He thinks the music died; the tensor says it didn't.
+
 ## Contextual Triggers (This Scene)
 
 | Trigger | Effect | Magnitude |

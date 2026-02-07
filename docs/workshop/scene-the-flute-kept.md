@@ -29,6 +29,15 @@ Pyotir's smallholding, outskirts of Svyoritch. Late afternoon, end of a working 
 
 **One aesthetic detail**: There is something Pyotir tends that isn't strictly necessary for survival. A few herb plants by the cottage door, or a fence post he's carved with a simple pattern. A crack of care in a purely functional life. This is not the flute — it's separate, smaller, and Pyotir wouldn't call attention to it. But it's visible.
 
+## Emotional Grammar
+
+Both characters use the `plutchik_western` emotional grammar. See character sheets for full Plutchik primary mappings, awareness annotations, and self-referential edges. The emotional collision in this scene is between:
+
+- **Bramblehoof's mood-vector**: joy + trust (warmth) meets sadness + disgust (remorse about leaving). His self-edge projection ("the one who brings the music back") meets evidence that challenges its accuracy.
+- **Pyotir's mood-vector**: sadness + anger (Defended) meets fear + sadness (despair held at arm's length). His self-edge projection ("someone who works the land") has high accuracy — which is what makes it tragic.
+
+The scene's subtext lives in the self-referential edges: what each character doesn't know about himself shapes what he can't say to the other.
+
 ## Cast
 
 | Entity | Role | Agent Type | Information Boundary |

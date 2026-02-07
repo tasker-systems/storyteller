@@ -9,13 +9,17 @@
 use uuid::Uuid;
 
 /// Unique identifier for a scene in the narrative graph.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+///
+/// Uses UUID v7 (time-ordered) for efficient BTree indexing.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct SceneId(pub Uuid);
 
 impl SceneId {
-    /// Create a new random scene ID.
+    /// Create a new time-ordered scene ID (UUID v7).
     pub fn new() -> Self {
-        Self(Uuid::new_v4())
+        Self(Uuid::now_v7())
     }
 }
 

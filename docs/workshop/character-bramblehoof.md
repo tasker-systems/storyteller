@@ -47,6 +47,62 @@ Temporal layers: topsoil (scene-volatile), sediment (months/years), bedrock (cor
 | Creative expression | [0.90, 0.10, 0.70, 1.00] | Bedrock | Core identity. Music, story, performance, ritual. Nearly always activated. |
 | Creative receptivity | [0.80, 0.15, 0.50, 0.95] | Bedrock | He sees and celebrates creativity in others. This is why the boy from Svyoritch mattered — Bramblehoof *recognized* something. |
 
+## Emotional Grammar: Plutchik Primary Mapping
+
+*Grammar: `plutchik_western`. See `docs/foundation/emotional-model.md`.*
+
+Bramblehoof's topsoil emotional state entering this scene, mapped to Plutchik primaries:
+
+```
+Primary intensities (topsoil):
+  joy:          0.4  -- anticipation of return, the music in him, the wanderer's delight
+  sadness:      0.5  -- grief he carries from Illyana, from Svyoritch's decay
+  trust:        0.6  -- openness to people, belief in connection
+  disgust:      0.3  -- low-grade revulsion at what the death cult has done to the land
+  fear:         0.2  -- background awareness of Whisperthorn's price, the corruption spreading
+  anger:        0.3  -- at the forces that crush creative spirit, at what was done to the boy
+  surprise:     0.3  -- the wanderer's openness to what he finds
+  anticipation: 0.6  -- coming back to Svyoritch, wondering what he'll find
+
+Awareness annotations:
+  joy (0.4):          Articulate — he knows he is a joyful person
+  sadness (0.5):      Recognizable — he would name his grief if asked, but doesn't lead with it
+  anger (0.3):        Recognizable — slow burn, not primary register; he would identify it as purpose
+  trust (0.6):        Preconscious — his openness is habitual, not examined
+  anticipation (0.6): Articulate — he knows what he's hoping and fearing
+
+Active mood-vectors (computed, not stored):
+  joy + trust          → warmth toward Svyoritch, toward people (0.5)
+  sadness + disgust    → remorse-like quality: guilt about leaving, not doing enough (0.4)
+  anger + anticipation → creative defiance channeled as mission (0.4)
+  joy + anticipation   → the bard's fundamental optimism (0.5)
+```
+
+### Self-Referential Edge
+
+```
+edge: Bramblehoof → Bramblehoof
+  trust:
+    competence: 0.7     -- he knows his craft, his music, his way with people
+    intentions: 0.8     -- he trusts his own heart
+    reliability: 0.5    -- he wanders; he cannot always be counted on to stay
+  affection: 0.7        -- he likes himself, with gentle humor
+  debt: 0.4             -- owes Whisperthorn; owes the places he's left behind
+  history:
+    pattern: "arriving too late, leaving too soon"
+    weight: 0.6
+  projection:
+    content: "the one who brings the music back"
+    accuracy: 0.5       -- is this grandiose? or is it what he's for?
+  information_state:
+    knows: his own joy, his craft, his mission, his grief for Illyana
+    does_not_know: whether his presence helps or just reminds people
+      of what they've lost (Preconscious — he almost asks this question
+      but pulls away from it)
+```
+
+**Self-edge in frame computation**: Bramblehoof's self-doubt is not about competence (he knows he's good) but about *impact*. The wanderer's paradox — deep connection then departure — sits at `reliability: 0.5` and creates an undercurrent in every scene where he encounters the consequences of having left. His `projection: "the one who brings the music back"` at 0.5 accuracy means he half-believes his own story. When that story meets Pyotir's reality, the projection's accuracy erodes. This is where the "failure of narrative" in the performance notes becomes a self-edge event.
+
 ## Contextual Triggers (This Scene)
 
 | Trigger | Effect | Magnitude |

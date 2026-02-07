@@ -282,26 +282,63 @@ belief: fear_is_real_but_not_a_reason_to_stop
 
 ## 5. Temporal Dynamics
 
-### Topsoil (Current Emotional State — Scene-Level Half-Life)
+### Emotional Grammar and Plutchik Primary Mapping
+
+*Added to reflect the emotional model (`docs/foundation/emotional-model.md`). Sarah uses the Plutchik-derived Western grammar.*
+
+Sarah's topsoil emotional states map to Plutchik primaries as follows. Note that named emotions like "grief" and "determination" are not stored — the system stores primary intensities, and the named states are computed as mood-vectors during frame synthesis.
 
 ```
-- grief: 0.8              # "already cried all the tears she has"
+grammar: plutchik_western
+
+Primary intensities (topsoil, entering the quest):
+  joy:          0.2  -- low; her world is fear and duty, but there are flickers (wonder)
+  sadness:      0.8  -- dominant primary; maps to "grief" at this intensity
+  trust:        0.6  -- she trusts the Wolf's competence, her mother's love, her own feet
+  disgust:      0.1  -- minimal; she is not revolted by the world, just frightened
+  fear:         0.6  -- apprehension → fear; the Wood, the unknown, the boundary
+  anger:        0.2  -- low topsoil, but there is sedimentary anger at Tommy (Defended)
+  surprise:     0.3  -- the Wood keeps surprising her; she remains open to it
+  anticipation: 0.7  -- high; she is moving forward, expecting to find Tommy
+
+Awareness annotations:
+  sadness (0.8):      Articulate — she knows she is grieving
+  fear (0.6):         Recognizable — she would admit to being afraid if asked
+  anger (0.2):        Defended — the anger at Tommy is suppressed; she changes the subject
+  anticipation (0.7): Articulate — she can state her purpose plainly
+  trust (0.6):        Preconscious — she relies on people without examining why
+
+Active mood-vectors (computed, not stored):
+  sadness + anticipation → anxious determination (the quest's emotional signature)
+  fear + trust           → submission/dependence on the Wolf (shifting at the Other Bank)
+  sadness + anger        → envy? no — more like bewildered hurt (the Defended anger
+                           colors the grief without being felt as anger)
+  joy + surprise         → moments of wonder in the Wood
+```
+
+### Topsoil (Current Emotional State — Scene-Level Half-Life)
+
+The named states below are frame-synthesis vocabulary — how the mood-vectors and primary configurations are rendered in natural language for the Character Agent.
+
+```
+- grief: 0.8              # sadness primary at high intensity; Articulate awareness
   decay_rate: slow         # sustained by Tommy's ongoing illness
   trigger: seeing Tommy's sickbed, hearing his fever-mutters
+  accumulated_deposit: 0.3 # she has been grieving for weeks; approaching sediment
 
-- determination: 0.9      # the quest is active, she is moving
+- determination: 0.9      # mood-vector: sadness + anticipation + trust (in self)
   decay_rate: variable     # surges when challenged, fades when exhausted
   trigger: any reminder of Tommy's need
 
-- loneliness: 0.5         # "the stream crossing alone" moments
+- loneliness: 0.5         # mood-vector: sadness + low trust (when isolated)
   decay_rate: fast         # relieved by the Wolf's presence
   trigger: being separated from the Wolf, silence, memory of Tommy's withdrawal
 
-- wonder: 0.4             # the Wood is terrible and beautiful
+- wonder: 0.4             # mood-vector: joy + surprise
   decay_rate: fast
   trigger: supernatural phenomena, the uncanny moments with Kate
 
-- exhaustion: 0.6         # "exhausted from days of travel on mortal feet"
+- exhaustion: 0.6         # not a Plutchik primary — a physical/cognitive state
   decay_rate: slow         # accumulating
   trigger: physical hardship, cold, hunger
 ```
@@ -373,6 +410,40 @@ echo: the_uncanny_at_the_stream
          carried. The echoes of those thousand stream-side moments activate
          her supernatural perception."
 ```
+
+### Self-Referential Edge
+
+*Added to reflect the emotional model (`docs/foundation/emotional-model.md`). The self-edge uses the same relational substrate schema as inter-entity edges.*
+
+```
+edge: Sarah → Sarah
+  trust:
+    competence: 0.7        # she knows she can act; years of self-reliance confirm this
+    intentions: 0.8        # she trusts her own motives — they are straightforward
+    reliability: 0.5       # she fears the boundary of her own thinking
+  affection: 0.6           # she is not harsh with herself, but not gentle either
+  debt: 0.0                # no self-obligation (yet — this may change if she fails Tommy)
+  history:
+    pattern: "years of doing what needs doing while others didn't"
+    weight: 0.8
+  projection:
+    content: "someone who can handle this"
+    accuracy: 0.6          # she wants this to be true more than she knows it is
+  information_state:
+    knows: her own competence, her love for Tommy, her determination
+    does_not_know: the depth of her anger at Tommy (Defended),
+                   the source of her supernatural gift (Structural),
+                   that her fear of the boundary IS the boundary
+```
+
+**What the self-edge produces in frame computation**: Sarah's moderate self-trust and uncertain projection ("someone who can handle this" at 0.6 accuracy) create an undercurrent of self-doubt that is not Articulate — she doesn't say "I doubt myself." Instead, it emerges in moments of hesitation, in the way she braces before acting, in the iron quality of her determination (which is partly compensation for the doubt). The Defended anger at Tommy and the Structural ignorance about her gift are information asymmetries on the self-edge: they create subtext that the Character Agent can perform without being told about directly.
+
+**Self-edge shift at the Other Bank**: When the echo fires and she sees the hidden path, the self-edge shifts dramatically:
+- `trust.competence` surges from 0.7 to 0.9 (she can do something the Wolf cannot)
+- `projection.accuracy` jumps from 0.6 to 0.8 (she IS someone who can handle this)
+- `trust.reliability` rises from 0.5 to 0.7 (her own perceptions are trustworthy)
+
+This self-edge shift is what makes "you have never been more yourself" land — it is not just an emotional change but a reconfiguration of the character's relationship to her own capability.
 
 ---
 
