@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) and other AI coding 
 
 **storyteller** is a world-building and storytelling engine — a multi-agent system where distinct AI agents (Narrator, Storykeeper, Character Agents, Reconciler, World Agent) collaborate to create interactive narrative experiences. Think theater company, not agent swarm.
 
-**Status**: Pre-alpha. The Rust workspace is scaffolded and compiles cleanly. No runtime logic yet — implementation follows the design documentation from Phase 1.
+**Status**: Pre-alpha, first playable scene achieved. Character agents, narrator, storykeeper, and reconciler are functional. Interactive scene runs against local Ollama via `cargo run --bin play-scene`.
 
 **Related repositories**: `tasker-core` (workflow orchestration, Rust), `tasker-contrib` (framework integrations).
 

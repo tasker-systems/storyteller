@@ -57,6 +57,14 @@ See the [storyteller-data README](https://github.com/tasker-systems/storyteller-
 
 **Analytical references** are studied to validate modeling. **Workshop material** is where we experiment.
 
+### [Changelog](changelog/) — Milestones and Observations
+
+Dated records of what was built, what was proved, and what was observed — honest assessments of both successes and limitations at each milestone.
+
+| Document | Milestone |
+|---|---|
+| `2026-02-07-first-playable-scene.md` | First interactive scene — two character agents, narrator, five turns against local Ollama |
+
 ## How It Fits Together
 
 ```

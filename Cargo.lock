@@ -3939,6 +3939,7 @@ dependencies = [
 name = "storyteller-cli"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bevy_app",
  "clap",
  "config",

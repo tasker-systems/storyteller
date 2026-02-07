@@ -14,6 +14,7 @@ storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
 storyteller-engine = { path = "../storyteller-engine", version = "=0.1.0" }
 storyteller-api = { path = "../storyteller-api", version = "=0.1.0" }
 
+anyhow = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
 tokio = { workspace = true }
@@ -29,3 +30,7 @@ workspace = true
 [[bin]]
 name = "storyteller-server"
 path = "src/bin/server.rs"
+
+[[bin]]
+name = "play-scene"
+path = "src/bin/play_scene.rs"
