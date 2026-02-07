@@ -4,7 +4,7 @@ A world-building and storytelling engine — a multi-agent system where distinct
 
 ## What This Is
 
-Storyteller is a system where a human player navigates a richly authored world through natural language, guided by AI agents that each hold partial knowledge of the story. Think theater company, not agent swarm: a Narrator who speaks to the player, a Storykeeper who guards the mystery, Character Agents who inhabit roles without knowing they're in a story, a Reconciler who sequences multi-character scenes, and a World Agent who enforces the rules of reality.
+Storyteller is a system where a human player navigates a richly authored world through natural language, guided by AI agents that each hold partial knowledge of the story. Think theater company, not agent swarm: a Narrator who speaks to the player, a Storykeeper who guards the mystery, Character Agents who inhabit roles without knowing they're in a story, a Reconciler who sequences multi-character scenes, and a World Agent who translates the non-character world into narrative.
 
 The system is built on several key ideas:
 - **Narrative gravity** — stories are not branching trees but gravitational landscapes where pivotal scenes exert pull
@@ -14,51 +14,72 @@ The system is built on several key ideas:
 
 ## Status
 
-**Pre-alpha.** Extensive design documentation exists. Rust/Bevy implementation has not yet begun. A Python `doc-tools` package for extracting creative content from Scrivener and DOCX is functional.
+**Pre-alpha.** The Rust workspace is scaffolded with four crates and compiles cleanly. No runtime logic has been implemented yet — implementation follows the extensive design documentation produced in Phase 1. A Python `doc-tools` package for extracting creative content from Scrivener and DOCX is functional.
 
-## Documentation
+**Related repositories**: [tasker-core](https://github.com/tasker-systems/tasker-core) (workflow orchestration), [tasker-contrib](https://github.com/tasker-systems/tasker-contrib) (framework integrations).
 
-All design documentation lives in [`docs/`](docs/):
+## Architecture
 
-| Section | Contents |
+### Agents
+
+| Agent | Role |
 |---|---|
-| [`docs/foundation/`](docs/foundation/) | Design philosophy, system architecture, character modeling, narrative graph, world design, project organization, open questions |
-| [`docs/technical/`](docs/technical/) | Tensor case studies, narrative graph mapping, agent message catalog, relational web specification |
-| [`docs/storybook/`](docs/storybook/) | Source creative works — analytical references and workshop material |
+| **Storykeeper** | Holds the complete narrative graph, character tensors, relational web. Guards mystery and revelation. Filters what other agents may know. |
+| **World Agent** | Holds world model (geography, physics, time, material state). Enforces hard constraints. Translates the non-character world's communicability for the narrative. |
+| **Narrator** | Player-facing voice. Knows only the current scene and what Storykeeper reveals. Renders character intent in story voice. |
+| **Character Agents** | Ephemeral — instantiated per-scene from tensor data and psychological frames. Express intent to Narrator. Don't know they're in a story. |
+| **Reconciler** | Coordinates multi-character scenes. Sequences overlapping actions, resolves conflicts, surfaces dramatic potential. Adds no content. |
+| **Player** | The only non-AI role. Has a tensor representation maintained by Storykeeper, but decisions are human. |
 
-See [`docs/README.md`](docs/README.md) for a full guide.
+### Technology Stack
 
-## Project Structure
+| Technology | Role |
+|---|---|
+| **Rust + Bevy ECS** | Core runtime — entities, components, systems. Agents run as in-process Bevy systems, not microservices. |
+| **PostgreSQL + Apache AGE** | Unified persistence — event ledger, checkpoints, session state, and all graph data (relational web, narrative graph, setting topology). |
+| **RabbitMQ** | Distributed messaging for tasker-core workflow integration. In-process events use Bevy's event system. |
+| **gRPC (tonic)** | Machine-to-machine communication. REST only for public-facing APIs. |
+| **ort (ONNX Runtime)** | Custom ML model inference — psychological frame computation, event classifiers. |
+| **candle** | Optional local LLM inference for development and testing. |
+
+See [`docs/technical/technical-stack.md`](docs/technical/technical-stack.md) for detailed rationale and [`docs/technical/infrastructure-architecture.md`](docs/technical/infrastructure-architecture.md) for how it all fits together.
+
+## Workspace Structure
 
 ```
 storyteller/
+├── storyteller-core/           # Foundation: types, traits, errors, database, graph queries
+├── storyteller-engine/         # Runtime: Bevy ECS, agents, turn cycle, ML inference
+├── storyteller-api/            # HTTP layer: axum routes, session management (deployment-agnostic)
+├── storyteller-cli/            # Binary: self-hosted server entry point
+├── src/                        # Root crate: integration test coordinator
 ├── docs/
-│   ├── foundation/          # Design philosophy and principles (9 documents)
-│   ├── technical/           # Specifications and case studies (5 documents)
-│   └── storybook/           # Source creative material
-│       ├── extracted/       # Content extracted via doc-tools
-│       │   ├── the-fair-and-the-dead/   # Analytical reference
-│       │   └── vretil/                  # Analytical reference
-│       └── bramblehoof/     # Workshop material
-├── doc-tools/               # Python package for content extraction
-│   ├── pyproject.toml
-│   └── src/doc_tools/
-├── CLAUDE.md                # Developer guidance (Claude Code)
-├── AGENTS.md                # Developer guidance (Warp)
-└── README.md                # This file
+│   ├── foundation/             # Design philosophy and principles (9 documents)
+│   ├── technical/              # Specifications and case studies (12 documents)
+│   └── storybook/              # Symlink → storyteller-data repo (private, gitignored)
+├── doc-tools/                  # Python package for Scrivener/DOCX extraction
+├── cargo-make/                 # Build task templates
+└── Cargo.toml                  # Workspace root
 ```
 
-## Technical Direction
+Dependencies flow in one direction: `cli → api → engine → core`. See [`docs/technical/crate-architecture.md`](docs/technical/crate-architecture.md) for the full breakdown.
 
-- **Rust + Bevy ECS** for the core engine — entities as characters/locations/objects, components as traits/states/relationships, systems as agents and the narrative engine
-- **Custom orchestration layer** for agent communication — the information flow is too specific to the design for third-party frameworks
-- **LLM integration** supporting both API models (Claude, GPT) and local models (Ollama)
+## Development
 
-See [`docs/foundation/project_organization.md`](docs/foundation/project_organization.md) for the full work stream breakdown.
+### Rust
 
-## doc-tools (Python)
+```bash
+cargo make check                # All quality checks (clippy, fmt, test, doc)
+cargo make test                 # Run all tests
+cargo make build                # Build everything
 
-A functional package for extracting creative content into structured markdown:
+cargo check --all-features      # Fast compilation check
+cargo clippy --all-targets --all-features
+cargo test --all-features
+cargo fmt --check
+```
+
+### Python (doc-tools)
 
 ```bash
 cd doc-tools
@@ -70,6 +91,16 @@ uv run ruff check .                 # Lint
 ```
 
 Requires Python >= 3.11. See `doc-tools/pyproject.toml` for configuration.
+
+## Documentation
+
+All design documentation lives in [`docs/`](docs/). See [`docs/README.md`](docs/README.md) for a full guide.
+
+| Section | Contents |
+|---|---|
+| [`docs/foundation/`](docs/foundation/) | Design philosophy, system architecture, character modeling, narrative graph, world design, anthropological grounding, power, project organization |
+| [`docs/technical/`](docs/technical/) | 12 documents — tensor case studies, schema specifications, entity model, scene model, event system, agent message catalog, relational web, crate architecture, technology stack, infrastructure |
+| [`docs/storybook/`](docs/storybook/) | Source creative works — analytical references and workshop material |
 
 ## License
 
