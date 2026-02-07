@@ -45,14 +45,14 @@ Concrete data models, protocols, and formulas derived from applying the foundati
 
 ### [Storybook](storybook/) — Source Material
 
-Creative works that serve as analytical references and workshop material.
+Creative works that serve as analytical references and workshop material. This content lives in the **private `storyteller-data` repository** and is symlinked into `docs/storybook/` for local development. It is not part of the engine repository's git history.
 
-**Start here** if you want to read the stories themselves.
+See the [storyteller-data README](https://github.com/tasker-systems/storyteller-data) for setup instructions and content details.
 
 | Content | Role | Description |
 |---|---|---|
-| `extracted/the-fair-and-the-dead/` | Analytical reference | Dark fantasy — Sarah journeys into the Shadowed Wood to find her brother's lost spirit |
-| `extracted/vretil/` | Analytical reference | Literary quest — 20 chapters of nested timelines, unreliable narration, mythopoetic ending |
+| `the-fair-and-the-dead/` | Analytical reference | Dark fantasy — Sarah journeys into the Shadowed Wood to find her brother's lost spirit |
+| `vretil/` | Analytical reference | Literary quest — 20 chapters of nested timelines, unreliable narration, mythopoetic ending |
 | `bramblehoof/` | Workshop material | D&D satyr bard/warlock — the story we build, break, and learn with |
 
 **Analytical references** are studied to validate modeling. **Workshop material** is where we experiment.
@@ -76,6 +76,6 @@ The foundation documents establish principles. The technical documents make thos
 
 | File | Purpose |
 |---|---|
-| `CLAUDE.md` | Developer guidance for Claude Code — project overview, commands, architecture summary |
-| `AGENTS.md` | Developer guidance for Warp — commands and Rust conventions |
-| `doc-tools/` | Python package for extracting content from Scrivener and DOCX into `docs/storybook/extracted/` |
+| `CLAUDE.md` | Developer guidance for AI coding assistants — project overview, commands, workspace architecture, Rust standards |
+| `AGENTS.md` | Symlink to `CLAUDE.md` |
+| `doc-tools/` | Python package for extracting content from Scrivener and DOCX |
