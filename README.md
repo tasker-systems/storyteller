@@ -14,7 +14,9 @@ The system is built on several key ideas:
 
 ## Status
 
-**Pre-alpha.** The Rust workspace is scaffolded with four crates and compiles cleanly. No runtime logic has been implemented yet — implementation follows the extensive design documentation produced in Phase 1. A Python `doc-tools` package for extracting creative content from Scrivener and DOCX is functional.
+**Pre-alpha, first playable scene achieved.** The multi-agent pipeline is functional: a human scene director types narrative inputs, character agents deliberate in parallel via local LLM (Ollama), and a narrator renders literary prose. Character tensors, emotional states with awareness levels, and information boundaries all feed into agent behavior. See [`docs/changelog/2026-02-07-first-playable-scene.md`](docs/changelog/2026-02-07-first-playable-scene.md) for what we proved and what we observed.
+
+A Python `doc-tools` package for extracting creative content from Scrivener and DOCX is functional.
 
 **Related repositories**: [tasker-core](https://github.com/tasker-systems/tasker-core) (workflow orchestration), [tasker-contrib](https://github.com/tasker-systems/tasker-contrib) (framework integrations).
 
@@ -78,6 +80,22 @@ cargo clippy --all-targets --all-features
 cargo test --all-features
 cargo fmt --check
 ```
+
+### Running a Scene
+
+Requires [Ollama](https://ollama.com/) running locally with a model pulled:
+
+```bash
+brew bundle                     # Installs ollama (see Brewfile)
+ollama serve                    # Start the server (if not already running)
+ollama pull mistral             # Pull a model (~4GB)
+
+cargo run --bin play-scene -- --model mistral
+# Or with debug logging:
+RUST_LOG=debug cargo run --bin play-scene -- --model mistral --temperature 0.7
+```
+
+Type narrative directions as a scene director. Both character agents respond, the narrator renders. `/quit` to exit.
 
 ### Python (doc-tools)
 

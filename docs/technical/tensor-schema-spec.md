@@ -344,22 +344,42 @@ SemanticPattern =
 
 ### 5. EmotionalState
 
-Current conditions with decay models. These are always topsoil — volatile, responsive, the character's weather rather than their climate. However, sustained emotional states can transition to sediment.
+Current conditions with decay models. These are always topsoil — volatile, responsive, the character's weather rather than their climate. However, sustained emotional states can transition to sediment through accumulation (see `emotional-model.md` for the full sedimentation mechanics).
+
+Emotional states reference an **emotional grammar** — a pluggable vocabulary of primary emotions with opposition relationships, intensity gradients, and composition rules. The first grammar is Plutchik-derived (8 primaries: joy/sadness, trust/disgust, fear/anger, surprise/anticipation). Future grammars (wu xing, non-human, fey/mythic) can define different primaries while maintaining the same structural properties. See `docs/foundation/emotional-model.md` for the full grammar specification.
 
 ```
 EmotionalState {
   id: EmotionalStateId
-  valence: Valence               // positive | negative | mixed
-  intensity: f32                 // [0.0, 1.0]
+  grammar: GrammarId               // which emotional grammar this belongs to
+  primary: PrimaryId               // grammar-relative primary emotion ID
+  intensity: f32                   // [0.0, 1.0] — maps to grammar's intensity gradations
+  awareness: AwarenessLevel        // how accessible this emotion is to the character
   decay_model: DecayModel
-  temporal_layer: topsoil        // always starts as topsoil
+  temporal_layer: topsoil          // always starts as topsoil
 
   triggers: [ActivationCondition]     // what sustains or reactivates (factual or interpretive)
-  sediment_threshold: f32?            // intensity * duration at which this
+  sediment_threshold: f32?            // accumulated deposit level at which this
                                       // transitions from topsoil to sediment
+  accumulated_deposit: f32            // running sedimentation accumulation [0.0, 1.0]
 }
 
-Valence = positive | negative | mixed
+// EmotionalGrammar — the pluggable vocabulary (see emotional-model.md)
+EmotionalGrammar {
+  id: GrammarId
+  name: String                           // e.g., "plutchik_western"
+  primaries: Vec<EmotionalPrimary>       // foundational emotional dimensions
+  oppositions: Vec<(PrimaryId, PrimaryId)>  // which primaries oppose each other
+  intensity_range: (f32, f32)            // typically [0.0, 1.0]
+  composition_rules: CompositionModel    // how co-activated primaries interact
+  register_vocabulary: RegisterMap       // intensity → natural language gradations
+}
+
+// First grammar: Plutchik-derived Western
+// Primaries: joy, sadness, trust, disgust, fear, anger, surprise, anticipation
+// Oppositions: joy↔sadness, trust↔disgust, fear↔anger, surprise↔anticipation
+// Composition: MoodVector (co-activated primaries form directional vectors,
+//   NOT reduced to named dyadic labels — felt quality synthesized from full context)
 
 DecayModel {
   rate: DecayRate                     // fast | slow | stable | accumulating
@@ -370,6 +390,12 @@ DecayModel {
 DecayRate = fast | slow | stable | accumulating
 ```
 
+**On emotional grammars**: The grammar is a parameter of the character tensor, not a global system setting. Different entities in the same scene can operate under different grammars. A human character uses the Plutchik-derived grammar while a fey entity might use a grammar whose primaries don't map to human experience. Cross-grammar interactions are part of the communicability challenge — the World Agent and Narrator must translate between emotional registers.
+
+**On awareness for emotions**: The five-level `AwarenessLevel` gradient (Articulate, Recognizable, Preconscious, Defended, Structural) applies to emotions as well as values. A character may be fully aware of their anger but blind to the fear underneath it. A Defended emotion appears in the frame as its *absence* or *compensation*, not as a named state. See `emotional-model.md` for how awareness level determines frame synthesis register.
+
+**On mood-vectors (not named dyads)**: When multiple primaries are co-activated, they form mood-vectors in emotional-dimensional space. The frame synthesis step describes the *felt quality* of the configuration rather than naming a composite emotion. Joy and trust co-activated toward another person in a context of debt and projection feels different from joy and trust directed at self. The relational direction and full context determine the emotional meaning, not a lookup table of dyadic labels.
+
 **On factual vs. interpretive conditions for emotions**: Emotional states can be sustained or triggered by both types:
 - **Factual**: `TommyStillLost` is a world-state query — is Tommy still missing? The World Agent knows this.
 - **Factual**: `SettingFeature(Sickbed)` — the sickbed is physically present in this scene.
@@ -379,12 +405,14 @@ This matters because grief might be sustained by the factual condition (Tommy is
 
 **Computational semantics**: Emotional states are the most volatile tensor elements. They decay between scenes (unless sustained), accumulate under prolonged conditions, and occasionally cross the sediment threshold to become sustained patterns. The decay model is what the Storykeeper uses to update tensors between scenes.
 
-**Example (Sarah)**:
+**Example (Sarah — Plutchik-derived grammar)**:
 ```
 {
   id: "grief",
-  valence: negative,
-  intensity: 0.8,
+  grammar: "plutchik_western",
+  primary: "sadness",              // grammar-relative primary
+  intensity: 0.8,                  // maps to the high end: "grief" in Plutchik's register
+  awareness: Articulate,           // she knows she is grieving
   decay_model: {
     rate: slow,
     half_life_scenes: 8,
@@ -418,8 +446,8 @@ This matters because grief might be sustained by the factual condition (Tommy is
       confidence_threshold: 0.6
     }
   ],
-  sediment_threshold: 0.6   // if sustained above 0.6 for many scenes,
-                             // becomes sedimentary grief-pattern
+  sediment_threshold: 0.6,    // accumulated deposit threshold for sedimentation
+  accumulated_deposit: 0.3    // she has been grieving for a while; halfway to sediment
 }
 ```
 
@@ -473,22 +501,38 @@ ConfigShift {
 
 ## Temporal Layer Semantics
 
+### Three Timescales
+
+Temporal layer mechanics must account for three distinct timescales that do not necessarily align:
+
+- **Scene-distance**: Topological position on the narrative graph. Two scenes may be adjacent on the graph but separated by months of story-chronological time. Scene-distance is the system's processing clock.
+- **Story-chronology**: Diegetic time within the narrative. How much time has passed for the characters between scenes. A time-skip of six months between adjacent scenes means the character has lived through unsimulated experience.
+- **Historical-experiential time**: The accumulation of lived experience that drives sedimentation. Closer to story-chronology but not identical — uneventful routine accumulates less experiential weight than crisis.
+
+Sedimentation tracks historical-experiential time, not scene-distance. The Storykeeper's between-scene processing accounts for chronological gaps.
+
+**Design decision**: Within a single story graph, organic bedrock-level change through sedimentation alone would be rare. Bedrock changes are almost always authorially intended (mandated shifts). Organic bedrock evolution requires a story-series or significant chronological leaps.
+
+### Layer Definitions
+
 ```
 TemporalLayer = topsoil | sediment | bedrock | primordial
 
 topsoil {
   change_rate: high               // shifts within and between scenes
   decay: yes                      // emotional states fade
-  half_life: scenes               // measured in scene count
-  transition_to_sediment: yes     // sustained states can crystallize
+  half_life: scenes               // measured in scene-distance
+  transition_to_sediment: yes     // sustained states accumulate deposits
+  // See emotional-model.md for the full accumulation model
 }
 
 sediment {
   change_rate: low                // shifts over many scenes/sessions
   decay: very_slow                // patterns erode but slowly
-  half_life: sessions_to_arcs    // measured in story arcs
+  half_life: sessions_to_arcs    // measured in story-chronological time
   resistance_to_change: high      // single events don't move sediment
-  transition_to_bedrock: rare     // only under extraordinary pressure
+  transition_to_bedrock: rare     // only under extraordinary sustained pressure
+  erosion: yes                    // contradicting experience can wear away patterns
 }
 
 bedrock {
@@ -558,6 +602,12 @@ ElementRelationship =
 ## The Intertwining: Ports Between Inner and Outer
 
 The character tensor (inner representation) and the relational web (outer representation) are not independent data structures. They are connected through defined ports — interfaces where inner state becomes outer presence and outer conditions become inner experience.
+
+### The Self-Referential Edge
+
+The character's emotional tensor is modeled as a **self-referential edge** — a directed edge from the entity to itself in the relational graph, using the same substrate schema as inter-entity edges (trust, affection, debt, history, projection, information_state). This is not metaphorical — the self-edge participates in all the same computational processes as inter-entity edges: configuration computation, power dynamics (self-doubt eroding capability, self-trust amplifying it), and information asymmetry (a character may not know things about themselves).
+
+The communicability gradient applies to the self-relationship: surface area of self-awareness, friction of translating inner experience to conscious understanding, timescale of self-knowledge, and capacity to turn toward one's own inner life (the Defended awareness level represents precisely a character who cannot or will not look). See `docs/foundation/emotional-model.md` for the full treatment of the self-referential edge and its implications for frame computation.
 
 ### Outward Port: Tensor → Relational Presence
 
@@ -879,13 +929,14 @@ Trigger {
 
 ## Frame Computation Pipeline
 
-The ML inference layer computes the psychological frame through a defined pipeline:
+The ML inference layer computes the psychological frame through a defined pipeline. The frame integrates the tripartite psychological model (emotions, values, motivations — see `emotional-model.md`) with relational web configurations and scene context.
 
 ```
 Frame = compute_frame(
   tensor: FullTensor,             // persistence layer
-  relational_web: RelationalWeb,  // substrate + topology
+  relational_web: RelationalWeb,  // substrate + topology (including self-referential edge)
   scene_context: SceneContext,    // typed scene properties
+  grammar: EmotionalGrammar,     // entity's emotional vocabulary
 ) -> PsychologicalFrame
 
 Pipeline:
@@ -899,6 +950,8 @@ Pipeline:
      → fire qualifying echoes
      → add echo emotional states to topsoil
      → note configuration shifts for step 4
+     → note tripartite cross-cutting: echoes may simultaneously
+       activate emotions, surface shadow motivations, and pressure values
 
   3. TENSOR ACTIVATION
      Select scene-relevant elements from full tensor
@@ -906,27 +959,39 @@ Pipeline:
      → foreground motivations relevant to scene stakes
      → activate values relevant to scene themes
      → include relevant capacities for scene actions
+     → read emotional grammar to identify co-activated primaries
+       and compute mood-vectors (not named dyadic labels)
      → produce activated_subset (~800-1200 tokens as data)
 
   4. CONFIGURATION COMPUTATION
      Read relational web substrate for characters present
+     Read self-referential edge for this character
      Compute network topology features (position, bridging, clustering)
      Apply echo-driven configuration shifts from step 2
+     Include self-edge in power configuration (self-doubt erodes capability,
+       self-trust amplifies it)
      → produce relational_configurations for this scene
 
   5. FRAME SYNTHESIS
      Integrate activated_subset + relational_configurations
      Apply outward port (how inner state shapes relational presence)
      Apply inward port (how configurations shape emotional state)
-     Compress to frame register appropriate to entity type:
-       - human characters: introspective, emotional language
-       - non-human entities: somatic, spatial, instinctual language
+     Respect awareness levels: Articulate elements appear as direct statements;
+       Defended elements appear as absence/compensation; Structural elements
+       shape frame structure without appearing in content
+     Synthesize mood-vectors as felt quality descriptions, not named composites
+     Compress to frame register appropriate to entity type and grammar:
+       - human characters (Plutchik grammar): introspective, emotional language
+       - non-human entities (alternate grammar): somatic, spatial, instinctual language
+       - cross-grammar scenes: translate emotional registers through communicability
      → produce PsychologicalFrame (~200-400 tokens as natural language)
 
 PsychologicalFrame {
   content: string                 // natural language frame for Character Agent
   register: FrameRegister         // human | non_human | other
+  grammar: GrammarId              // which emotional grammar was used
   activated_relationships: [RelationshipRef]  // which relationships are in play
+  self_edge_active: bool          // whether self-referential dynamics are foregrounded
   active_echoes: [EchoRef]        // which echoes fired
   dominant_configuration: ConfigType  // the primary relational dynamic
   token_count: u32                // budget tracking
@@ -1178,3 +1243,13 @@ The design decisions above resolve the original open questions. The following co
 4. **Classifier agent design**: The parallel input architecture (Decision 7) introduces classifier agents as a pre-processing layer. Their design — how they parse natural language into typed events, what confidence thresholds they use, how they handle ambiguity — is a significant implementation concern.
 
 5. **Truth set implementation**: The set-theoretic trigger language (Decision 5) requires an efficient truth set data structure. Options include bitsets (for small vocabularies), indexed stores (for larger sets), or a lightweight embedded query engine. The choice depends on cardinality measurements during implementation.
+
+6. **Emotional grammar authoring methodology**: What makes a good emotional grammar? We have structural requirements (bounded primaries, opposition, intensity, composition rules) but no validation procedure for new grammars. A test scenario battery may be needed.
+
+7. **Cross-grammar frame synthesis**: When entities operating under different emotional grammars share a scene, the frame synthesis step must translate between emotional registers. The division of responsibility between World Agent and Narrator for this translation needs design.
+
+8. **Self-referential edge initialization heuristics**: For generated/templated entities, the self-edge should be derivable from the tensor state using coherence heuristics. The specific heuristic functions need definition and calibration.
+
+9. **Sedimentation calibration**: The accumulation model has three input variables (intensity, reinforcement, contradiction-absence) but no calibrated rates. Deposit rates, chronological-gap processing, and the boundary between scene-distance and story-chronological accumulation need empirical tuning.
+
+10. **Awareness budget vs. independent levels**: Should awareness be modeled as a finite attentional budget (forcing trade-offs when multiple elements compete for conscious access) or as independent levels per element? The budget model has interesting implications for revelation-heavy scenes but adds complexity.

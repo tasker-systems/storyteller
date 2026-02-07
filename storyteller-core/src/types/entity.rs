@@ -10,13 +10,18 @@
 use uuid::Uuid;
 
 /// Unique identifier for an entity within a story session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+///
+/// Uses UUID v7 (time-ordered) for efficient BTree indexing both in-process
+/// and in PostgreSQL. Temporal ordering means IDs sort by creation time.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct EntityId(pub Uuid);
 
 impl EntityId {
-    /// Create a new random entity ID.
+    /// Create a new time-ordered entity ID (UUID v7).
     pub fn new() -> Self {
-        Self(Uuid::new_v4())
+        Self(Uuid::now_v7())
     }
 }
 

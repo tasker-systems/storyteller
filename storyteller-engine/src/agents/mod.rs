@@ -12,3 +12,6 @@ pub mod narrator;
 pub mod reconciler;
 pub mod storykeeper;
 pub mod world;
+
+pub use character::CharacterAgent;
+pub use narrator::NarratorAgent;

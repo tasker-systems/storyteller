@@ -32,8 +32,8 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 
-# Optional: cloud LLM providers
-reqwest = { workspace = true, optional = true }
+# HTTP client — always available for ExternalServerProvider (Ollama etc.)
+reqwest = { workspace = true }
 
 # Optional: local LLM inference
 candle-core = { workspace = true, optional = true }
@@ -41,8 +41,7 @@ candle-nn = { workspace = true, optional = true }
 candle-transformers = { workspace = true, optional = true }
 
 [features]
-default = ["cloud-llm"]
-cloud-llm = ["dep:reqwest"]
+default = []
 local-llm = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers"]
 
 [dev-dependencies]

@@ -21,5 +21,6 @@ pub mod inference;
 pub mod messaging;
 pub mod plugin;
 pub mod systems;
+pub mod workshop;
 
 pub use plugin::StorytellerEnginePlugin;

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) and other AI coding 
 
 **storyteller** is a world-building and storytelling engine — a multi-agent system where distinct AI agents (Narrator, Storykeeper, Character Agents, Reconciler, World Agent) collaborate to create interactive narrative experiences. Think theater company, not agent swarm.
 
-**Status**: Pre-alpha. The Rust workspace is scaffolded and compiles cleanly. No runtime logic yet — implementation follows the design documentation from Phase 1.
+**Status**: Pre-alpha, first playable scene achieved. Character agents, narrator, storykeeper, and reconciler are functional. Interactive scene runs against local Ollama via `cargo run --bin play-scene`.
 
 **Related repositories**: `tasker-core` (workflow orchestration, Rust), `tasker-contrib` (framework integrations).
 
@@ -76,6 +76,8 @@ storyteller-core/src/
 ├── types/
 │   ├── entity.rs       # EntityId, EntityOrigin, PersistenceMode
 │   ├── tensor.rs       # AxisValue, TemporalLayer, Provenance
+│   ├── character.rs    # CharacterTensor, CharacterSheet, SceneData, ContextualTrigger
+│   ├── message.rs      # PlayerInput, StorykeeperDirective, CharacterIntent, TurnPhase
 │   ├── event.rs        # EventId, EventPriority, NarrativeEvent
 │   ├── scene.rs        # SceneId, SceneType, DepartureType
 │   ├── relational.rs   # DirectedEdge, RelationalSubstrate, TopologicalRole
@@ -123,17 +125,18 @@ storyteller-engine/src/
 │   └── classifier.rs   # NL input → typed events (factual + interpretive)
 ├── inference/
 │   ├── frame.rs        # Psychological frame computation (ort/ONNX, rayon thread pool)
-│   ├── cloud.rs        # CloudLlmProvider (reqwest, feature-gated: cloud-llm)
+│   ├── cloud.rs        # CloudLlmProvider (reqwest, deferred)
 │   ├── local.rs        # CandleLlmProvider (candle, feature-gated: local-llm)
-│   └── external.rs     # ExternalServerProvider (Ollama, etc.)
+│   └── external.rs     # ExternalServerProvider (Ollama — primary prototype LLM path)
+├── workshop/
+│   └── the_flute_kept.rs  # Hardcoded scene data for prototype testing
 └── messaging/
     └── tasker.rs       # Deferred event dispatch to tasker-core via RabbitMQ
 ```
 
-**Dependencies:** storyteller-core, bevy_app, bevy_ecs, ort, rayon, crossbeam, lapin, reqwest (optional), candle (optional)
+**Dependencies:** storyteller-core, bevy_app, bevy_ecs, ort, rayon, crossbeam, lapin, reqwest, candle (optional)
 
 **Feature flags:**
-- `cloud-llm` (default) — enables `CloudLlmProvider` via reqwest
 - `local-llm` (optional) — enables `CandleLlmProvider` via candle
 
 ### storyteller-api

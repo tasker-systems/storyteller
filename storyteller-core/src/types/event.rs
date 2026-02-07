@@ -10,13 +10,18 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 /// Unique identifier for an event in the ledger.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+///
+/// Uses UUID v7 (time-ordered) for efficient BTree indexing and natural
+/// temporal ordering in the event ledger.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct EventId(pub Uuid);
 
 impl EventId {
-    /// Create a new random event ID.
+    /// Create a new time-ordered event ID (UUID v7).
     pub fn new() -> Self {
-        Self(Uuid::new_v4())
+        Self(Uuid::now_v7())
     }
 }
 

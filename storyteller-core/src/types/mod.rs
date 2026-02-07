@@ -3,8 +3,10 @@
 //! Each submodule corresponds to a technical specification document
 //! in `docs/technical/`.
 
+pub mod character;
 pub mod entity;
 pub mod event;
+pub mod message;
 pub mod narrative;
 pub mod relational;
 pub mod scene;
