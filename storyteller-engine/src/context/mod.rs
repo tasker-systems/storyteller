@@ -14,6 +14,7 @@
 
 pub mod journal;
 pub mod preamble;
+pub mod prediction;
 pub mod retrieval;
 pub mod tokens;
 

@@ -121,6 +121,16 @@ pub enum PhaseEventDetail {
         trimmed: bool,
     },
 
+    /// Predictions enriched from raw ML output for Narrator consumption.
+    PredictionsEnriched {
+        /// Number of characters with predictions.
+        character_count: usize,
+        /// Total number of predicted actions across all characters.
+        total_actions: usize,
+        /// Estimated tokens for the rendered predictions block.
+        estimated_tokens: u32,
+    },
+
     // -- Narrator rendering events --
     /// Narrator prompt was constructed from assembled context.
     NarratorPromptBuilt {
@@ -233,6 +243,14 @@ impl fmt::Display for PhaseEventDetail {
                 }
                 Ok(())
             }
+            Self::PredictionsEnriched {
+                character_count,
+                total_actions,
+                estimated_tokens,
+            } => write!(
+                f,
+                "Predictions enriched: {character_count} characters, {total_actions} actions, ~{estimated_tokens}t"
+            ),
             Self::NarratorPromptBuilt {
                 system_prompt_chars,
                 user_message_chars,

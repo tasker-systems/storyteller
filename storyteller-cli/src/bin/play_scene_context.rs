@@ -10,11 +10,13 @@
 //! Requires a running Ollama instance at localhost:11434.
 
 use std::io::{self, BufRead, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 use clap::Parser;
 
+use storyteller_core::grammars::PlutchikWestern;
 use storyteller_core::traits::llm::LlmProvider;
 use storyteller_core::traits::phase_observer::{CollectingObserver, PhaseEventDetail};
 use storyteller_core::types::narrator_context::SceneJournal;
@@ -23,8 +25,10 @@ use storyteller_core::types::scene::SceneId;
 
 use storyteller_engine::agents::narrator::NarratorAgent;
 use storyteller_engine::context::journal::add_turn;
+use storyteller_engine::context::prediction::predict_character_behaviors;
 use storyteller_engine::context::{assemble_narrator_context, DEFAULT_TOTAL_TOKEN_BUDGET};
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
+use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::workshop::the_flute_kept;
 
 #[derive(Parser, Debug)]
@@ -44,6 +48,10 @@ struct Args {
     /// Ollama base URL
     #[arg(long, default_value = "http://localhost:11434")]
     ollama_url: String,
+
+    /// Disable ML predictions (run without ONNX model)
+    #[arg(long)]
+    no_ml: bool,
 
     /// Show timing details for each phase
     #[arg(long, default_value_t = true)]
@@ -75,6 +83,35 @@ async fn main() -> anyhow::Result<()> {
     let pyotir_sheet = the_flute_kept::pyotir();
     let characters = vec![&bramblehoof_sheet, &pyotir_sheet];
 
+    // Load ML predictor (optional — graceful fallback)
+    let grammar = PlutchikWestern::new();
+    let predictor = if args.no_ml {
+        eprintln!("[ML predictions disabled via --no-ml]");
+        None
+    } else {
+        match resolve_model_path() {
+            Some(path) => match CharacterPredictor::load(&path) {
+                Ok(p) => {
+                    eprintln!("[ML model loaded: {}]", path.display());
+                    Some(p)
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[Warning: ML model failed to load: {e}. Running without predictions.]"
+                    );
+                    None
+                }
+            },
+            None => {
+                eprintln!(
+                    "[No ML model found. Set STORYTELLER_MODEL_PATH or STORYTELLER_DATA_PATH. \
+                     Running without predictions.]"
+                );
+                None
+            }
+        }
+    };
+
     // Create LLM provider
     let config = ExternalServerConfig {
         base_url: args.ollama_url,
@@ -86,9 +123,8 @@ async fn main() -> anyhow::Result<()> {
     // Scene journal — rolling compressed history
     let mut journal = SceneJournal::new(SceneId::new(), 1200);
 
-    // Resolver output — no ML predictions yet, so the Narrator infers
-    // character behavior from the rich context it receives.
-    let resolver_output = ResolverOutput {
+    // Opening resolver output — no player input yet, so no ML predictions.
+    let opening_resolver = ResolverOutput {
         sequenced_actions: vec![],
         original_predictions: vec![],
         scene_dynamics: "A quiet arrival — the distance between them is physical and temporal"
@@ -105,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
         &scene,
         &characters,
         &journal,
-        &resolver_output,
+        &opening_resolver,
         "",
         &[bramblehoof_sheet.entity_id, pyotir_sheet.entity_id],
         DEFAULT_TOTAL_TOKEN_BUDGET,
@@ -178,6 +214,35 @@ async fn main() -> anyhow::Result<()> {
 
         turn += 1;
         let turn_start = Instant::now();
+
+        // ML predictions (if model available)
+        let resolver_output = if let Some(ref predictor) = predictor {
+            let predict_start = Instant::now();
+            let predictions =
+                predict_character_behaviors(predictor, &characters, &scene, input, &grammar);
+            let predict_elapsed = predict_start.elapsed();
+            eprintln!(
+                "[Turn {turn}: {} predictions in {:.1}ms]",
+                predictions.len(),
+                predict_elapsed.as_secs_f64() * 1000.0
+            );
+
+            ResolverOutput {
+                sequenced_actions: vec![],
+                original_predictions: predictions,
+                scene_dynamics: "ML-predicted character behavior".to_string(),
+                conflicts: vec![],
+            }
+        } else {
+            ResolverOutput {
+                sequenced_actions: vec![],
+                original_predictions: vec![],
+                scene_dynamics:
+                    "A quiet arrival — the distance between them is physical and temporal"
+                        .to_string(),
+                conflicts: vec![],
+            }
+        };
 
         // Context assembly (deterministic — no LLM calls)
         let observer = CollectingObserver::new();
@@ -305,7 +370,39 @@ fn print_observer_summary(observer: &CollectingObserver) {
             } => {
                 eprintln!("  Boundary: {permitted}/{available} items permitted");
             }
+            PhaseEventDetail::PredictionsEnriched {
+                character_count,
+                total_actions,
+                estimated_tokens,
+            } => {
+                eprintln!(
+                    "  Predictions: {character_count} characters, {total_actions} actions, ~{estimated_tokens} tokens"
+                );
+            }
             _ => {}
         }
     }
+}
+
+/// Resolve the path to the ONNX model file.
+///
+/// Checks in order:
+/// 1. `STORYTELLER_MODEL_PATH` env var (directory containing model files)
+/// 2. `STORYTELLER_DATA_PATH/models` (sibling data repo convention)
+fn resolve_model_path() -> Option<PathBuf> {
+    if let Ok(model_dir) = std::env::var("STORYTELLER_MODEL_PATH") {
+        let path = PathBuf::from(model_dir).join("character_predictor.onnx");
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    if let Ok(data_path) = std::env::var("STORYTELLER_DATA_PATH") {
+        let path = PathBuf::from(data_path)
+            .join("models")
+            .join("character_predictor.onnx");
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
 }

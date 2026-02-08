@@ -238,6 +238,14 @@ fn build_turn_message(context: &NarratorContextInput) -> String {
         message.push('\n');
     }
 
+    // Character predictions from ML pipeline
+    if !context.resolver_output.original_predictions.is_empty() {
+        let predictions_md = crate::context::prediction::render_predictions(
+            &context.resolver_output.original_predictions,
+        );
+        message.push_str(&predictions_md);
+    }
+
     // Current turn: resolver output
     message.push_str("## This Turn\n");
     message.push_str(&format!("Player: {}\n\n", context.player_input_summary));

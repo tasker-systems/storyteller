@@ -64,6 +64,7 @@ Per-branch implementation plans, phase specs, and process documentation. Each su
 | Directory | Status | Description |
 |---|---|---|
 | `narrator-centric-pivot/` | In progress | Architectural revision from multi-LLM agents to single Narrator with ML prediction |
+| `storyteller-ml-foundations/` | Complete | Phase 0 ML pipeline — feature schema, training data, model training, ort inference, enrichment, end-to-end validation |
 
 ### [Changelog](changelog/) — Milestones and Observations
 
@@ -71,6 +72,7 @@ Dated records of what was built, what was proved, and what was observed — hone
 
 | Document | Milestone |
 |---|---|
+| `2026-02-08-ml-pipeline-complete.md` | Phase 0 ML pipeline complete — character prediction end-to-end, from training data through ONNX inference to Narrator rendering |
 | `2026-02-07-narrator-centric-validation.md` | Narrator-centric architecture validated — parity test, model comparison, legacy removal |
 | `2026-02-07-first-playable-scene.md` | First interactive scene — two character agents, narrator, five turns against local Ollama |
 

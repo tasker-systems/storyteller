@@ -1037,8 +1037,8 @@ mod tests {
         output[delta_start + 1] = 0.005; // trust: trivial, should be filtered
         output[delta_start + 4] = -0.15; // sadness: significant
 
-        let pred = decode_outputs(&output, EntityId::new(), vec![], 0.8)
-            .expect("decode should succeed");
+        let pred =
+            decode_outputs(&output, EntityId::new(), vec![], 0.8).expect("decode should succeed");
 
         // Only joy and sadness should appear
         assert_eq!(pred.emotional_deltas.len(), 2);
