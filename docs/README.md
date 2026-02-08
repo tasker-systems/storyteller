@@ -44,17 +44,16 @@ Concrete data models, protocols, and formulas derived from applying the foundati
 | `infrastructure-architecture.md` | How it all fits together — data lifecycle, durability model, session resilience, deployment |
 | `crate-architecture.md` | Rust workspace structure — five crates with strict layering, dependency graph, deployment strategy |
 
-### [Storybook](storybook/) — Source Material
+### Source Material (private `storyteller-data` repository)
 
-Creative works that serve as analytical references and workshop material. This content lives in the **private `storyteller-data` repository** and is symlinked into `docs/storybook/` for local development. It is not part of the engine repository's git history.
-
-See the [storyteller-data README](https://github.com/tasker-systems/storyteller-data) for setup instructions and content details.
+Creative works and training data live in the **private [`storyteller-data`](https://github.com/tasker-systems/storyteller-data) repository**, accessed via the `STORYTELLER_DATA_PATH` environment variable (see `.env.example` in the project root).
 
 | Content | Role | Description |
 |---|---|---|
 | `the-fair-and-the-dead/` | Analytical reference | Dark fantasy — Sarah journeys into the Shadowed Wood to find her brother's lost spirit |
 | `vretil/` | Analytical reference | Literary quest — 20 chapters of nested timelines, unreliable narration, mythopoetic ending |
 | `bramblehoof/` | Workshop material | D&D satyr bard/warlock — the story we build, break, and learn with |
+| `training-data/` | ML pipeline | Descriptor JSON files and generated JSONL training data |
 
 **Analytical references** are studied to validate modeling. **Workshop material** is where we experiment.
 

@@ -49,7 +49,7 @@ struct Cli {
     min_coherence: f32,
 
     /// Path to descriptor data directory.
-    /// Falls back to STORYTELLER_DATA_PATH env var or docs/storybook symlink.
+    /// Falls back to STORYTELLER_DATA_PATH env var (see .env.example).
     #[arg(long)]
     data_path: Option<PathBuf>,
 }
@@ -64,7 +64,7 @@ fn main() {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("Error resolving data path: {e}");
-                eprintln!("Set STORYTELLER_DATA_PATH or ensure docs/storybook symlink exists");
+                eprintln!("Set STORYTELLER_DATA_PATH in .env or environment (see .env.example)");
                 std::process::exit(1);
             }
         });

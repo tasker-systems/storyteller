@@ -176,7 +176,7 @@ How the technology choices integrate into a coherent runtime — data flows, lif
 ```
 docs/foundation/     →  Philosophy and principles (what and why)
 docs/technical/      →  Specifications and case studies (how)  ← you are here
-docs/storybook/      →  Source material (the stories themselves)
+storyteller-data/    →  Source material (private repo, via STORYTELLER_DATA_PATH)
 ```
 
 The technical documents reference foundation documents for principles and storybook content for examples. They are the bridge between thinking and building.

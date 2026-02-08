@@ -525,35 +525,37 @@ impl std::error::Error for DescriptorError {
     }
 }
 
-/// Resolve the descriptor data path from environment or default.
+/// Resolve the descriptor data path from the `STORYTELLER_DATA_PATH` environment variable.
 ///
-/// Priority:
-/// 1. `STORYTELLER_DATA_PATH` environment variable
-/// 2. `docs/storybook` symlink relative to `CARGO_MANIFEST_DIR`
+/// Loads `.env` if present, then checks for `STORYTELLER_DATA_PATH` pointing to
+/// the root of the `storyteller-data` repository. Returns the path to the
+/// `training-data/descriptors/` subdirectory.
 pub fn resolve_data_path() -> Result<std::path::PathBuf, DescriptorError> {
     // Try loading .env file (ignore if missing)
     let _ = dotenvy::dotenv();
 
     if let Ok(path) = std::env::var("STORYTELLER_DATA_PATH") {
         let p = std::path::PathBuf::from(path);
-        if p.exists() {
-            return Ok(p.join("training-data/descriptors"));
+        let descriptors = p.join("training-data/descriptors");
+        if descriptors.exists() {
+            return Ok(descriptors);
         }
-    }
-
-    // Fall back to symlink
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let symlink_path =
-        std::path::Path::new(&manifest_dir).join("../docs/storybook/training-data/descriptors");
-    if symlink_path.exists() {
-        return Ok(symlink_path);
+        return Err(DescriptorError::Io {
+            file: "descriptor directory".to_string(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "STORYTELLER_DATA_PATH is set but {descriptors:?} does not exist"
+                ),
+            ),
+        });
     }
 
     Err(DescriptorError::Io {
         file: "descriptor directory".to_string(),
         source: std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "Set STORYTELLER_DATA_PATH or ensure docs/storybook symlink exists",
+            "STORYTELLER_DATA_PATH not set. See .env.example for configuration.",
         ),
     })
 }

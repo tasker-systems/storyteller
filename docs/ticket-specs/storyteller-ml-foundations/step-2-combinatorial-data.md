@@ -59,7 +59,7 @@ storyteller-ml/src/bin/                        (Layer 3: CLI pipeline)
 
 ## Layer 1: JSON Descriptor Files
 
-All files live in `storyteller-data/training-data/descriptors/` (accessed via the `docs/storybook` symlink or `STORYTELLER_DATA_PATH` env var).
+All files live in `storyteller-data/training-data/descriptors/` (accessed via `STORYTELLER_DATA_PATH` env var — see `.env.example`).
 
 ### Axis Vocabulary (`axis-vocabulary.json`)
 
@@ -159,7 +159,7 @@ Deserialization types for all JSON descriptors. Key types:
 - `GenreDescriptor` — validity gates (valid_archetypes[], valid_dynamics[], valid_profiles[], excluded_combinations[])
 - `CrossDimensionSet` — demographic dimensions with axis modifiers
 - `DescriptorSet` — complete loaded set with `load(data_path: &Path) -> Result<Self>` and internal reference validation
-- `resolve_data_path()` — resolves descriptor directory from `STORYTELLER_DATA_PATH` env var or `docs/storybook` symlink
+- `resolve_data_path()` — resolves descriptor directory from `STORYTELLER_DATA_PATH` env var (loads `.env` if present)
 
 ### `storyteller-ml/src/matrix/archetypes.rs`
 
