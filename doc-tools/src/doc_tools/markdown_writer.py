@@ -120,10 +120,7 @@ def write_sections_as_files(
                 title = para.text
                 break
 
-        if title:
-            filename = f"{i:02d}-{slugify(title)}.md"
-        else:
-            filename = f"{default_prefix}-{i:02d}.md"
+        filename = f"{i:02d}-{slugify(title)}.md" if title else f"{default_prefix}-{i:02d}.md"
 
         content = "\n\n".join(paragraph_to_markdown(p) for p in section)
         path = output_dir / filename

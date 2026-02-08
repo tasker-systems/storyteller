@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Iterator
 from zipfile import ZipFile
 
 from lxml import etree
@@ -98,9 +98,8 @@ def read_docx(path: Path) -> DocumentContent:
     Returns:
         DocumentContent with paragraphs and breaks.
     """
-    with ZipFile(path) as zf:
-        with zf.open("word/document.xml") as f:
-            tree = etree.parse(f)
+    with ZipFile(path) as zf, zf.open("word/document.xml") as f:
+        tree = etree.parse(f)
 
     root = tree.getroot()
     body = root.find(".//w:body", NAMESPACES)

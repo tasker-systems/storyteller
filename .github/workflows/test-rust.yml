@@ -1,0 +1,79 @@
+name: Rust Tests
+
+# =============================================================================
+# Test tier notes (see CLAUDE.md):
+#   cargo test --workspace                          → Unit tests only
+#   cargo test --workspace --features test-ml-model  → + ONNX model tests
+#   cargo test --workspace --features test-llm       → + Ollama tests (NOT in CI)
+#
+# The test-ml-model tier uses ONNX model fixtures checked into the repo at
+# tests/fixtures/models/. No external services or data repos required.
+#
+# The test-llm tier requires a running Ollama instance and is excluded from CI.
+# =============================================================================
+
+on:
+  workflow_call:
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+            ${{ runner.os }}-cargo-
+
+      - name: Run unit tests
+        run: cargo test --workspace
+
+  ml-model-tests:
+    name: ML Model Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: unit-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+            ${{ runner.os }}-cargo-
+
+      - name: Run ML model tests
+        run: cargo test --workspace --features test-ml-model
+        env:
+          # Model fixtures are in tests/fixtures/models/ (checked into repo)
+          STORYTELLER_MODEL_PATH: ${{ github.workspace }}/tests/fixtures/models

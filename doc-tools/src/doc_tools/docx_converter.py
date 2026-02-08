@@ -140,16 +140,15 @@ def analyze_document(docx_path: Path) -> dict:
 
 def main() -> int:
     """CLI entry point for DOCX conversion."""
-    parser = argparse.ArgumentParser(
-        description="Convert DOCX file to structured markdown"
-    )
+    parser = argparse.ArgumentParser(description="Convert DOCX file to structured markdown")
     parser.add_argument(
         "docx_path",
         type=Path,
         help="Path to DOCX file",
     )
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         type=Path,
         default=None,
         help="Output directory (default: same location as DOCX)",
@@ -181,11 +180,11 @@ def main() -> int:
         print(f"  Sections (by page break): {info['sections_by_page_break']}")
         print(f"  Sections (by heading): {info['sections_by_heading']}")
         print("\n  Paragraph types:")
-        for ptype, count in sorted(info['paragraph_types'].items()):
+        for ptype, count in sorted(info["paragraph_types"].items()):
             print(f"    {ptype}: {count}")
-        if info['styles']:
+        if info["styles"]:
             print("\n  Styles used:")
-            for style, count in sorted(info['styles'].items()):
+            for style, count in sorted(info["styles"].items()):
                 print(f"    {style}: {count}")
         return 0
 
