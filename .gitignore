@@ -28,3 +28,14 @@ docs/storybook
 
 .DS_Store
 .idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# ML artifacts
+*.onnx
+*.pth
+checkpoints/
