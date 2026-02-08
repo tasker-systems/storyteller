@@ -132,6 +132,7 @@ mod tests {
                         description: "Approaches the fence".to_string(),
                         confidence: 0.85,
                         action_type: ActionType::Move,
+                        target: None,
                     },
                     success: SuccessDegree::FullSuccess,
                     consequences: vec!["Pyotir looks up from his work".to_string()],

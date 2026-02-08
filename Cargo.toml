@@ -16,6 +16,7 @@ members = [
     "storyteller-engine",
     "storyteller-api",
     "storyteller-cli",
+    "storyteller-ml",
 ]
 
 # =============================================================================
@@ -63,6 +64,15 @@ prost = "0.14"
 bevy_app = "0.15"
 bevy_ecs = "0.15"
 ort = "2.0.0-rc.11"
+
+# Randomness (training data generation)
+rand = "0.9"
+
+# Content hashing (training data deduplication)
+sha2 = "0.10"
+
+# Environment variable loading
+dotenvy = "0.15"
 
 # Optional: local LLM inference
 candle-core = { version = "0.9" }
