@@ -17,19 +17,15 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+      - name: Setup Rust build cache
+        uses: ./.github/actions/setup-rust-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-quality-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-quality-
-            ${{ runner.os }}-cargo-
+          cache-prefix: quality
+
+      - name: Install tools
+        uses: ./.github/actions/install-tools
+        with:
+          tools: audit
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -44,8 +40,6 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
       - name: Security audit
         # Non-blocking — advisory database may have CVSS 4.0 issues
         continue-on-error: true

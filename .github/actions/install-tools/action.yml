@@ -1,0 +1,63 @@
+name: "Install Build Tools"
+description: "Installs cargo tools with caching (adapted from tasker-core)"
+
+inputs:
+  tools:
+    description: "Space-separated list of tools to install (audit, nextest, make)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache cargo tools
+      uses: actions/cache@v4
+      id: cargo-tools-cache
+      with:
+        path: ~/.cargo/bin
+        key: cargo-tools-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ inputs.tools }}
+        restore-keys: |
+          cargo-tools-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-tools-${{ runner.os }}-
+
+    - name: Install cargo-binstall
+      if: steps.cargo-tools-cache.outputs.cache-hit != 'true'
+      uses: cargo-bins/cargo-binstall@main
+
+    - name: Add cargo bin to PATH
+      shell: bash
+      run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Install requested tools
+      if: steps.cargo-tools-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        if echo "${{ inputs.tools }}" | grep -q "audit"; then
+          if ! command -v cargo-audit &> /dev/null; then
+            echo "Installing cargo-audit..."
+            cargo binstall cargo-audit --secure -y
+          fi
+        fi
+
+        if echo "${{ inputs.tools }}" | grep -q "nextest"; then
+          if ! command -v cargo-nextest &> /dev/null; then
+            echo "Installing cargo-nextest..."
+            cargo binstall cargo-nextest --secure -y
+          fi
+        fi
+
+        if echo "${{ inputs.tools }}" | grep -q "make"; then
+          if ! command -v cargo-make &> /dev/null; then
+            echo "Installing cargo-make..."
+            cargo binstall cargo-make --secure -y
+          fi
+        fi
+
+    - name: Display installed tools
+      shell: bash
+      run: |
+        echo "Installed tool versions:"
+        command -v cargo-audit &> /dev/null && echo "  cargo-audit: $(cargo audit --version)"
+        command -v cargo-nextest &> /dev/null && echo "  cargo-nextest: $(cargo nextest --version | head -n1)"
+        command -v cargo-make &> /dev/null && echo "  cargo-make: $(cargo make --version)"
+        echo "Done."

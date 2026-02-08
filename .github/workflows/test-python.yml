@@ -32,7 +32,6 @@ jobs:
 
       # ========================================================================
       # doc-tools: lint only (no tests exist)
-      # Use uvx for ruff (runs as standalone tool, not project dependency)
       # ========================================================================
       - name: "doc-tools: ruff check"
         run: uvx ruff check .
@@ -53,10 +52,10 @@ jobs:
         run: uvx ruff format --check .
         working-directory: training
 
-      - name: "training: install"
-        run: uv sync --dev
+      - name: "training: install dependencies"
+        run: uv sync --dev --python 3.11
         working-directory: training
 
       - name: "training: pytest"
-        run: uv run pytest -v
+        run: uv run --python 3.11 pytest -v
         working-directory: training
