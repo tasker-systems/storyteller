@@ -1,0 +1,62 @@
+name: Python Tests
+
+# =============================================================================
+# Two Python packages:
+#   doc-tools/  — Document extraction utilities (no tests, lint only)
+#   training/   — PyTorch training pipeline (lint + tests with synthetic data)
+#
+# Training tests are self-contained — they generate synthetic JSONL fixtures
+# and don't require the storyteller-data repo or a trained model.
+# =============================================================================
+
+on:
+  workflow_call:
+
+jobs:
+  lint-and-test:
+    name: Python Lint & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # ========================================================================
+      # doc-tools: lint only (no tests exist)
+      # ========================================================================
+      - name: "doc-tools: ruff check"
+        run: uvx ruff check .
+        working-directory: doc-tools
+
+      - name: "doc-tools: ruff format check"
+        run: uvx ruff format --check .
+        working-directory: doc-tools
+
+      # ========================================================================
+      # training: lint + test
+      # ========================================================================
+      - name: "training: ruff check"
+        run: uvx ruff check .
+        working-directory: training
+
+      - name: "training: ruff format check"
+        run: uvx ruff format --check .
+        working-directory: training
+
+      - name: "training: install dependencies"
+        run: uv sync --dev
+        working-directory: training
+
+      - name: "training: pytest"
+        # Use python -m pytest to avoid shebang/path issues with venv scripts
+        run: uv run python -m pytest -v
+        working-directory: training

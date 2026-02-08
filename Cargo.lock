@@ -3977,6 +3977,7 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "chrono",
  "crossbeam",
  "lapin",
  "ort",
@@ -3984,6 +3985,24 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "storyteller-core",
+ "storyteller-ml",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "storyteller-ml"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "dotenvy",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
  "storyteller-core",
  "tokio",
  "tracing",

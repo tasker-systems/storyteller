@@ -1,17 +1,14 @@
-//! Agent system implementations.
+//! Agent implementations.
 //!
-//! See: `docs/technical/agent-message-catalog.md`, `docs/foundation/system_architecture.md`
+//! See: `docs/technical/narrator-architecture.md`
 //!
-//! Agents are Bevy systems — lightweight functions that query ECS state,
-//! call LLM providers, and emit events. They are NOT microservices.
-//! Each agent has a specific role, perspective, and information boundary.
+//! In the narrator-centric architecture, the Narrator is the ONLY LLM agent.
+//! Character behavior is predicted by ML models, and world constraints are
+//! enforced by a deterministic rules engine (Resolver). Agents are Bevy
+//! systems — lightweight functions, not microservices.
 
-pub mod character;
 pub mod classifier;
 pub mod narrator;
-pub mod reconciler;
-pub mod storykeeper;
 pub mod world;
 
-pub use character::CharacterAgent;
 pub use narrator::NarratorAgent;

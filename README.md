@@ -118,7 +118,9 @@ All design documentation lives in [`docs/`](docs/). See [`docs/README.md`](docs/
 |---|---|
 | [`docs/foundation/`](docs/foundation/) | Design philosophy, system architecture, character modeling, narrative graph, world design, anthropological grounding, power, project organization |
 | [`docs/technical/`](docs/technical/) | 12 documents — tensor case studies, schema specifications, entity model, scene model, event system, agent message catalog, relational web, crate architecture, technology stack, infrastructure |
-| [`docs/storybook/`](docs/storybook/) | Source creative works — analytical references and workshop material |
+| [`docs/ticket-specs/`](docs/ticket-specs/) | Implementation plans and ticket specifications |
+
+Creative works and training data live in the private [`storyteller-data`](https://github.com/tasker-systems/storyteller-data) repository, accessed via `STORYTELLER_DATA_PATH` (see `.env.example`).
 
 ## License
 

@@ -31,6 +31,12 @@ cargo fmt
 cargo fmt --check               # CI check
 cargo doc --all-features --open # Generate and open docs
 
+# Test tiers (feature-gated integration tests)
+cargo test --workspace                                       # Unit tests only
+cargo test --workspace --features test-ml-model              # + ONNX model tests
+cargo test --workspace --features test-llm                   # + Ollama tests
+cargo test --workspace --features test-ml-model,test-llm     # All tiers
+
 # Cargo aliases (.cargo/config.toml)
 cargo b                         # build
 cargo r                         # run
@@ -138,6 +144,8 @@ storyteller-engine/src/
 
 **Feature flags:**
 - `local-llm` (optional) — enables `CandleLlmProvider` via candle
+- `test-ml-model` (test only) — enables tests requiring ONNX model on disk
+- `test-llm` (test only) — enables tests requiring running Ollama
 
 ### storyteller-api
 
@@ -233,6 +241,8 @@ Design documentation in `docs/`:
 |---|---|
 | [`docs/foundation/`](docs/foundation/) | 9 documents — design philosophy, system architecture, character modeling, narrative graph, world design, anthropological grounding, power, project organization, open questions |
 | [`docs/technical/`](docs/technical/) | 12 documents — tensor case studies, schema specifications, entity model, scene model, event system, agent message catalog, relational web, crate architecture, technology stack, infrastructure |
-| [`docs/storybook/`](docs/storybook/) | Symlink to private `storyteller-data` repo — analytical references (TFATD, Vretil) and workshop material (Bramblehoof) |
+| [`docs/ticket-specs/`](docs/ticket-specs/) | Implementation plans and ticket specifications |
+
+**Private content**: Creative works and training data live in the separate `storyteller-data` repository, accessed via `STORYTELLER_DATA_PATH` (see `.env.example`).
 
 See [`docs/README.md`](docs/README.md) for a full guide with reading order.

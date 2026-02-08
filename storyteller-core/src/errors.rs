@@ -41,6 +41,10 @@ pub enum StorytellerError {
     #[error("messaging error: {0}")]
     Messaging(String),
 
+    /// ML inference error (ort/ONNX Runtime).
+    #[error("inference error: {0}")]
+    Inference(String),
+
     /// Catch-all for unexpected errors.
     #[error(transparent)]
     Other(#[from] anyhow::Error),

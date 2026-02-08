@@ -27,6 +27,7 @@ use storyteller_core::types::character::{
 use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::scene::{SceneId, SceneType};
 use storyteller_core::types::tensor::{AwarenessLevel, AxisValue, Provenance, TemporalLayer};
+use storyteller_core::types::world_model::{Attribute, CapabilityProfile, Skill};
 
 /// Build the complete scene data for "The Flute Kept".
 pub fn scene() -> SceneData {
@@ -498,6 +499,7 @@ pub fn bramblehoof() -> CharacterSheet {
             "What Pyotir feels about the flute".to_string(),
             "Whether Pyotir wants to be found by someone from that part of his life".to_string(),
         ],
+        capabilities: bramblehoof_capabilities(),
     }
 }
 
@@ -932,7 +934,175 @@ pub fn pyotir() -> CharacterSheet {
             "What Bramblehoof is feeling (empathy, grief, the impulse to help)".to_string(),
             "How the encounter will end or what it means".to_string(),
         ],
+        capabilities: pyotir_capabilities(),
     }
+}
+
+/// Build Bramblehoof's capability profile — attributes and skills for the Resolver.
+fn bramblehoof_capabilities() -> CapabilityProfile {
+    let mut cap = CapabilityProfile::default();
+
+    // Attributes — broad capability dimensions
+    cap.attributes.insert(
+        "presence".to_string(),
+        Attribute {
+            name: "Presence".to_string(),
+            base_value: 0.85,
+            provenance: Provenance::Authored,
+        },
+    );
+    cap.attributes.insert(
+        "insight".to_string(),
+        Attribute {
+            name: "Insight".to_string(),
+            base_value: 0.75,
+            provenance: Provenance::Authored,
+        },
+    );
+    cap.attributes.insert(
+        "resilience".to_string(),
+        Attribute {
+            name: "Resilience".to_string(),
+            base_value: 0.60,
+            provenance: Provenance::Authored,
+        },
+    );
+    cap.attributes.insert(
+        "agility".to_string(),
+        Attribute {
+            name: "Agility".to_string(),
+            base_value: 0.70,
+            provenance: Provenance::Authored,
+        },
+    );
+
+    // Skills — specific learned capabilities
+    cap.skills.insert(
+        "music".to_string(),
+        Skill {
+            name: "Music".to_string(),
+            description: "Performance, composition, and musical improvisation".to_string(),
+            primary_attribute: "presence".to_string(),
+            secondary_attributes: vec!["insight".to_string()],
+            base_value: 0.95,
+        },
+    );
+    cap.skills.insert(
+        "persuasion".to_string(),
+        Skill {
+            name: "Persuasion".to_string(),
+            description: "Convincing through charm, story, and emotional appeal".to_string(),
+            primary_attribute: "presence".to_string(),
+            secondary_attributes: vec!["insight".to_string()],
+            base_value: 0.75,
+        },
+    );
+    cap.skills.insert(
+        "perception".to_string(),
+        Skill {
+            name: "Perception".to_string(),
+            description: "Noticing details, reading body language, sensing the unsaid".to_string(),
+            primary_attribute: "insight".to_string(),
+            secondary_attributes: vec![],
+            base_value: 0.70,
+        },
+    );
+    cap.skills.insert(
+        "fey_attunement".to_string(),
+        Skill {
+            name: "Fey Attunement".to_string(),
+            description: "Sensing ley lines, spiritual resonance, fey presence".to_string(),
+            primary_attribute: "insight".to_string(),
+            secondary_attributes: vec!["presence".to_string()],
+            base_value: 0.65,
+        },
+    );
+
+    cap
+}
+
+/// Build Pyotir's capability profile — attributes and skills for the Resolver.
+fn pyotir_capabilities() -> CapabilityProfile {
+    let mut cap = CapabilityProfile::default();
+
+    // Attributes
+    cap.attributes.insert(
+        "presence".to_string(),
+        Attribute {
+            name: "Presence".to_string(),
+            base_value: 0.40,
+            provenance: Provenance::Authored,
+        },
+    );
+    cap.attributes.insert(
+        "insight".to_string(),
+        Attribute {
+            name: "Insight".to_string(),
+            base_value: 0.60,
+            provenance: Provenance::Authored,
+        },
+    );
+    cap.attributes.insert(
+        "resilience".to_string(),
+        Attribute {
+            name: "Resilience".to_string(),
+            base_value: 0.80,
+            provenance: Provenance::Authored,
+        },
+    );
+    cap.attributes.insert(
+        "agility".to_string(),
+        Attribute {
+            name: "Agility".to_string(),
+            base_value: 0.50,
+            provenance: Provenance::Authored,
+        },
+    );
+
+    // Skills
+    cap.skills.insert(
+        "farming".to_string(),
+        Skill {
+            name: "Farming".to_string(),
+            description: "Land management, crop tending, animal care, seasonal planning"
+                .to_string(),
+            primary_attribute: "resilience".to_string(),
+            secondary_attributes: vec!["insight".to_string()],
+            base_value: 0.80,
+        },
+    );
+    cap.skills.insert(
+        "herbalism".to_string(),
+        Skill {
+            name: "Herbalism".to_string(),
+            description: "Growing and using herbs for practical and aesthetic purposes".to_string(),
+            primary_attribute: "insight".to_string(),
+            secondary_attributes: vec![],
+            base_value: 0.55,
+        },
+    );
+    cap.skills.insert(
+        "perception".to_string(),
+        Skill {
+            name: "Perception".to_string(),
+            description: "Reading people, sensing intent, managing social dynamics".to_string(),
+            primary_attribute: "insight".to_string(),
+            secondary_attributes: vec!["resilience".to_string()],
+            base_value: 0.65,
+        },
+    );
+    cap.skills.insert(
+        "music".to_string(),
+        Skill {
+            name: "Music".to_string(),
+            description: "Dormant but not gone — flute, once hand drum and lyre".to_string(),
+            primary_attribute: "presence".to_string(),
+            secondary_attributes: vec!["insight".to_string()],
+            base_value: 0.60,
+        },
+    );
+
+    cap
 }
 
 #[cfg(test)]
@@ -1129,6 +1299,38 @@ mod tests {
         // Both have self-knowledge gaps
         assert!(!bramble.self_edge.self_knowledge.does_not_know.is_empty());
         assert!(pyotir.self_edge.self_knowledge.does_not_know.len() >= 3);
+    }
+
+    #[test]
+    fn bramblehoof_has_capabilities() {
+        let sheet = bramblehoof();
+        assert!(!sheet.capabilities.attributes.is_empty());
+        assert!(!sheet.capabilities.skills.is_empty());
+        // Bramblehoof's presence should be high — he's a bard
+        let presence = sheet.capabilities.attributes.get("presence").unwrap();
+        assert!(presence.base_value > 0.7);
+        // Music should be his highest skill
+        let music = sheet.capabilities.skills.get("music").unwrap();
+        assert!(music.base_value > 0.9);
+    }
+
+    #[test]
+    fn pyotir_has_capabilities() {
+        let sheet = pyotir();
+        assert!(!sheet.capabilities.attributes.is_empty());
+        assert!(!sheet.capabilities.skills.is_empty());
+        // Pyotir's resilience should be high — he endures
+        let resilience = sheet.capabilities.attributes.get("resilience").unwrap();
+        assert!(resilience.base_value > 0.7);
+        // His music skill exists but is lower than Bramblehoof's
+        let music = sheet.capabilities.skills.get("music").unwrap();
+        let bramble_music = bramblehoof()
+            .capabilities
+            .skills
+            .get("music")
+            .unwrap()
+            .base_value;
+        assert!(music.base_value < bramble_music);
     }
 
     #[test]

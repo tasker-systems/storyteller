@@ -1,0 +1,46 @@
+name: Code Quality
+
+on:
+  workflow_call:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup Rust build cache
+        uses: ./.github/actions/setup-rust-cache
+        with:
+          cache-prefix: quality
+
+      - name: Install tools
+        uses: ./.github/actions/install-tools
+        with:
+          tools: audit
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # NOTE: --all-features includes local-llm (candle). If candle fails to
+      # build on CI, switch to explicit --features "test-ml-model".
+      - name: Run Clippy lints
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check documentation builds
+        run: cargo doc --no-deps --all-features --document-private-items
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: Security audit
+        # Non-blocking — advisory database may have CVSS 4.0 issues
+        continue-on-error: true
+        run: cargo audit

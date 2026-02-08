@@ -1,0 +1,55 @@
+[package]
+name = "storyteller-ml"
+version = "0.1.0"
+edition = "2021"
+description = "ML training data generation, feature encoding, and coherence validation for the storyteller engine"
+readme = "../README.md"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+keywords = ["storytelling", "ml", "training-data"]
+categories = ["game-engines"]
+
+[dependencies]
+storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Randomness for stochastic tensor generation
+rand = { workspace = true }
+
+# Async (for LLM calls during training data generation)
+tokio = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+
+# Content hashing for training data deduplication
+sha2 = { workspace = true }
+
+# Environment variable loading (STORYTELLER_DATA_PATH)
+dotenvy = { workspace = true }
+
+# Timestamps for training data manifests
+chrono = { workspace = true }
+
+# CLI argument parsing for binaries
+clap = { workspace = true }
+
+# IDs for training examples
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "generate-training-data"
+path = "src/bin/generate_training_data.rs"
+
+[[bin]]
+name = "validate-dataset"
+path = "src/bin/validate_dataset.rs"

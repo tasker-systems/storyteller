@@ -1,0 +1,61 @@
+name: Rust Tests
+
+# =============================================================================
+# Test tier notes (see CLAUDE.md):
+#   cargo test --workspace                          -> Unit tests only
+#   cargo test --workspace --features test-ml-model  -> + ONNX model tests
+#   cargo test --workspace --features test-llm       -> + Ollama tests (NOT in CI)
+#
+# The test-ml-model tier uses ONNX model fixtures checked into the repo at
+# tests/fixtures/models/. No external services or data repos required.
+#
+# The test-llm tier requires a running Ollama instance and is excluded from CI.
+# =============================================================================
+
+on:
+  workflow_call:
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust build cache
+        uses: ./.github/actions/setup-rust-cache
+        with:
+          cache-prefix: test
+
+      - name: Run unit tests
+        run: cargo test --workspace
+
+  ml-model-tests:
+    name: ML Model Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: unit-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust build cache
+        uses: ./.github/actions/setup-rust-cache
+        with:
+          cache-prefix: test
+
+      - name: Run ML model tests
+        run: cargo test --workspace --features test-ml-model
+        env:
+          # Model fixtures are in tests/fixtures/models/ (checked into repo)
+          STORYTELLER_MODEL_PATH: ${{ github.workspace }}/tests/fixtures/models

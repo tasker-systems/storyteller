@@ -33,4 +33,4 @@ path = "src/bin/server.rs"
 
 [[bin]]
 name = "play-scene"
-path = "src/bin/play_scene.rs"
+path = "src/bin/play_scene_context.rs"

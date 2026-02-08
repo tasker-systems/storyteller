@@ -13,7 +13,10 @@ target
 # Contains mutation testing data
 **/mutants.out*/
 
-# Creative content (lives in storyteller-data repo, symlinked for local development)
+# Environment variables (see .env.example)
+.env
+
+# Legacy symlink (removed — use STORYTELLER_DATA_PATH instead)
 docs/storybook
 
 # RustRover
@@ -25,3 +28,19 @@ docs/storybook
 
 .DS_Store
 .idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# ML artifacts
+*.onnx
+*.onnx.data
+*.pth
+checkpoints/
+
+# Exception: committed test fixtures (small enough for git)
+!tests/fixtures/models/*.onnx
+!tests/fixtures/models/*.onnx.data

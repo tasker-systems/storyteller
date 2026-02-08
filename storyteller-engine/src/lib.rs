@@ -12,11 +12,13 @@
 //! - [`components`] — Bevy ECS components (identity, communicability, tensors, scene state)
 //! - [`systems`] — Bevy systems (turn cycle, scene lifecycle, event pipeline)
 //! - [`agents`] — Agent implementations (Narrator, Storykeeper, Character, World, Reconciler)
+//! - [`context`] — Three-tier Narrator context assembly (preamble, journal, retrieval)
 //! - [`inference`] — ML inference integration (frame computation, LLM providers)
 //! - [`messaging`] — RabbitMQ integration for tasker-core workflow dispatch
 
 pub mod agents;
 pub mod components;
+pub mod context;
 pub mod inference;
 pub mod messaging;
 pub mod plugin;

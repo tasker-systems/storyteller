@@ -8,8 +8,7 @@ from pathlib import Path
 
 from doc_tools.docx_reader import read_docx_text
 from doc_tools.markdown_writer import slugify, write_markdown
-from doc_tools.scrivener.binder import BinderItem, ScrivenerProject, parse_binder_from_scriv
-
+from doc_tools.scrivener.binder import BinderItem, parse_binder_from_scriv
 
 # Map binder item types to output folder names
 FOLDER_MAP = {
@@ -124,7 +123,7 @@ def _extract_item_tree(
         else:
             child_output = output_dir
 
-        for i, child in enumerate(item.children, 1):
+        for _i, child in enumerate(item.children, 1):
             child_count = _extract_item_tree(
                 child,
                 data_dir,
@@ -199,16 +198,15 @@ def _extract_item_content(
 
 def main() -> int:
     """CLI entry point for Scrivener extraction."""
-    parser = argparse.ArgumentParser(
-        description="Extract Scrivener project to structured markdown"
-    )
+    parser = argparse.ArgumentParser(description="Extract Scrivener project to structured markdown")
     parser.add_argument(
         "scriv_path",
         type=Path,
         help="Path to .scriv directory",
     )
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         type=Path,
         default=None,
         help="Output directory (default: same location as .scriv with -extracted suffix)",
