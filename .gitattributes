@@ -1,0 +1,3 @@
+# Binary model files — prevent diff/merge/line-ending mangling
+*.onnx binary
+*.onnx.data binary

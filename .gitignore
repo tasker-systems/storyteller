@@ -37,5 +37,10 @@ __pycache__/
 
 # ML artifacts
 *.onnx
+*.onnx.data
 *.pth
 checkpoints/
+
+# Exception: committed test fixtures (small enough for git)
+!tests/fixtures/models/*.onnx
+!tests/fixtures/models/*.onnx.data

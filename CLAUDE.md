@@ -31,6 +31,12 @@ cargo fmt
 cargo fmt --check               # CI check
 cargo doc --all-features --open # Generate and open docs
 
+# Test tiers (feature-gated integration tests)
+cargo test --workspace                                       # Unit tests only
+cargo test --workspace --features test-ml-model              # + ONNX model tests
+cargo test --workspace --features test-llm                   # + Ollama tests
+cargo test --workspace --features test-ml-model,test-llm     # All tiers
+
 # Cargo aliases (.cargo/config.toml)
 cargo b                         # build
 cargo r                         # run
@@ -138,6 +144,8 @@ storyteller-engine/src/
 
 **Feature flags:**
 - `local-llm` (optional) — enables `CandleLlmProvider` via candle
+- `test-ml-model` (test only) — enables tests requiring ONNX model on disk
+- `test-llm` (test only) — enables tests requiring running Ollama
 
 ### storyteller-api
 

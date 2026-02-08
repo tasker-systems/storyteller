@@ -386,13 +386,13 @@ pub fn encode_features(input: &PredictionInput<'_>) -> Vec<f32> {
         }
     }
 
-    debug_assert_eq!(
-        features.len(),
-        TOTAL_INPUT_FEATURES,
-        "Feature vector length mismatch: got {}, expected {}",
-        features.len(),
-        TOTAL_INPUT_FEATURES,
-    );
+    if features.len() != TOTAL_INPUT_FEATURES {
+        tracing::error!(
+            got = features.len(),
+            expected = TOTAL_INPUT_FEATURES,
+            "feature vector length mismatch"
+        );
+    }
 
     features
 }
@@ -408,22 +408,24 @@ pub fn encode_features(input: &PredictionInput<'_>) -> Vec<f32> {
 ///
 /// `output` must have exactly [`TOTAL_OUTPUT_FEATURES`] elements.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if `output.len() != TOTAL_OUTPUT_FEATURES`.
+/// Returns `StorytellerError::Inference` if `output.len() != TOTAL_OUTPUT_FEATURES`.
 pub fn decode_outputs(
     output: &[f32],
     character_id: storyteller_core::types::entity::EntityId,
     activated_axis_indices: Vec<u16>,
     frame_confidence: f32,
-) -> RawCharacterPrediction {
-    assert_eq!(
-        output.len(),
-        TOTAL_OUTPUT_FEATURES,
-        "Output vector length mismatch: got {}, expected {}",
-        output.len(),
-        TOTAL_OUTPUT_FEATURES,
-    );
+) -> Result<RawCharacterPrediction, storyteller_core::errors::StorytellerError> {
+    if output.len() != TOTAL_OUTPUT_FEATURES {
+        return Err(storyteller_core::errors::StorytellerError::Inference(
+            format!(
+                "output vector length mismatch: got {}, expected {}",
+                output.len(),
+                TOTAL_OUTPUT_FEATURES,
+            ),
+        ));
+    }
 
     let mut offset = 0;
 
@@ -462,7 +464,13 @@ pub fn decode_outputs(
     let shifts_raw = &output[offset..offset + NUM_PRIMARIES];
     offset += NUM_PRIMARIES;
 
-    debug_assert_eq!(offset, TOTAL_OUTPUT_FEATURES);
+    if offset != TOTAL_OUTPUT_FEATURES {
+        tracing::error!(
+            got = offset,
+            expected = TOTAL_OUTPUT_FEATURES,
+            "output decode offset mismatch"
+        );
+    }
 
     // Build emotional deltas — only include primaries with non-trivial change.
     let emotional_deltas: Vec<RawEmotionalDelta> = deltas_raw
@@ -477,7 +485,7 @@ pub fn decode_outputs(
         })
         .collect();
 
-    RawCharacterPrediction {
+    Ok(RawCharacterPrediction {
         character_id,
         frame: RawActivatedTensorFrame {
             activated_axis_indices,
@@ -500,7 +508,7 @@ pub fn decode_outputs(
             dominant_emotion_index,
         },
         emotional_deltas,
-    }
+    })
 }
 
 // ===========================================================================
@@ -550,13 +558,13 @@ pub fn encode_labels(prediction: &RawCharacterPrediction) -> Vec<f32> {
     labels.extend_from_slice(&intensity_deltas);
     labels.extend_from_slice(&awareness_shifts);
 
-    debug_assert_eq!(
-        labels.len(),
-        TOTAL_OUTPUT_FEATURES,
-        "Label vector length mismatch: got {}, expected {}",
-        labels.len(),
-        TOTAL_OUTPUT_FEATURES,
-    );
+    if labels.len() != TOTAL_OUTPUT_FEATURES {
+        tracing::error!(
+            got = labels.len(),
+            expected = TOTAL_OUTPUT_FEATURES,
+            "label vector length mismatch"
+        );
+    }
 
     labels
 }
@@ -1003,7 +1011,8 @@ mod tests {
         output[24] = 0.0; // dominant_emotion_index = 0 (joy)
 
         let character_id = EntityId::new();
-        let pred = decode_outputs(&output, character_id, vec![0, 3, 7], 0.8);
+        let pred = decode_outputs(&output, character_id, vec![0, 3, 7], 0.8)
+            .expect("decode should succeed");
 
         assert_eq!(pred.action.action_type, ActionType::Perform);
         assert!((pred.action.confidence - 0.85).abs() < f32::EPSILON);
@@ -1028,7 +1037,8 @@ mod tests {
         output[delta_start + 1] = 0.005; // trust: trivial, should be filtered
         output[delta_start + 4] = -0.15; // sadness: significant
 
-        let pred = decode_outputs(&output, EntityId::new(), vec![], 0.8);
+        let pred = decode_outputs(&output, EntityId::new(), vec![], 0.8)
+            .expect("decode should succeed");
 
         // Only joy and sadness should appear
         assert_eq!(pred.emotional_deltas.len(), 2);

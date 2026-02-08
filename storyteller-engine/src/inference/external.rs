@@ -225,9 +225,9 @@ mod tests {
     }
 
     // Integration test — requires a running Ollama instance.
-    // Run with: cargo test --package storyteller-engine ollama_integration -- --ignored
+    // Enable with: cargo test --features test-llm
+    #[cfg(feature = "test-llm")]
     #[tokio::test]
-    #[ignore = "requires running Ollama instance"]
     async fn ollama_integration() {
         let provider = ExternalServerProvider::ollama("mistral");
         let request = single_turn_request(

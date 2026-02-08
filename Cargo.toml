@@ -117,6 +117,10 @@ unsafe_op_in_unsafe_fn = "warn"
 # Root Crate (integration test coordinator)
 # =============================================================================
 
+[features]
+test-ml-model = ["storyteller-engine/test-ml-model"]
+test-llm = ["storyteller-engine/test-llm"]
+
 [lib]
 crate-type = ["rlib"]
 name = "storyteller"

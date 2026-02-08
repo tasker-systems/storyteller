@@ -11,6 +11,7 @@ categories = ["game-engines"]
 
 [dependencies]
 storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
+storyteller-ml = { path = "../storyteller-ml", version = "=0.1.0" }
 
 # ECS runtime (sub-crates for minimal/headless usage)
 bevy_app = { workspace = true }
@@ -44,6 +45,8 @@ candle-transformers = { workspace = true, optional = true }
 [features]
 default = []
 local-llm = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers"]
+test-ml-model = []
+test-llm = []
 
 [dev-dependencies]
 tokio = { workspace = true }
