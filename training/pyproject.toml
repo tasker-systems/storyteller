@@ -14,6 +14,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
 
+# uv dependency groups for native uv sync --dev support
+[dependency-groups]
+dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
+
 [project.scripts]
 train-character-model = "training.cli:main"
 
