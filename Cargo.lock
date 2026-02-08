@@ -3977,6 +3977,7 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "chrono",
  "crossbeam",
  "lapin",
  "ort",

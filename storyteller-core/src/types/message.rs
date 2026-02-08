@@ -7,12 +7,9 @@
 //! player input → event classification → character prediction (ML) →
 //! action resolution (rules engine) → context assembly → narrator rendering.
 //!
-//! Legacy types (`StorykeeperDirective`, `CharacterIntent`, `ReconcilerOutput`)
-//! are retained for the existing multi-agent prototype code path. New code
-//! should use `CharacterPrediction` (prediction.rs) and `ResolverOutput`
-//! (resolver.rs) instead.
-
-use super::entity::EntityId;
+//! Character behavior predictions are in `prediction.rs`.
+//! Resolver output is in `resolver.rs`.
+//! Narrator context assembly is in `narrator_context.rs`.
 
 /// Raw player input — the starting point for every turn cycle.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21,61 +18,6 @@ pub struct PlayerInput {
     pub text: String,
     /// Turn number within the current scene.
     pub turn_number: u32,
-}
-
-// ---------------------------------------------------------------------------
-// Legacy multi-agent types — retained for existing prototype code path
-// ---------------------------------------------------------------------------
-
-/// Storykeeper's filtered context for a single character agent.
-///
-/// **Legacy**: In the narrator-centric architecture, the Storykeeper becomes a
-/// context assembly system that builds `NarratorContextInput` rather than
-/// producing per-character directives. Retained for the existing prototype.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct StorykeeperDirective {
-    /// Which character this directive is for.
-    pub character_id: EntityId,
-    /// The scene context this character is allowed to perceive.
-    pub visible_context: String,
-    /// The player's input as this character would perceive it.
-    pub filtered_input: String,
-    /// Any specific guidance from the Storykeeper about what this
-    /// character should or shouldn't react to.
-    pub guidance: String,
-}
-
-/// A character agent's intended action / response.
-///
-/// **Legacy**: In the narrator-centric architecture, character behavior is
-/// predicted by ML models producing `CharacterPrediction` (see prediction.rs).
-/// Retained for the existing prototype code path.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CharacterIntent {
-    /// Which character produced this intent.
-    pub character_id: EntityId,
-    /// The character's name (for rendering convenience).
-    pub character_name: String,
-    /// What the character intends to do or say.
-    pub intent: String,
-    /// The emotional subtext — what's happening beneath the surface.
-    pub emotional_subtext: String,
-    /// Internal state notes — private reasoning not visible to other agents.
-    pub internal_state: String,
-}
-
-/// Reconciler's output — multiple character intents sequenced and harmonized.
-///
-/// **Legacy**: In the narrator-centric architecture, the Reconciler is replaced
-/// by the deterministic Resolver producing `ResolverOutput` (see resolver.rs).
-/// Retained for the existing prototype code path.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ReconcilerOutput {
-    /// Character intents in their final sequence.
-    pub sequenced_intents: Vec<CharacterIntent>,
-    /// Notes on scene dynamics — what the reconciler observed about
-    /// the interaction between characters.
-    pub scene_dynamics: String,
 }
 
 /// The narrator's final rendered output — what the player reads.

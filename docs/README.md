@@ -72,6 +72,7 @@ Dated records of what was built, what was proved, and what was observed — hone
 
 | Document | Milestone |
 |---|---|
+| `2026-02-07-narrator-centric-validation.md` | Narrator-centric architecture validated — parity test, model comparison, legacy removal |
 | `2026-02-07-first-playable-scene.md` | First interactive scene — two character agents, narrator, five turns against local Ollama |
 
 ## How It Fits Together
