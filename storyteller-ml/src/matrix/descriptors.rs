@@ -544,9 +544,7 @@ pub fn resolve_data_path() -> Result<std::path::PathBuf, DescriptorError> {
             file: "descriptor directory".to_string(),
             source: std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!(
-                    "STORYTELLER_DATA_PATH is set but {descriptors:?} does not exist"
-                ),
+                format!("STORYTELLER_DATA_PATH is set but {descriptors:?} does not exist"),
             ),
         });
     }
