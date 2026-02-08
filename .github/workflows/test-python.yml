@@ -53,9 +53,10 @@ jobs:
         working-directory: training
 
       - name: "training: install dependencies"
-        run: uv sync --dev --python 3.11
+        run: uv sync --dev
         working-directory: training
 
       - name: "training: pytest"
-        run: uv run --python 3.11 pytest -v
+        # Use python -m pytest to avoid shebang/path issues with venv scripts
+        run: uv run python -m pytest -v
         working-directory: training
