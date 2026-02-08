@@ -1,11 +1,16 @@
 //! Agent message types — inter-agent communication for the turn cycle.
 //!
-//! See: `docs/technical/agent-message-catalog.md`
+//! See: `docs/technical/agent-message-catalog.md`, `docs/technical/narrator-architecture.md`
 //!
-//! These are the typed messages that flow between agents during a single turn.
-//! Each message represents a specific handoff in the pipeline:
-//! player input → storykeeper filtering → character deliberation →
-//! reconciliation → narrator rendering.
+//! These are the typed messages that flow between stages during a single turn.
+//! The narrator-centric architecture pipeline:
+//! player input → event classification → character prediction (ML) →
+//! action resolution (rules engine) → context assembly → narrator rendering.
+//!
+//! Legacy types (`StorykeeperDirective`, `CharacterIntent`, `ReconcilerOutput`)
+//! are retained for the existing multi-agent prototype code path. New code
+//! should use `CharacterPrediction` (prediction.rs) and `ResolverOutput`
+//! (resolver.rs) instead.
 
 use super::entity::EntityId;
 
@@ -18,11 +23,15 @@ pub struct PlayerInput {
     pub turn_number: u32,
 }
 
+// ---------------------------------------------------------------------------
+// Legacy multi-agent types — retained for existing prototype code path
+// ---------------------------------------------------------------------------
+
 /// Storykeeper's filtered context for a single character agent.
 ///
-/// The Storykeeper sees the full scene state and player input, then
-/// produces one of these for each character in the scene — tailored
-/// to that character's information boundary.
+/// **Legacy**: In the narrator-centric architecture, the Storykeeper becomes a
+/// context assembly system that builds `NarratorContextInput` rather than
+/// producing per-character directives. Retained for the existing prototype.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StorykeeperDirective {
     /// Which character this directive is for.
@@ -38,9 +47,9 @@ pub struct StorykeeperDirective {
 
 /// A character agent's intended action / response.
 ///
-/// This is what the character *wants* to do — not yet rendered in
-/// story voice. The Narrator takes these intents and weaves them
-/// into narrative prose.
+/// **Legacy**: In the narrator-centric architecture, character behavior is
+/// predicted by ML models producing `CharacterPrediction` (see prediction.rs).
+/// Retained for the existing prototype code path.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CharacterIntent {
     /// Which character produced this intent.
@@ -57,9 +66,9 @@ pub struct CharacterIntent {
 
 /// Reconciler's output — multiple character intents sequenced and harmonized.
 ///
-/// For a two-character scene this is relatively simple. For larger casts,
-/// the reconciler resolves temporal overlaps, action conflicts, and
-/// surfaces dramatic potential.
+/// **Legacy**: In the narrator-centric architecture, the Reconciler is replaced
+/// by the deterministic Resolver producing `ResolverOutput` (see resolver.rs).
+/// Retained for the existing prototype code path.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReconcilerOutput {
     /// Character intents in their final sequence.
@@ -103,23 +112,26 @@ pub struct TurnPhase {
 
 /// The phases of a single turn cycle.
 ///
+/// Reflects the narrator-centric architecture pipeline:
+/// input → classification → prediction → resolution → context assembly → rendering.
+///
 /// These are deliberately abstract — the player-facing layer can translate
 /// them into thematic language, while the system layer uses them for
 /// tracing spans.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TurnPhaseKind {
-    /// Player input received and persisted.
+    /// Player input received and persisted to the event ledger.
     InputReceived,
-    /// Classifier agents processing input.
+    /// Event classifier processing raw input into typed events.
     Classifying,
-    /// Storykeeper evaluating full state, producing directives.
-    StorykeeperEvaluating,
-    /// Character agents deliberating (parallel).
-    CharactersDeliberating,
-    /// Reconciler sequencing character intents.
-    Reconciling,
-    /// Narrator rendering final output.
-    NarratorRendering,
-    /// Turn complete, post-turn reconciliation done.
+    /// ML models predicting character behavior (parallel across cast).
+    CharacterPrediction,
+    /// Resolver sequencing predictions, enforcing world constraints.
+    Resolving,
+    /// Storykeeper assembling three-tier context for the Narrator.
+    ContextAssembly,
+    /// Narrator rendering final output from assembled context.
+    Rendering,
+    /// Turn complete, post-turn processing done.
     Complete,
 }

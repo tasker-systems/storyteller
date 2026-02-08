@@ -26,10 +26,11 @@ Nine documents that establish the intellectual and architectural foundations of 
 
 Concrete data models, protocols, and formulas derived from applying the foundation principles to real creative content. These bridge philosophy and code.
 
-**Start here** if you want to understand the data structures and protocols. Twelve documents:
+**Start here** if you want to understand the data structures and protocols. Thirteen documents:
 
 | Document | What it specifies |
 |---|---|
+| `narrator-architecture.md` | **Architectural revision**: single-Narrator LLM agent, ML character prediction, rules engine resolver, three-tier context assembly |
 | `tensor-case-study-sarah.md` | Full tensor for a human protagonist — establishes representation format |
 | `tensor-case-study-wolf.md` | Full tensor for a non-human entity — stress-tests and extends the model |
 | `tensor-schema-spec.md` | Formal type system for tensors, triggers, and frames — 7 resolved design decisions |
@@ -37,7 +38,7 @@ Concrete data models, protocols, and formulas derived from applying the foundati
 | `scene-model.md` | The Scene as fundamental unit of play — anatomy, lifecycle, action space, ludic contract |
 | `event-system.md` | Event lifecycle — classification pipeline, truth set, priority tiers, subscriber model |
 | `narrative-graph-case-study-tfatd.md` | Story mapped as gravitational landscape — mass formulas, attractor basins |
-| `agent-message-catalog.md` | All 22 message types between agents with schemas and token budgets |
+| `agent-message-catalog.md` | All 22 message types between agents with schemas and token budgets (partially superseded by `narrator-architecture.md`) |
 | `relational-web-tfatd.md` | Asymmetric relational web for 6 characters across 6 dimensions |
 | `technical-stack.md` | Technology choices — Bevy, PostgreSQL+AGE, RabbitMQ, gRPC, ML crates — with fit-for-purpose rationale |
 | `infrastructure-architecture.md` | How it all fits together — data lifecycle, durability model, session resilience, deployment |
@@ -56,6 +57,14 @@ See the [storyteller-data README](https://github.com/tasker-systems/storyteller-
 | `bramblehoof/` | Workshop material | D&D satyr bard/warlock — the story we build, break, and learn with |
 
 **Analytical references** are studied to validate modeling. **Workshop material** is where we experiment.
+
+### [Ticket Specs](ticket-specs/) — Implementation Plans
+
+Per-branch implementation plans, phase specs, and process documentation. Each subdirectory tracks a feature effort from planning through execution.
+
+| Directory | Status | Description |
+|---|---|---|
+| `narrator-centric-pivot/` | In progress | Architectural revision from multi-LLM agents to single Narrator with ML prediction |
 
 ### [Changelog](changelog/) — Milestones and Observations
 

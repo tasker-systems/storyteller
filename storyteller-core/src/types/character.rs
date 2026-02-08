@@ -22,6 +22,7 @@ use std::collections::BTreeMap;
 use super::entity::EntityId;
 use super::scene::SceneId;
 use super::tensor::{AwarenessLevel, AxisValue, Provenance, TemporalLayer};
+use super::world_model::CapabilityProfile;
 
 /// A single entry in a character tensor — value, temporal layer, and provenance.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -241,8 +242,12 @@ pub struct SelfKnowledge {
 
 /// Everything a character agent needs at scene entry.
 ///
-/// Bundles identity, tensor, backstory, triggers, and performance guidance.
-/// For the prototype, these are hardcoded as Rust struct literals.
+/// Bundles identity, tensor, backstory, triggers, performance guidance,
+/// and capabilities (attributes/skills for the Resolver).
+///
+/// In the narrator-centric architecture, the tensor and emotional state
+/// become primary ML feature inputs. The capabilities feed the Resolver's
+/// hidden RPG mechanics for action resolution.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CharacterSheet {
     /// Entity identity.
@@ -269,6 +274,10 @@ pub struct CharacterSheet {
     pub knows: Vec<String>,
     /// Information boundary: what this character must NOT know.
     pub does_not_know: Vec<String>,
+    /// Attributes and skills for Resolver action resolution.
+    /// Optional — characters without capabilities use defaults.
+    #[serde(default)]
+    pub capabilities: CapabilityProfile,
 }
 
 /// Extended scene representation with everything needed to run a scene.
