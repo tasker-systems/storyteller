@@ -51,5 +51,9 @@ name = "generate-training-data"
 path = "src/bin/generate_training_data.rs"
 
 [[bin]]
+name = "generate-event-training-data"
+path = "src/bin/generate_event_training_data.rs"
+
+[[bin]]
 name = "validate-dataset"
 path = "src/bin/validate_dataset.rs"

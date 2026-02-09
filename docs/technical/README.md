@@ -126,6 +126,21 @@ Asymmetric relational web for all 6 TFATD characters.
 - The `debt` dimension is the plot engine in TFATD
 - Unknown/sparse values handled gracefully — better sparse than hallucinated
 
+### Event Dependency Graph
+
+#### [event-dependency-graph.md](event-dependency-graph.md)
+
+The event dependency DAG — how events depend on, enable, exclude, and compose with each other across the full scope of a narrative.
+
+**Key insights captured here**:
+- Combinatorial narrative triggers (events depending on other events' resolution) cannot be modeled as predicate trees or recursive CTEs — they are a directed acyclic graph
+- Four graph structures in the system: narrative graph (where), relational web (who), event ledger (what happened), event dependency graph (what can happen given what has)
+- The DAG is complementary to the set-theoretic trigger system: triggers evaluate individual conditions, the DAG models the dependency structure between conditions
+- Node resolution states: unresolved, resolved, unreachable, orphaned — with unreachability as narratively meaningful (roads not taken)
+- Edge types: requires, excludes, enables, amplifies
+- Incremental evaluation: only the frontier of newly-resolved nodes propagates on each turn
+- The DAG is the backing representation for story designer "narrative triggers" — the authorable artifact that composes events into arcs
+
 ### Crate Architecture
 
 #### [crate-architecture.md](crate-architecture.md)
