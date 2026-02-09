@@ -549,3 +549,22 @@ The integration test that validates the relational weight principle end-to-end:
 ```
 
 Text in, promotion decision out. The pipeline has a single purpose: **make entities real through their relationships.**
+
+---
+
+## Future Improvements (Post-Phase C)
+
+### Externalize Event Vocabulary as Descriptors
+
+The event template vocabulary (`storyteller-ml/src/event_templates/vocabulary.rs`) is currently hardcoded — ~20 character names, ~24 objects, ~20 locations, ~25 verbs, etc. This was sufficient for bootstrapping 8,000 training examples, but vocabulary expansion currently requires editing Rust code and recompiling.
+
+The character tensor training pipeline already solved this with the descriptors pattern: JSON files in `$STORYTELLER_DATA_PATH/training-data/descriptors/` define archetypes, dynamics, and profiles as external data. The generation binary loads them at runtime.
+
+**Proposed approach**: Apply the same pattern to event vocabulary.
+
+1. `vocabulary.rs` stays as the compiled default (always available without `STORYTELLER_DATA_PATH`)
+2. External JSON vocabulary files at `$STORYTELLER_DATA_PATH/training-data/descriptors/event-vocabulary/` — structured by category (`characters.json`, `objects.json`, `verbs.json`, etc.)
+3. Generation binary merges external vocabulary with compiled defaults at runtime — more words = more diverse training data without changing template logic
+4. Genre-specific vocabulary gating (like the existing genre validity gates for archetypes) could tune training data to a particular story's register
+
+**When**: After evaluating models on real prose (C.6) and identifying vocabulary diversity as a gap. This is a training data quality lever, not a blocking dependency.
