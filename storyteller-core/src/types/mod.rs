@@ -6,6 +6,7 @@
 pub mod character;
 pub mod entity;
 pub mod event;
+pub mod event_grammar;
 pub mod message;
 pub mod narrative;
 pub mod narrator_context;
