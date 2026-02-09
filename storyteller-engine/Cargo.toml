@@ -21,6 +21,7 @@ bevy_ecs = { workspace = true }
 ort = { workspace = true }
 rayon = { workspace = true }
 crossbeam = { workspace = true }
+tokenizers = { workspace = true }
 
 # Messaging
 lapin = { workspace = true }

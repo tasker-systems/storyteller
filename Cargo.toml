@@ -74,6 +74,9 @@ sha2 = "0.10"
 # Environment variable loading
 dotenvy = "0.15"
 
+# NLP tokenization (HuggingFace reference implementation in Rust)
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+
 # Optional: local LLM inference
 candle-core = { version = "0.9" }
 candle-nn = { version = "0.9" }
