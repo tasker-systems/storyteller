@@ -34,6 +34,8 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+.pytest_cache/
+.ruff_cache/
 
 # ML artifacts
 *.onnx
