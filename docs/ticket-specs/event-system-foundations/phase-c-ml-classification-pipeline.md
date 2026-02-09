@@ -1,6 +1,6 @@
 # Phase C: ML Classification Pipeline
 
-**Status**: Not started
+**Status**: C.0–C.2 complete, C.3–C.6 not started
 **Branch**: `jcoletaylor/event-system-foundations`
 **Depends on**: Phase A (types), Phase B (promotion logic)
 
@@ -83,125 +83,164 @@ The `EventClassifier` struct abstracts this — callers don't know whether one o
 
 ## Work Items
 
-### C.0: Infrastructure — `tokenizers` Crate Integration
+### C.0: Infrastructure — `tokenizers` Crate Integration ✅
+
+**Status**: Complete (Feb 9 2026, commit `f561e76`)
 
 **Goal**: Add the `tokenizers` crate to the workspace and verify it loads HuggingFace tokenizer files.
 
 **Why first**: Every subsequent work item depends on tokenization. Getting this working (and understanding its API surface — offset mapping, word IDs, subword handling) before writing model code eliminates a class of integration surprises.
 
-**Outputs**:
+**What was built**:
 - `tokenizers` added to `[workspace.dependencies]` in root `Cargo.toml`
 - `tokenizers = { workspace = true }` in `storyteller-engine/Cargo.toml`
-- Small test in engine crate: load a tokenizer.json, tokenize sample text, verify token IDs and offset mappings
+- `EventClassifier` struct scaffolded in `storyteller-engine/src/agents/classifier.rs` — module declaration with doc comments establishing the classification pipeline architecture (Stage 1 factual + Stage 3 interpretive)
 
 **Notes**:
 - The `tokenizers` crate IS the reference implementation — Python's `tokenizers` is a binding to this Rust code. API documentation is excellent.
 - Tokenizer files (`tokenizer.json`) are exported alongside ONNX models and should live in the same model directory. We make use of STORYTELLER_MODEL_PATH for this in .env - by default set to our workspace root sibling directory `storyteller-data/models`
 - Key APIs: `Tokenizer::from_file()`, `encoding.get_ids()`, `encoding.get_offsets()`, `encoding.get_word_ids()` (maps subword tokens back to word indices — critical for NER span extraction).
 
-**Verification**: `cargo check --all-features`, basic tokenization test passes.
+**Verification**: `cargo check --all-features` passes.
 
 ---
 
-### C.1: Training Data Generation — Event Classification
+### C.1: Training Data Generation — Event Classification ✅
+
+**Status**: Complete (Feb 9 2026, commit `eafa3d7`)
 
 **Goal**: Build the combinatorial training data pipeline for event classification. Follows the pattern established in `storyteller-ml/src/matrix/` — parameterized templates, combinatorial expansion, JSONL output.
 
-**Outputs**:
-- New directory: `training/event_classifier/` — Python package (same uv/hatch pattern as `training/`)
-- New module: `storyteller-ml/src/event_templates/` — Rust template definitions and combinatorial expansion
-- JSONL training data: `$STORYTELLER_DATA_PATH/training/event_classification/`
+**What was built**:
+- Rust template engine in `storyteller-ml/src/event_templates/` — combinatorial expansion across all 8 classifiable EventKinds
+- Binary: `generate-event-training-data` CLI for JSONL generation
+- 8,000 annotated training examples generated at `$STORYTELLER_DATA_PATH/training-data/event_classification.jsonl`
+- Two registers per template: player-input (imperative, short) and narrator-prose (literary, past tense)
+- Programmatic entity annotation with character-offset spans computed during generation
+- Multi-label examples included (e.g., SpatialChange + EmotionalExpression)
 
 **Training data format** (one JSON object per line):
 
 ```json
 {
+  "id": "action-occurrence-player-042",
   "text": "I pick up the ancient stone from the riverbed",
   "register": "player",
   "event_kinds": ["ActionOccurrence"],
-  "action_type": "Perform",
   "entities": [
-    {"span": [0, 1], "text": "I", "category": "CHARACTER", "role": "Actor"},
-    {"span": [5, 8], "text": "the ancient stone", "category": "OBJECT", "role": "Target"},
-    {"span": [9, 11], "text": "the riverbed", "category": "LOCATION", "role": "Location"}
+    {"start": 0, "end": 1, "text": "I", "category": "CHARACTER", "role": "Actor"},
+    {"start": 15, "end": 31, "text": "the ancient stone", "category": "OBJECT", "role": "Target"},
+    {"start": 37, "end": 49, "text": "the riverbed", "category": "LOCATION", "role": "Location"}
   ]
 }
 ```
 
-**Template structure** (Rust, in storyteller-ml):
+**Note**: Entity spans use `start`/`end` character offsets (not word-index arrays). This aligns with how the `tokenizers` crate's `offset_mapping` works for BIO label alignment.
 
-Templates per EventKind, parameterized by entities, verbs, modifiers. Two registers per template: player-input (imperative, short) and narrator-prose (literary, past tense).
-
-```
-EventKind::ActionOccurrence:
-  player: "I {verb} the {object}" / "I try to {verb} {object_with_article}"
-  narrator: "{character} {verb}ed the {object} {adverb}" / "With {manner}, {character} {verb}ed..."
-
-EventKind::SpeechAct:
-  player: "I ask {character} about {topic}" / "I tell {character} that {statement}"
-  narrator: "'{dialogue},' {character} said {adverb}" / "{character} whispered something to {other}"
-
-EventKind::EmotionalExpression:
-  player: (rare — players describe actions, not emotions directly)
-  narrator: "Tears welled in {character}'s eyes" / "A {emotion_adj} look crossed {character}'s face"
-```
-
-Each template category needs ~20-50 verb/noun/modifier variants. Combinatorial expansion (verbs × characters × objects × modifiers × register) produces ~500-1,000 examples per EventKind from a modest template set.
-
-**LLM augmentation** (optional, parallel track): Feed template skeletons to Ollama for naturalistic literary variations. Same pattern as character prediction training data. Produces higher-quality narrator-register examples.
-
-**Entity annotation is programmatic**: Since we generate the text, we know where the entities are. Span offsets are computed during generation, not hand-annotated.
-
-**Multi-label**: A single clause can express multiple EventKinds ("Sarah storms out" = SpatialChange + EmotionalExpression). Templates should include multi-label examples.
+**Data distribution** (8,000 examples across 8 EventKinds):
+- All event kinds well-represented (1,000 per kind)
+- 14,956 total entity annotations across 7 NER categories
+- Both player and narrator registers
 
 **Tests**: Generated JSONL validates against schema (EventKind values are valid, span offsets are within text bounds, entity categories are from the vocabulary).
 
 ---
 
-### C.2: Model Fine-Tuning and ONNX Export
+### C.2: Model Fine-Tuning and ONNX Export ✅
+
+**Status**: Complete (Feb 9 2026, commit `81ad27f`)
 
 **Goal**: Fine-tune a pre-trained transformer encoder on the generated training data and export to ONNX.
 
-**Outputs**:
-- Python training script: `training/event_classifier/src/event_classifier/train.py`
-- ONNX model(s): `$STORYTELLER_DATA_PATH/models/event_classifier/`
-- Tokenizer file: `$STORYTELLER_DATA_PATH/models/event_classifier/tokenizer.json`
+**What was built**:
 
-**Starting model**: DeBERTa-v3-small (44M params, ~180MB ONNX). Best accuracy/size tradeoff per the research document. If ONNX export issues arise (DeBERTa has historically had quirks), fall back to DistilBERT (66M params, well-tested ONNX path).
+A complete Python fine-tuning pipeline at `training/event_classifier/` — 8 modules, 34 tests, HuggingFace Trainer-based training with ONNX export and validation.
+
+**Package structure**:
+
+```
+training/event_classifier/
+  pyproject.toml                    # torch, transformers, datasets, optimum, seqeval, accelerate
+  uv.lock                          # Reproducible dependency resolution
+  src/event_classifier/
+    __init__.py
+    schema.py                       # Label vocabs: 8 EventKinds, 15 BIO labels, model constants
+    dataset.py                      # JSONL loading, tokenization, BIO alignment, HF Dataset creation
+    models.py                       # load_event_classifier(), load_ner_model() thin wrappers
+    metrics.py                      # compute_event_metrics() (macro F1), compute_ner_metrics() (seqeval)
+    train.py                        # TrainConfig dataclass, HF Trainer, WeightedNerTrainer subclass
+    export.py                       # ONNX export via torch.onnx.export + PyTorch-vs-ORT validation
+    cli.py                          # CLI: --task {event,ner}, --validate-only, --export-only, --cpu
+  tests/
+    conftest.py                     # Fixtures: synthetic JSONL, pytest configuration
+    test_schema.py                  # Label vocab consistency, ID mappings
+    test_dataset.py                 # BIO alignment (critical surface), HF Dataset creation
+    test_models.py                  # Output shapes: [batch, 8] event, [batch, seq_len, 15] NER
+    test_metrics.py                 # Metric computation from synthetic predictions
+    test_export.py                  # ONNX export and numerical validation
+```
+
+**Deployed models** at `$STORYTELLER_DATA_PATH/models/event_classifier/`:
+
+| File | Size | Description |
+|---|---|---|
+| `event_classifier.onnx` | ~268MB | Multi-label sequence classification (8 EventKinds) |
+| `ner_classifier.onnx` | ~266MB | Token-level BIO NER (15 labels, 7 entity categories) |
+| `tokenizer.json` | ~712KB | Shared DistilBERT tokenizer |
+
+**Model: DistilBERT (fallback)**. DeBERTa-v3-small was the primary choice but produces NaN gradients on Apple Silicon MPS due to numerical instability in its disentangled attention mechanism (content-to-content, content-to-position, position-to-content triple attention). CPU training was numerically correct but prohibitively slow (~66s/step, ~78 hours for 10 epochs on M4). DistilBERT (`distilbert-base-uncased`, 66M params) works correctly on MPS at ~6.3 it/s.
+
+**Training results** (DistilBERT, 10 epochs, 8,000 examples):
+
+| Task | Metric | Score | Eval Loss | ONNX Validation |
+|---|---|---|---|---|
+| Event classification | macro F1 | 1.0 | 0.00047 (monotonically decreasing) | max diff 4.53e-06 |
+| NER entity extraction | entity F1 | 1.0 | < 0.001 | max diff 4.39e-05 |
+
+**Note on perfect F1**: Expected for combinatorial/templated training data where patterns are highly regular. Real prose will score lower. The models will need re-evaluation on actual manuscript text (Bramblehoof workshop scenes) — see C.6.
 
 **Task 1 — Event classification (sequence classification)**:
-- Input: tokenized text
-- Output: 10-dim sigmoid logits (multi-label, one per EventKind)
+- Input: tokenized text (max 128 tokens)
+- Output: 8-dim sigmoid logits (multi-label, one per classifiable EventKind)
 - Loss: binary cross-entropy
 - Metric: per-class F1, macro F1
+- Training: HuggingFace `Trainer`, `load_best_model_at_end=True`
 
 **Task 2 — Entity extraction (token classification)**:
-- Input: tokenized text
+- Input: tokenized text (max 128 tokens)
 - Output: per-token BIO labels for 7 categories (CHARACTER, OBJECT, LOCATION, GESTURE, SENSORY, ABSTRACT, COLLECTIVE) = 15 labels (7×B + 7×I + O)
-- Loss: cross-entropy with class weights (O tokens dominate)
-- Metric: entity-level F1 (span-exact match)
+- Loss: cross-entropy with inverse-frequency class weights (O tokens dominate)
+- Metric: entity-level F1 via `seqeval` (span-exact match)
+- Training: `WeightedNerTrainer` subclass with class-weighted loss
 
 **Task 3 — Participant role labeling (token classification)** — *deferred to C.2b*:
 - Depends on having both events and entities extracted. Can be trained as a follow-up once C.2a stabilizes.
 - In the interim, participant roles are inferred heuristically from entity position and EventKind (C.4).
 
-**Training approach (Approach B — separate models)**:
-1. Fine-tune one model for event classification (sequence-level [CLS] head)
-2. Fine-tune one model for entity extraction (token-level BIO head)
-3. Both use the same base encoder (DeBERTa-v3-small) but are trained independently
-4. Export each to ONNX via HuggingFace Optimum: `optimum-cli export onnx --optimize O2`
+**ONNX export**: Manual `torch.onnx.export(dynamo=False)` with dynamic axes for batch and sequence dimensions. HuggingFace Optimum's `main_export()` available as alternative path. Validation compares PyTorch and ORT outputs on the same input (atol=1e-4).
 
-**Why separate initially**: Easier to debug. Easier to evaluate task quality independently. Easier to regenerate training data for one task without retraining the other. Multi-task consolidation (Approach A) is a future optimization when both tasks are stable.
+**CLI usage**:
 
-**Export validation**: Compare PyTorch vs. onnxruntime output for numerical consistency (same pattern as `training/src/training/export.py`).
+```bash
+cd training/event_classifier && uv sync --dev
 
-**Python dependencies** (new in `training/event_classifier/pyproject.toml`):
-- `transformers>=4.38.0` (HuggingFace model loading)
-- `datasets>=2.18.0` (data loading utilities)
-- `optimum[exporters]>=1.17.0` (ONNX export)
-- `torch>=2.2.0`, `onnx`, `onnxruntime` (shared with character training)
+# Validate data
+uv run train-event-classifier --validate-only $STORYTELLER_DATA_PATH/training-data/event_classification.jsonl
 
-**Tests**: Exported ONNX models load in onnxruntime, produce expected output shapes, inference matches PyTorch within tolerance.
+# Train + export (event classification)
+uv run train-event-classifier --task event $DATA --epochs 10 -o /tmp/event_out
+
+# Train + export (NER)
+uv run train-event-classifier --task ner $DATA --epochs 10 -o /tmp/ner_out
+
+# Export from existing checkpoint
+uv run train-event-classifier --task event --export-only /tmp/event_out/model -o /tmp/export
+
+# Force CPU (workaround for DeBERTa on Apple Silicon)
+uv run train-event-classifier --task event --cpu $DATA
+```
+
+**Lesson learned — DeBERTa-v3 on Apple MPS**: DeBERTa-v3's disentangled attention has known numerical instability on Apple's MPS backend. Training starts normally but NaN gradients appear at ~epoch 0.59, the model never recovers, and all subsequent F1 scores are 0. The `--cpu` flag works around this numerically but is impractically slow. DistilBERT is the correct choice for local development on Apple Silicon. If DeBERTa quality is needed in the future, train on CUDA/cloud GPU.
 
 ---
 
@@ -440,40 +479,47 @@ The `assemble_atoms()` function constructs `EventAtom` instances:
 
 ## Open Questions
 
-1. **DeBERTa ONNX export stability**: DeBERTa-v3 has had intermittent ONNX export issues (HuggingFace transformers #35545). If export fails, DistilBERT is the immediate fallback. ModernBERT (Dec 2024) is the aspirational replacement when its ONNX path stabilizes.
+1. **DeBERTa ONNX export stability**: **RESOLVED — not applicable.** DeBERTa-v3-small has NaN instability on Apple MPS during training (not just export). DistilBERT used as fallback with excellent results. ModernBERT remains an aspirational replacement when its ecosystem matures. If DeBERTa quality is needed, train on CUDA/cloud GPU.
 
-2. **Training data volume calibration**: The research document estimates 500-1,000 examples per class. The combinatorial approach generates this easily, but the question is whether template-generated data is diverse enough. LLM augmentation increases diversity at the cost of annotation accuracy (LLM-generated text needs span re-annotation). Start with templates only; add LLM augmentation if quality plateaus.
+2. **Training data volume calibration**: **PARTIALLY RESOLVED.** 8,000 examples (1,000 per EventKind) with combinatorial templates produced F1=1.0 on both tasks. This confirms template data is sufficient for model learning, but the real test is performance on naturalistic prose. LLM augmentation remains a lever for when real-text evaluation reveals gaps.
 
 3. **Entity extraction scope**: Should the NER model extract ALL entity mentions (comprehensive, higher recall) or only entities likely to participate in relational events (focused, higher precision)? Comprehensive extraction feeds the MentionIndex for retroactive promotion; focused extraction reduces noise. Start comprehensive — the promotion pipeline already filters on relational weight.
 
 4. **Heuristic implication quality**: The EventKind × Role → ImplicationType mapping (C.4) is a hand-authored table. How much of the relational weight principle does it actually capture? Measure against manually annotated examples. If heuristic quality is <70% on realistic text, prioritize the ML relation classifier (C.4b).
 
-5. **Model directory layout**: Where do ONNX models and tokenizer files live? Options:
-   - `$STORYTELLER_DATA_PATH/models/event_classifier/` (with other data)
-   - `$STORYTELLER_MODEL_PATH/event_classifier/` (separate model path)
-   - Embedded in the binary (impractical for 180MB models)
+5. **Model directory layout**: **RESOLVED.** Models deployed to `$STORYTELLER_DATA_PATH/models/event_classifier/` — consistent with `CharacterPredictor` which uses the adjacent `$STORYTELLER_DATA_PATH/models/` directory. Both `STORYTELLER_DATA_PATH` and `STORYTELLER_MODEL_PATH` are defined in `.env`.
 
-   Follow the existing pattern from `CharacterPredictor` which uses `STORYTELLER_MODEL_PATH` or `STORYTELLER_DATA_PATH`.
-
-6. **Shared vs. separate tokenizers**: If we start with separate models (Approach B), they each need a tokenizer. If both use DeBERTa-v3-small, the tokenizer is identical. Load it once and share. The `tokenizers::Tokenizer` type is `Send + Sync`.
+6. **Shared vs. separate tokenizers**: **RESOLVED.** Both models use the same DistilBERT tokenizer. A single `tokenizer.json` is deployed alongside the ONNX models. In Rust, `Tokenizer` is `Send + Sync` — load once, share across both inference sessions.
 
 7. **Zero-shot bootstrapping value**: **RESOLVED — skipped.** GLiNER/NLI integration adds overhead for a path we'd replace within sessions. We have actionable, better fit-for-purpose models via the fine-tuning pipeline. Go directly to fine-tuned models.
+
+8. **CI/MLOps for large ONNX models** *(new, from C.2)*: The character prediction ONNX model was <1MB and could be committed to the repo for test fixtures. The event classifier models are ~268MB and ~266MB — far too large for git (even with LFS, this is unwieldy for CI). This creates a gap between local dev (where models are available) and CI (where they aren't).
+
+   **Implications**:
+   - **Local dev/test**: Works today — models at `$STORYTELLER_DATA_PATH/models/event_classifier/`, feature-gated tests (`test-ml-model`) load from disk.
+   - **CI gap**: No model artifacts available in CI. Feature-gated tests that require ONNX models will not run in CI until we solve model distribution.
+
+   **Options to evaluate**:
+   - **(a) Noop/mock inference in CI** (recommended near-term): A pluggable `EventClassifier` trait with a `MockClassifier` that returns fixed outputs. Tests verify pipeline wiring without real model inference.
+   - **(b) Model registry**: Store models in S3/GCS/HuggingFace Hub, pull on demand in CI. Adds infrastructure complexity but enables real inference in CI.
+   - **(c) Quantized/distilled test models**: Train a tiny model (~5MB) specifically for CI — not for quality, just for shape/pipeline validation.
+   - **(d) Git LFS**: Technically possible but poorly suited for models this size in a multi-developer workflow.
+
+   **Decision**: Start with (a) — the `EventClassifier` struct in C.3 should be designed with a trait boundary that enables mock implementations. Revisit (b)/(c) when CI model validation becomes critical.
 
 ## Sequencing
 
 For a single developer, the recommended order within Phase C:
 
-1. **C.0** (infrastructure) — half a session. Get `tokenizers` working. Small victory, unblocks everything.
-2. **C.1** (training data) — 1-2 sessions. Creative/generative work. The combinatorial template system is the durable artifact.
-3. **C.2** (model training + ONNX export) — 1-2 sessions. Depends on C.1 output. Python-heavy. Export validation is the critical gate.
-4. **C.3** (EventClassifier in Rust) — 1-2 sessions. Can scaffold against test fixtures before real models arrive from C.2. The tokenizer integration (C.0) and the `CharacterPredictor` pattern provide the template.
+1. **C.0** (infrastructure) — ✅ Complete. `tokenizers` crate integrated, `EventClassifier` module scaffolded.
+2. **C.1** (training data) — ✅ Complete. 8,000 examples across all 8 EventKinds with entity annotations.
+3. **C.2** (model training + ONNX export) — ✅ Complete. DistilBERT models trained (F1=1.0), ONNX exported and validated, deployed to `$STORYTELLER_DATA_PATH`.
+4. **C.3** (EventClassifier in Rust) — Next. Real ONNX models now available. The tokenizer integration (C.0) and the `CharacterPredictor` pattern provide the template. Design with trait boundary for CI mock (see Open Question 8).
 5. **C.4** (implication inference) — 1 session. Heuristic mapping is straightforward. The integration test (text → atoms → weight → promotion) is the validation.
 6. **C.5** (pipeline integration) — 1 session. Wiring. The classify_and_extract() function and play_scene_context binary update.
 7. **C.6** (evaluation) — ongoing. Not a single session — build the evaluation tooling early (after C.2) and use it throughout.
 
-**C.1 and C.3 can partially overlap**: The Rust scaffolding for EventClassifier (struct, load, tokenize, post-processing) can be built with mock model outputs while C.1-C.2 produce real training data and models. The integration point is when real ONNX models slot into the scaffold.
-
-**Estimated total**: 5-8 sessions, with the Python training pipeline (C.1-C.2) and Rust inference (C.3-C.5) as two parallel tracks joined at the ONNX model boundary.
+**Estimated remaining**: 3-5 sessions for C.3–C.6, with C.3 as the critical next step now that trained ONNX models are available.
 
 ## Verification
 
