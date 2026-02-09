@@ -11,6 +11,7 @@
 //! - [`types`] — Domain types: entities, tensors, events, scenes, relationships, narrative
 //! - [`traits`] — Shared traits (e.g., `LlmProvider`, `EmotionalGrammar`)
 //! - [`grammars`] — Emotional grammar implementations (e.g., `PlutchikWestern`)
+//! - [`promotion`] — Entity promotion logic (weight computation, tier determination, resolution)
 //! - [`errors`] — `StorytellerError` and `StorytellerResult`
 //! - [`config`] — Configuration loading and validation
 //! - [`database`] — PostgreSQL operations (event ledger, checkpoints, sessions)
@@ -21,6 +22,7 @@ pub mod database;
 pub mod errors;
 pub mod grammars;
 pub mod graph;
+pub mod promotion;
 pub mod traits;
 pub mod types;
 
