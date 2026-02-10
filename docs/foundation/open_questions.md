@@ -356,6 +356,76 @@ This is not merely an open question. It is, in part, a principle — an extensio
 
 ---
 
+---
+
+## Resolved Questions (Phases A-D, Feb 2026)
+
+The following questions were answered during the event system foundations implementation (Phases A through D.2). They are preserved here as a record of how the design evolved.
+
+### R1. Classifier Agent Design
+
+**Original question:** How do classifier agents identify and categorize narrative events from natural language input?
+
+**Resolution:** ML classification pipeline using fine-tuned DistilBERT ONNX models. Multi-label event classification (10 event kinds) + named entity recognition for entity extraction, running in the `Classifying` stage of the Bevy turn pipeline. Heuristic relational implication inference bridges classified events to the relational web. 8,000 training examples generated via combinatorial templates. See `phase-c-ml-classification-pipeline.md`.
+
+### R2. Turn Lifecycle Model
+
+**Original question:** How does the system manage the lifecycle of a turn — from player input through processing to rendered output?
+
+**Resolution:** `TurnCycleStage` enum with 8 variants (AwaitingInput → CommittingPrevious → Classifying → Predicting → Resolving → AssemblingContext → Rendering → AwaitingInput) implemented as a Bevy Resource with `run_if` conditions on each system. `ProvisionalStatus` (3 variants: Hypothesized → Rendered → Committed) tracks data provenance. See `turn-cycle-architecture.md`.
+
+### R3. Entity Promotion Heuristics
+
+**Original question:** How does the system decide when a mentioned entity becomes significant enough to track?
+
+**Resolution:** Configurable `PromotionConfig` with threshold values for weight accumulation. Weight computed from mention frequency, entity role in events, relational implication count, and contextual significance. Four resolution strategies for entity matching. See `storyteller-core/src/promotion/`.
+
+### R4. Character Agents in Narrator-Centric Model
+
+**Original question:** How do characters behave without individual LLM agents?
+
+**Resolution:** Custom ONNX ML prediction models. `CharacterPredictor` takes tensor data (personality axes, emotional state, relational context) as input features and predicts behavior (act/say/think) with confidence scores. The Narrator incorporates these predictions into its single LLM rendering call. See `storyteller-engine/src/inference/predictor.rs`.
+
+### R5. Reconciler Role
+
+**Original question:** How does multi-character coordination work without an LLM reconciler?
+
+**Resolution:** Deterministic resolver as pass-through for now. `ResolverOutput` type uses graduated success outcomes (FullSuccess/PartialSuccess/FailureWithConsequence/FailureWithOpportunity) and sequences character actions by initiative order. Future: genre-specific `GameDesignSystem` trait implementations for richer mechanics. See `storyteller-core/src/types/resolver.rs`.
+
+### R6. Async LLM Bridge in Bevy
+
+**Original question:** How does the system make async LLM calls from synchronous Bevy ECS systems?
+
+**Resolution:** Oneshot polling pattern in `rendering_system`. System spawns async task via `TokioRuntime` handle, receives result via `tokio::sync::oneshot` channel, polls each frame. `NarratorAgent` held in `Arc<tokio::sync::Mutex>` for the spawned task. No actor/channel pattern needed — the Narrator's request-response fits a oneshot naturally. See `storyteller-engine/src/systems/turn_cycle.rs`.
+
+---
+
+## New Questions (from Phases A-D, Feb 2026)
+
+These emerged during implementation and remain open.
+
+### 12. Narrator Output Deduplication Thresholds
+
+The Narrator sometimes re-renders previously presented content, inflating entity mention counts in committed-turn classification. Prompt engineering ("here's what's already been said") may be sufficient, or deterministic post-filtering (hash + Jaccard token overlap) may be needed, or embedding similarity for semantic dedup. The threshold between legitimate narrative callbacks/refrains and unwanted repetition needs empirical calibration across play sessions. See TAS-235.
+
+### 13. Narrator Model Size Selection
+
+14B vs 7B parameter models for narrator rendering. 14B (e.g., Qwen2.5-14B) produces richer prose but higher latency; 7B is faster but flatter. The quality threshold for "minimum viable narrative experience" is subjective and needs play-testing with real users. This interacts with the Model Capability Problem (Question 8 above) but is more specific — it's about the Narrator specifically, not all agents.
+
+### 14. Committed-Turn Classification on Real Prose
+
+The event classifier was trained on template-generated data (F1=1.0 on test split). Performance on real narrator prose + player input is unknown. Template language is structurally clean; real prose has metaphor, indirection, incomplete sentences, and ambiguity. The gap between template and production performance needs measurement. See Phase D.3 (TAS-234).
+
+### 15. Optimal Coreference Window
+
+Entity extraction currently operates on single-turn text. Multi-turn coreference resolution ("she" in turn 3 referring to "Sarah" introduced in turn 1) requires a lookback window. 1-turn lookback is simple but misses cross-turn references; N-turn lookback is richer but increases input size and potential for error. The optimal window size depends on narrative style and turn length, requiring empirical testing.
+
+### 16. Apache AGE Cypher Operator Coverage
+
+The persistence layer plans to use Apache AGE for graph queries (relational web, narrative graph, setting topology, event DAG). AGE's Cypher support is a subset of openCypher. The specific operations we need — path traversal within N hops, neighborhood aggregation, betweenness centrality, subgraph pattern matching, weighted shortest path — are untested against AGE. If coverage is insufficient, the fallback is `petgraph` for in-process computation with AGE for storage only. This is the single blocking question for the persistence layer approach. See TAS-244.
+
+---
+
 ## A Note on the Nature of These Questions
 
 These questions are not obstacles. They are the terrain.

@@ -1,5 +1,18 @@
 # Agent Message Type Catalog
 
+> **Architectural note (Feb 2026):** This document was written for the original multi-agent architecture where Character Agents, the Reconciler, and the World Agent were all LLM-based agents exchanging messages. The **narrator-centric pivot** (`narrator-architecture.md`, Feb 7 2026) replaced this model:
+>
+> - **Character Agents** are now ML prediction models (ONNX inference), not LLM agents
+> - **The Reconciler** is now a deterministic rules engine resolver, not an LLM coordinator
+> - **The World Agent** role is absorbed into the resolver and Storykeeper logic
+> - **Only the Narrator** makes LLM calls (one per turn)
+>
+> **What remains valid:** Message format design principles, token budget thinking, information boundary concepts, the Narrator ↔ Player protocol (MSG-N01/N02), and the Player → System messages (MSG-P01/P02). The Storykeeper → Narrator messages (MSG-SK01 through SK04) map directly to the three-tier context assembly system.
+>
+> **What is superseded:** Sections 4-6 (CharacterAgent and Reconciler messages), the multi-agent turn cycle, and any reference to serial LLM calls beyond the single Narrator call. See section-level notes below.
+>
+> See `narrator-architecture.md` and `turn-cycle-architecture.md` for the current architecture.
+
 ## Purpose
 
 This document enumerates every message type exchanged between agents in the storyteller system, derived from the information flow diagram in `system_architecture.md:186-244`. For each message type: sender, receiver, content structure, when sent, and information boundary constraints.
@@ -319,6 +332,8 @@ token_budget: 200-300 tokens
 
 ### 4. Storykeeper → CharacterAgent
 
+> **Superseded:** In the narrator-centric architecture, Character Agents are ML prediction models, not LLM agents. There is no CharacterInstantiation message — instead, the `CharacterPredictor` loads ONNX models and predicts character behaviors from tensor data. The information boundary concepts (what a character knows vs. doesn't know) remain valid as constraints on the prediction pipeline's input features. See `storyteller-engine/src/inference/predictor.rs`.
+
 #### MSG-SK05: CharacterInstantiation
 
 Creates a Character Agent for a scene — the most complex message in the system.
@@ -400,6 +415,8 @@ token_budget: 200-400 tokens
 
 ### 5. CharacterAgent → System
 
+> **Superseded:** Character output is now produced by ML prediction models (`CharacterPredictor`), not LLM agents. The prediction output is structured data (action type, confidence, description) rather than free-form natural language. The concept of separating character *intent* from narrative *rendering* remains central — ML predictions are intent; the Narrator renders them as prose. See `storyteller-engine/src/context/prediction.rs`.
+
 #### MSG-CA01: CharacterExpression
 
 The Character Agent's output — what the character says, does, and feels.
@@ -463,6 +480,8 @@ note: "The Storykeeper validates this against constraints and either
 ---
 
 ### 6. Reconciler Messages
+
+> **Superseded:** The Reconciler is now a deterministic rules engine (`ResolverOutput` in `storyteller-core/src/types/resolver.rs`), not an LLM agent. It sequences character actions by initiative order, resolves conflicts via graduated success outcomes (FullSuccess/PartialSuccess/FailureWithConsequence/FailureWithOpportunity), and produces structured data for the Narrator's context assembly. The concept of structuring multi-character interactions without adding content remains valid.
 
 #### MSG-R01: CharacterExpressionBatch
 
@@ -657,6 +676,8 @@ token_budget: 100-200 tokens
 
 ## Turn Cycle: Full Message Sequence
 
+> **Superseded:** The turn cycle below describes the multi-agent architecture with 3-4 serial LLM calls per turn. The current architecture uses a single LLM call (Narrator only) with an 8-stage Bevy ECS pipeline: AwaitingInput → CommittingPrevious → Classifying → Predicting → Resolving → AssemblingContext → Rendering → AwaitingInput. See `turn-cycle-architecture.md` and `storyteller-engine/src/systems/turn_cycle.rs`.
+
 ### Standard Turn (Single Character Scene)
 
 ```
@@ -713,6 +734,8 @@ Serial LLM calls: 4 (Storykeeper, CharacterAgents[parallel], Reconciler, Narrato
 ---
 
 ## Open Questions Surfaced by This Catalog
+
+> **Resolution note:** Questions 1-3 below were resolved by the narrator-centric pivot. The Storykeeper is now deterministic logic (not an LLM call). The World Agent is a rules engine (not an LLM). CharacterAgent prompts are replaced by ML tensor input features. Questions 4-7 remain relevant as conceptual concerns even though their implementation context has changed.
 
 1. **Storykeeper reasoning as LLM call**: The Storykeeper's evaluation (step 3) requires complex reasoning — checking gates, constraints, updating tensors. Is this one LLM call or multiple? If one, the prompt is enormous. If multiple, latency compounds. This needs benchmarking.
 

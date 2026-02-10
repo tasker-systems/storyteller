@@ -1,5 +1,16 @@
 # Event System
 
+> **Architectural note (Feb 2026):** This document was written for the original multi-agent architecture. The **narrator-centric pivot** (`narrator-architecture.md`, Feb 7 2026) and subsequent **event system foundations** work (Phases A-E) changed the implementation significantly:
+>
+> - **Classification** is now ML-based: fine-tuned DistilBERT models for event classification + NER entity extraction, not LLM-mediated interpretation. See `storyteller-engine/src/inference/event_classifier.rs`.
+> - **The subscriber model** (Section "The Subscriber Model") is superseded by Bevy ECS systems with `run_if` conditions and `SystemSet` ordering. Events flow through the turn pipeline, not an event bus.
+> - **Character Agents as event consumers** are superseded by ML prediction models.
+> - **The four-stage classification pipeline** is partially superseded — Stages 1-2 map to the ML classifier; Stage 3 (sensitivity matching) remains a valid future concept; Stage 4 (LLM deep interpretation) is replaced by ML models.
+>
+> **What remains valid:** The two-track architecture concept (factual vs. interpretive), the event taxonomy, priority tier model (immediate/scene-local/deferred), the truth set concept, the sensitivity map concept, scene-boundary batch processing, cascade management, and Tasker Core integration direction.
+>
+> See `docs/ticket-specs/event-system-foundations/` for the implementation that supersedes this design, and `event-dependency-graph.md` for the DAG model extending this work.
+
 ## Purpose
 
 This document specifies the event lifecycle — how narrative events are identified, classified, routed, and processed across the system's agents. It addresses the fundamental tension between the subjectivity of narrative experience (did the player's words constitute a betrayal?) and the system's need for discrete, processable events that enter a truth set and fire triggers.
@@ -10,7 +21,7 @@ The event system is the bridge between the flow of play (natural language, ambig
 
 - **`tensor-schema-spec.md`** defines the event-driven architecture — NarrativeEvents, InterpretiveJudgments, TriggerSubscriptions, and the two processing paths (factual and interpretive). This document operationalizes that architecture into a runtime system.
 - **`scene-model.md`** defines the turn cycle and scene lifecycle — when events are processed during play. This document specifies *how* they are processed within that lifecycle.
-- **`agent-message-catalog.md`** defines the messages that carry event information between agents.
+- **`agent-message-catalog.md`** defines the messages that carry event information between agents (partially superseded — see that document's architectural note).
 - **`entity-model.md`** defines entity promotion as an event-driven process.
 
 ---
@@ -223,6 +234,8 @@ Threshold(predicates: [A, B, C], min_match: 2)
 ---
 
 ## The Classification Pipeline
+
+> **Partially superseded:** The four-stage pipeline below described an LLM-mediated classification approach. The current implementation uses ML models (fine-tuned DistilBERT for multi-label event classification + NER for entity extraction) running in the `Classifying` stage of the Bevy turn pipeline. The conceptual progression from structural parsing → factual classification → sensitivity matching → deep interpretation remains valid as a design model, but stages 1-2 are now handled by `classify_and_extract()` in the ML pipeline, and stage 4 (LLM deep interpretation) is replaced by ML confidence scores. Stage 3 (sensitivity matching) remains a valid future extension for pre-computed trigger-aware pattern matching. See `phase-c-ml-classification-pipeline.md` for implementation details.
 
 ### Overview
 
@@ -473,6 +486,8 @@ PromotionReason =
 ---
 
 ## The Subscriber Model
+
+> **Superseded:** The event bus and agent subscription model below is replaced by Bevy ECS systems with `SystemSet` ordering and `run_if` conditions. Events flow through the turn pipeline stages rather than being routed via subscriptions. The conceptual insight — that different agents need different events at different urgencies — is preserved in the pipeline's stage ordering (classify → predict → resolve → assemble context → render). See `turn-cycle-architecture.md`.
 
 ### Agent Subscriptions
 
@@ -790,6 +805,8 @@ The system guards against trigger loops — where event A fires trigger X, which
 ---
 
 ## Integration with the Turn Cycle
+
+> **Superseded:** The turn cycle below shows multi-agent coordination with 3-4 serial LLM calls and parallel classification stages. The current turn cycle is an 8-stage Bevy ECS state machine with a single LLM call. See `turn-cycle-architecture.md` for the current implementation.
 
 The event system operates within the turn cycle defined in `scene-model.md`. Here is the expanded turn cycle showing where each stage of event processing runs:
 
