@@ -62,7 +62,7 @@ impl TurnContext {
 /// A completed turn archived by `commit_previous_system`.
 ///
 /// Captures all outputs from the turn pipeline for post-hoc analysis,
-/// journal construction, and future committed-turn classification.
+/// journal construction, and committed-turn classification.
 #[derive(Debug, Clone)]
 pub struct CompletedTurn {
     /// Turn ordinal within the scene.
@@ -71,8 +71,11 @@ pub struct CompletedTurn {
     pub player_input: String,
     /// The Narrator's rendered prose (if rendering succeeded).
     pub narrator_rendering: Option<NarratorRendering>,
-    /// Event classification output (if classifier was available).
+    /// Event classification of player input alone (from the Classifying stage).
     pub classification: Option<ClassificationOutput>,
+    /// Combined-text classification from committed-turn analysis (D.3).
+    /// Classifies narrator prose + player input together for richer event extraction.
+    pub committed_classification: Option<ClassificationOutput>,
     /// ML character predictions (if predictor was available).
     pub predictions: Option<Vec<CharacterPrediction>>,
     /// When this turn was committed.
@@ -252,6 +255,7 @@ mod tests {
                 stage_directions: None,
             }),
             classification: None,
+            committed_classification: None,
             predictions: None,
             committed_at: chrono::Utc::now(),
         };
