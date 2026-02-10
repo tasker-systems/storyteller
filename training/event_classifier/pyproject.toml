@@ -28,6 +28,7 @@ dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
 
 [project.scripts]
 train-event-classifier = "event_classifier.cli:main"
+evaluate-classifier = "event_classifier.evaluate_cli:main"
 
 [build-system]
 requires = ["hatchling"]
