@@ -7,10 +7,13 @@ use bevy_app::{App, Plugin, Update};
 use bevy_ecs::prelude::IntoSystemConfigs;
 use bevy_ecs::schedule::IntoSystemSetConfigs;
 
-use crate::components::turn::{ActiveTurnStage, NarratorTask, TurnContext};
+use crate::components::turn::{
+    ActiveTurnStage, NarratorTask, PendingInput, TurnContext, TurnHistory,
+};
+use crate::systems::rendering::rendering_system;
 use crate::systems::turn_cycle::{
     assemble_context_system, classify_system, commit_previous_system, in_stage, predict_system,
-    resolve_system, start_rendering_system, TurnCycleSets,
+    resolve_system, TurnCycleSets,
 };
 use storyteller_core::types::turn_cycle::TurnCycleStage;
 
@@ -26,7 +29,9 @@ impl Plugin for StorytellerEnginePlugin {
         // Turn cycle resources
         app.init_resource::<ActiveTurnStage>()
             .init_resource::<TurnContext>()
-            .init_resource::<NarratorTask>();
+            .init_resource::<NarratorTask>()
+            .init_resource::<TurnHistory>()
+            .init_resource::<PendingInput>();
 
         // System set ordering — sequential pipeline within a single frame
         app.configure_sets(
@@ -61,7 +66,7 @@ impl Plugin for StorytellerEnginePlugin {
                 assemble_context_system
                     .run_if(in_stage(TurnCycleStage::AssemblingContext))
                     .in_set(TurnCycleSets::ContextAssembly),
-                start_rendering_system
+                rendering_system
                     .run_if(in_stage(TurnCycleStage::Rendering))
                     .in_set(TurnCycleSets::Rendering),
             ),
@@ -89,12 +94,12 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(StorytellerEnginePlugin);
 
-        // Set stage to CommittingPrevious with input — simulates player input received
+        // Set stage to CommittingPrevious with PendingInput — simulates player input received
         app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
-        app.world_mut().resource_mut::<TurnContext>().player_input = Some("hello".to_string());
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("hello".to_string());
 
-        // One update — all stages fire in sequence (stubs advance immediately),
-        // ending back at AwaitingInput with a clean TurnContext.
+        // One update — all stages fire in sequence (no NarratorResource so
+        // rendering skips), ending back at AwaitingInput.
         app.update();
 
         let stage = app.world().resource::<ActiveTurnStage>();
@@ -105,9 +110,10 @@ mod tests {
         );
 
         let ctx = app.world().resource::<TurnContext>();
-        assert!(
-            ctx.player_input.is_none(),
-            "TurnContext should be reset after commit_previous"
+        assert_eq!(
+            ctx.player_input.as_deref(),
+            Some("hello"),
+            "Player input should be moved from PendingInput"
         );
     }
 }

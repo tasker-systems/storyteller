@@ -1,4 +1,4 @@
-//! Turn pipeline orchestration — Bevy systems for each stage.
+//! Turn pipeline orchestration — synchronous Bevy systems for each stage.
 //!
 //! See: `docs/technical/turn-cycle-architecture.md`
 //!
@@ -6,16 +6,25 @@
 //! does its work, and advances the stage. The pipeline runs one
 //! stage per frame — no stage skipping.
 //!
-//! Two systems are fully implemented (classify, predict). The remaining
-//! four are stubs that advance the stage without doing work — they will
-//! be filled in as the corresponding subsystems mature.
+//! Five synchronous systems live here:
+//! - `commit_previous_system`: archives previous turn, moves PendingInput
+//! - `classify_system`: ML event classification (or keyword fallback)
+//! - `predict_system`: ML character prediction (parallel across cast)
+//! - `resolve_system`: pass-through wrapping predictions into ResolverOutput
+//! - `assemble_context_system`: three-tier Narrator context assembly
+//!
+//! The async narrator rendering system lives in [`super::rendering`].
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SystemSet;
 
+use storyteller_core::traits::NoopObserver;
+use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::turn_cycle::TurnCycleStage;
 
-use crate::components::turn::{ActiveTurnStage, NarratorTask, TurnContext};
+use crate::components::turn::{
+    ActiveTurnStage, CompletedTurn, JournalResource, PendingInput, TurnContext, TurnHistory,
+};
 
 // ---------------------------------------------------------------------------
 // SystemSet — declared ordering for the turn pipeline
@@ -185,54 +194,154 @@ impl std::fmt::Debug for GrammarResource {
 // Systems — Stubs (advance stage only)
 // ---------------------------------------------------------------------------
 
-/// Stub: resolve predictions via rules engine.
+/// Resolve predictions via rules engine (pass-through for now).
 ///
-/// Will eventually call the action resolver to sequence predictions,
-/// enforce world constraints, and detect conflicts.
-pub fn resolve_system(mut stage: ResMut<ActiveTurnStage>) {
-    tracing::debug!("resolve_system: stub — advancing stage");
+/// Wraps ML predictions into a `ResolverOutput`. Real resolver logic
+/// (RPG-like mechanics, conflict detection, graduated success) is future work.
+pub fn resolve_system(mut stage: ResMut<ActiveTurnStage>, mut turn_ctx: ResMut<TurnContext>) {
+    let predictions = turn_ctx.predictions.clone().unwrap_or_default();
+
+    let resolver_output = ResolverOutput {
+        sequenced_actions: vec![],
+        original_predictions: predictions,
+        scene_dynamics: String::new(),
+        conflicts: vec![],
+    };
+
+    turn_ctx.resolver_output = Some(resolver_output);
+
+    tracing::debug!("resolve_system: wrapped predictions into ResolverOutput");
     stage.0 = stage.0.next();
 }
 
-/// Stub: assemble three-tier Narrator context.
+/// Assemble three-tier Narrator context from scene data, journal, and resolver output.
 ///
-/// Will eventually call `assemble_narrator_context()` to build
-/// preamble + journal + retrieved context.
-pub fn assemble_context_system(mut stage: ResMut<ActiveTurnStage>) {
-    tracing::debug!("assemble_context_system: stub — advancing stage");
+/// Calls the existing `assemble_narrator_context()` with data sourced from
+/// Bevy resources. Falls back gracefully when optional resources are missing.
+pub fn assemble_context_system(
+    mut stage: ResMut<ActiveTurnStage>,
+    mut turn_ctx: ResMut<TurnContext>,
+    scene_res: Option<Res<SceneResource>>,
+    journal_res: Option<Res<JournalResource>>,
+) {
+    let Some(ref scene_res) = scene_res else {
+        tracing::warn!("assemble_context_system: no SceneResource — skipping");
+        stage.0 = stage.0.next();
+        return;
+    };
+
+    let resolver_output = turn_ctx.resolver_output.clone().unwrap_or(ResolverOutput {
+        sequenced_actions: vec![],
+        original_predictions: vec![],
+        scene_dynamics: String::new(),
+        conflicts: vec![],
+    });
+
+    let characters: Vec<&storyteller_core::types::character::CharacterSheet> =
+        scene_res.characters.iter().collect();
+
+    let empty_journal = storyteller_core::types::narrator_context::SceneJournal::new(
+        storyteller_core::types::scene::SceneId::new(),
+        1200,
+    );
+    let journal = journal_res.as_ref().map(|j| &j.0).unwrap_or(&empty_journal);
+
+    let player_input = turn_ctx.player_input.as_deref().unwrap_or("");
+
+    let context = crate::context::assemble_narrator_context(
+        &scene_res.scene,
+        &characters,
+        journal,
+        &resolver_output,
+        player_input,
+        &[], // referenced_entities — empty for now
+        crate::context::DEFAULT_TOTAL_TOKEN_BUDGET,
+        &NoopObserver,
+    );
+
+    tracing::debug!(
+        estimated_tokens = context.estimated_tokens,
+        "assemble_context_system: assembled three-tier context"
+    );
+
+    turn_ctx.narrator_context = Some(context);
     stage.0 = stage.0.next();
 }
 
-/// Stub: commit the previous turn's provisional data.
+/// Commit the previous turn's provisional data, then prepare for the new turn.
 ///
-/// Will eventually commit predictions (Hypothesized → Committed),
-/// Narrator rendering (Rendered → Committed), update the event ledger,
-/// and modify the truth set. On the first turn of a scene, this is a no-op.
+/// 1. If TurnContext has previous data (rendering or classification), archive
+///    as a `CompletedTurn` and add rendering text to the journal.
+/// 2. Reset TurnContext for the new turn.
+/// 3. Move `PendingInput` → `TurnContext.player_input`.
+/// 4. Advance to `Classifying`.
 ///
-/// Resets the TurnContext for the new turn's pipeline stages.
+/// On the first turn of a scene, there is no previous data to archive —
+/// the system simply moves PendingInput and advances.
 pub fn commit_previous_system(
     mut stage: ResMut<ActiveTurnStage>,
     mut turn_ctx: ResMut<TurnContext>,
+    mut pending: ResMut<PendingInput>,
+    mut history: ResMut<TurnHistory>,
+    journal: Option<ResMut<JournalResource>>,
 ) {
-    tracing::debug!("commit_previous_system: stub — resetting context for new turn");
-    turn_ctx.reset();
-    stage.0 = stage.0.next(); // → Classifying
-}
+    let has_previous_data = turn_ctx.rendering.is_some() || turn_ctx.classification.is_some();
 
-/// Stub: start the async Narrator LLM call.
-///
-/// Will eventually spawn a tokio task, set `NarratorTask::InFlight`,
-/// and transition to a polling state. `Rendering` is the final active
-/// stage — when complete, the pipeline returns to `AwaitingInput`.
-pub fn start_rendering_system(mut stage: ResMut<ActiveTurnStage>, mut _task: ResMut<NarratorTask>) {
-    tracing::debug!("start_rendering_system: stub — advancing to AwaitingInput");
-    stage.0 = stage.0.next(); // → AwaitingInput
+    if has_previous_data {
+        let turn_number = history.next_turn_number();
+
+        // Add rendering to journal if available
+        if let Some(ref rendering) = turn_ctx.rendering {
+            if let Some(mut journal_res) = journal {
+                crate::context::journal::add_turn(
+                    &mut journal_res.0,
+                    turn_number,
+                    &rendering.text,
+                    vec![],
+                    vec![], // TODO: extract emotional markers from rendering
+                    &NoopObserver,
+                );
+            }
+        }
+
+        let completed = CompletedTurn {
+            turn_number,
+            player_input: turn_ctx.player_input.clone().unwrap_or_default(),
+            narrator_rendering: turn_ctx.rendering.clone(),
+            classification: turn_ctx.classification.clone(),
+            predictions: turn_ctx.predictions.clone(),
+            committed_at: chrono::Utc::now(),
+        };
+
+        tracing::debug!(
+            turn_number,
+            has_rendering = completed.narrator_rendering.is_some(),
+            has_classification = completed.classification.is_some(),
+            "commit_previous_system: archived turn"
+        );
+
+        history.turns.push(completed);
+    } else {
+        tracing::debug!("commit_previous_system: first turn — no previous data to archive");
+    }
+
+    // Reset context for the new turn
+    turn_ctx.reset();
+
+    // Move pending input into the fresh context
+    turn_ctx.player_input = pending.0.take();
+
+    stage.0 = stage.0.next(); // → Classifying
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use bevy_app::prelude::*;
+    use storyteller_core::types::message::NarratorRendering;
+
+    use crate::components::turn::NarratorTask;
+    use crate::systems::rendering::rendering_system;
 
     /// Helper: create a minimal Bevy App with turn cycle resources.
     fn test_app() -> App {
@@ -240,8 +349,14 @@ mod tests {
         app.init_resource::<ActiveTurnStage>();
         app.init_resource::<TurnContext>();
         app.init_resource::<NarratorTask>();
+        app.init_resource::<TurnHistory>();
+        app.init_resource::<PendingInput>();
         app
     }
+
+    // -----------------------------------------------------------------------
+    // Stage condition
+    // -----------------------------------------------------------------------
 
     #[test]
     fn in_stage_condition_matches() {
@@ -252,6 +367,10 @@ mod tests {
         assert!(stage.0 == TurnCycleStage::Classifying);
     }
 
+    // -----------------------------------------------------------------------
+    // classify_system
+    // -----------------------------------------------------------------------
+
     #[test]
     fn classify_system_advances_without_input() {
         let mut app = test_app();
@@ -260,7 +379,6 @@ mod tests {
         app.add_systems(Update, classify_system);
         app.update();
 
-        // Should advance to Predicting even without input
         let stage = app.world().resource::<ActiveTurnStage>();
         assert_eq!(stage.0, TurnCycleStage::Predicting);
     }
@@ -279,6 +397,10 @@ mod tests {
         assert_eq!(stage.0, TurnCycleStage::Predicting);
     }
 
+    // -----------------------------------------------------------------------
+    // predict_system
+    // -----------------------------------------------------------------------
+
     #[test]
     fn predict_system_advances_without_predictor() {
         let mut app = test_app();
@@ -287,40 +409,19 @@ mod tests {
         app.add_systems(Update, predict_system);
         app.update();
 
-        // No predictor resource → skip, advance
         let stage = app.world().resource::<ActiveTurnStage>();
         assert_eq!(stage.0, TurnCycleStage::Resolving);
     }
 
-    #[test]
-    fn resolve_stub_advances() {
-        let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Resolving;
-
-        app.add_systems(Update, resolve_system);
-        app.update();
-
-        let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
-    }
+    // -----------------------------------------------------------------------
+    // commit_previous_system
+    // -----------------------------------------------------------------------
 
     #[test]
-    fn assemble_context_stub_advances() {
-        let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::AssemblingContext;
-
-        app.add_systems(Update, assemble_context_system);
-        app.update();
-
-        let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::Rendering);
-    }
-
-    #[test]
-    fn commit_previous_resets_and_advances_to_classifying() {
+    fn commit_previous_moves_pending_input_and_advances() {
         let mut app = test_app();
         app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
-        app.world_mut().resource_mut::<TurnContext>().player_input = Some("test".to_string());
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("new input".to_string());
 
         app.add_systems(Update, commit_previous_system);
         app.update();
@@ -329,26 +430,245 @@ mod tests {
         assert_eq!(stage.0, TurnCycleStage::Classifying);
 
         let ctx = app.world().resource::<TurnContext>();
-        assert!(ctx.player_input.is_none(), "TurnContext should be reset");
+        assert_eq!(ctx.player_input.as_deref(), Some("new input"));
+
+        let pending = app.world().resource::<PendingInput>();
+        assert!(pending.0.is_none(), "PendingInput should be consumed");
     }
 
     #[test]
-    fn start_rendering_stub_returns_to_awaiting() {
+    fn commit_previous_first_turn_no_archive() {
         let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Rendering;
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("first input".to_string());
 
-        app.add_systems(Update, start_rendering_system);
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert!(history.turns.is_empty(), "First turn should not archive");
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert_eq!(ctx.player_input.as_deref(), Some("first input"));
+    }
+
+    #[test]
+    fn commit_previous_archives_when_rendering_present() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("previous input".to_string());
+            ctx.rendering = Some(NarratorRendering {
+                text: "The hooves leave prints.".to_string(),
+                stage_directions: None,
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next input".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        assert_eq!(history.turns[0].player_input, "previous input");
+        assert!(history.turns[0].narrator_rendering.is_some());
+        assert_eq!(history.turns[0].turn_number, 1);
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert_eq!(ctx.player_input.as_deref(), Some("next input"));
+    }
+
+    #[test]
+    fn commit_previous_archives_when_classification_present() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("previous input".to_string());
+            ctx.classification = Some(crate::inference::event_classifier::ClassificationOutput {
+                event_kinds: vec![],
+                entity_mentions: vec![],
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next input".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        assert!(history.turns[0].classification.is_some());
+    }
+
+    #[test]
+    fn turn_history_accumulates_across_commits() {
+        let mut app = test_app();
+
+        app.add_systems(Update, commit_previous_system);
+
+        // First commit: nothing to archive, just set up
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("turn 1".to_string());
+        app.update();
+
+        // Simulate pipeline completing: set rendering
+        app.world_mut().resource_mut::<TurnContext>().rendering = Some(NarratorRendering {
+            text: "Rendering 1".to_string(),
+            stage_directions: None,
+        });
+
+        // Second commit: archives turn 1
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("turn 2".to_string());
+        app.update();
+
+        // Simulate pipeline completing
+        app.world_mut().resource_mut::<TurnContext>().rendering = Some(NarratorRendering {
+            text: "Rendering 2".to_string(),
+            stage_directions: None,
+        });
+
+        // Third commit: archives turn 2
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("turn 3".to_string());
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 2);
+        assert_eq!(history.turns[0].turn_number, 1);
+        assert_eq!(history.turns[1].turn_number, 2);
+    }
+
+    #[test]
+    fn commit_previous_updates_journal() {
+        let mut app = test_app();
+        let journal = storyteller_core::types::narrator_context::SceneJournal::new(
+            storyteller_core::types::scene::SceneId::new(),
+            1200,
+        );
+        app.world_mut().insert_resource(JournalResource(journal));
+
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("test".to_string());
+            ctx.rendering = Some(NarratorRendering {
+                text: "The scene unfolds.".to_string(),
+                stage_directions: None,
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let journal = app.world().resource::<JournalResource>();
+        assert_eq!(journal.0.turn_count(), 1);
+        assert!(journal.0.entries[0].content.contains("The scene unfolds"));
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_system
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn resolve_wraps_predictions_into_resolver_output() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Resolving;
+        app.world_mut().resource_mut::<TurnContext>().predictions = Some(vec![]);
+
+        app.add_systems(Update, resolve_system);
         app.update();
 
         let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::AwaitingInput);
+        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.resolver_output.is_some());
     }
 
     #[test]
-    fn full_pipeline_stub_cycle() {
+    fn resolve_handles_no_predictions() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Resolving;
+        // predictions is None
+
+        app.add_systems(Update, resolve_system);
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        let resolver = ctx.resolver_output.as_ref().unwrap();
+        assert!(resolver.original_predictions.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // assemble_context_system
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn assemble_context_advances_without_scene() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::AssemblingContext;
+
+        app.add_systems(Update, assemble_context_system);
+        app.update();
+
+        let stage = app.world().resource::<ActiveTurnStage>();
+        assert_eq!(stage.0, TurnCycleStage::Rendering);
+
+        // No narrator_context since no scene
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.narrator_context.is_none());
+    }
+
+    #[test]
+    fn assemble_context_populates_narrator_context() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::AssemblingContext;
+
+        // Insert SceneResource with workshop data
+        let scene_res = SceneResource {
+            scene: crate::workshop::the_flute_kept::scene(),
+            characters: vec![
+                crate::workshop::the_flute_kept::bramblehoof(),
+                crate::workshop::the_flute_kept::pyotir(),
+            ],
+        };
+        app.world_mut().insert_resource(scene_res);
+
+        // Set some resolver output
+        app.world_mut()
+            .resource_mut::<TurnContext>()
+            .resolver_output = Some(ResolverOutput {
+            sequenced_actions: vec![],
+            original_predictions: vec![],
+            scene_dynamics: String::new(),
+            conflicts: vec![],
+        });
+        app.world_mut().resource_mut::<TurnContext>().player_input =
+            Some("I approach slowly".to_string());
+
+        app.add_systems(Update, assemble_context_system);
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.narrator_context.is_some());
+        let nc = ctx.narrator_context.as_ref().unwrap();
+        assert_eq!(nc.preamble.cast_descriptions.len(), 2);
+        assert_eq!(nc.player_input_summary, "I approach slowly");
+        assert!(nc.estimated_tokens > 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Full pipeline (includes rendering_system from sibling module)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn full_pipeline_with_pending_input() {
         let mut app = test_app();
 
-        // Register all systems (no run_if conditions — just run in sequence)
+        // Register all systems in sequence
         app.add_systems(
             Update,
             (
@@ -357,16 +677,14 @@ mod tests {
                 predict_system.after(classify_system),
                 resolve_system.after(predict_system),
                 assemble_context_system.after(resolve_system),
-                start_rendering_system.after(assemble_context_system),
+                rendering_system.after(assemble_context_system),
             ),
         );
 
-        // Start at CommittingPrevious with input
+        // Start at CommittingPrevious with pending input
         app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
-        app.world_mut().resource_mut::<TurnContext>().player_input =
-            Some("I look around".to_string());
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("I look around".to_string());
 
-        // One update should run through all stages
         app.update();
 
         let stage = app.world().resource::<ActiveTurnStage>();
@@ -375,5 +693,74 @@ mod tests {
             TurnCycleStage::AwaitingInput,
             "Full pipeline should complete in one update"
         );
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert_eq!(
+            ctx.player_input.as_deref(),
+            Some("I look around"),
+            "Player input should be preserved through pipeline"
+        );
+    }
+
+    #[test]
+    fn full_pipeline_with_scene_populates_context() {
+        let mut app = test_app();
+
+        let scene_res = SceneResource {
+            scene: crate::workshop::the_flute_kept::scene(),
+            characters: vec![
+                crate::workshop::the_flute_kept::bramblehoof(),
+                crate::workshop::the_flute_kept::pyotir(),
+            ],
+        };
+        app.world_mut().insert_resource(scene_res);
+
+        app.add_systems(
+            Update,
+            (
+                commit_previous_system,
+                classify_system.after(commit_previous_system),
+                predict_system.after(classify_system),
+                resolve_system.after(predict_system),
+                assemble_context_system.after(resolve_system),
+                rendering_system.after(assemble_context_system),
+            ),
+        );
+
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("I approach the fence".to_string());
+
+        app.update();
+
+        let stage = app.world().resource::<ActiveTurnStage>();
+        assert_eq!(stage.0, TurnCycleStage::AwaitingInput);
+
+        // Context was assembled (even though rendering skipped without NarratorResource)
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(
+            ctx.narrator_context.is_some(),
+            "Should have assembled narrator context"
+        );
+        assert!(ctx.resolver_output.is_some(), "Should have resolver output");
+    }
+
+    // -----------------------------------------------------------------------
+    // TurnHistory helpers
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn turn_history_next_turn_number() {
+        let mut history = TurnHistory::default();
+        assert_eq!(history.next_turn_number(), 1);
+
+        history.turns.push(CompletedTurn {
+            turn_number: 1,
+            player_input: "test".to_string(),
+            narrator_rendering: None,
+            classification: None,
+            predictions: None,
+            committed_at: chrono::Utc::now(),
+        });
+        assert_eq!(history.next_turn_number(), 2);
     }
 }

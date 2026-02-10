@@ -118,21 +118,47 @@ enum `TurnCycleStage` lives in core because it has no engine dependencies.
 
 The Narrator LLM call is the one async operation in the pipeline. All
 other stages (classification, prediction, resolution, context assembly)
-are synchronous CPU-bound work.
+are synchronous CPU-bound work. The async bridge lives in its own module
+(`systems/rendering.rs`) to separate the async lifecycle management from
+the synchronous pipeline orchestration in `systems/turn_cycle.rs`.
 
-The async bridge uses a three-state enum as a Bevy Resource:
+The bridge uses a three-state enum (`NarratorTask`) as a Bevy Resource,
+driven by a single `rendering_system`:
 
 ```
 NarratorTask::Idle
-    → start_rendering_system spawns tokio task, transitions to InFlight
+    → rendering_system spawns tokio task via TokioRuntime, transitions to InFlight
 NarratorTask::InFlight(oneshot::Receiver)
-    → poll_rendering_system checks receiver each frame
+    → rendering_system polls receiver each frame; stays in Rendering stage until ready
 NarratorTask::Complete(Result)
     → result moved to TurnContext.rendering, stage advances to AwaitingInput
 ```
 
 This avoids blocking the Bevy schedule while the LLM generates tokens.
-The poll system runs every frame until the task completes.
+The system runs every frame while in the `Rendering` stage until the
+oneshot resolves. When `NarratorResource` or `TokioRuntime` is absent,
+the system skips rendering and advances (graceful degradation).
+
+## Module Organization
+
+The turn pipeline is split across modules by concern:
+
+```
+systems/
+├── turn_cycle.rs   # Synchronous pipeline: 5 systems + SystemSets + run conditions
+├── rendering.rs    # Async narrator bridge: rendering_system + NarratorTask lifecycle
+├── ...
+```
+
+The five synchronous systems in `turn_cycle.rs` are thin wrappers around
+framework-independent service functions. `rendering.rs` encapsulates the
+one genuinely async operation — spawning a tokio task for the LLM call
+and polling for completion.
+
+Resource wrapper types (`ClassifierResource`, `PredictorResource`, etc.)
+live alongside the systems that use them. Pipeline state resources
+(`TurnContext`, `TurnHistory`, `NarratorTask`, etc.) live in
+`components/turn.rs` as Bevy Resources.
 
 ## System Registration
 
