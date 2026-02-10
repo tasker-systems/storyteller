@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document sequences the implementation work for the event grammar and entity reference model into phased work items. Each phase has clear inputs, outputs, and dependencies. Investigation areas are marked explicitly — these are places where the right approach is not yet known and experimentation is needed before committing to an implementation.
+This document sequences the implementation work for the event grammar, entity reference model, and ML classification pipeline into phased work items. Each phase has clear inputs, outputs, and dependencies. Investigation areas are marked explicitly — these are places where the right approach is not yet known and experimentation is needed before committing to an implementation.
 
 The plan builds incrementally on existing working code. No phase breaks the ML prediction pipeline, the context assembly system, or the existing turn cycle.
 
@@ -14,11 +14,13 @@ The implementation workflow is driven by a single organizing principle: **events
 
 2. **Weight computation next** (Phase B): Before building classifiers, establish *what classification is for* — computing relational weight from events and making promotion decisions. This ensures that every subsequent phase has a clear success criterion: does the classified output produce meaningful relational weight?
 
-3. **ML classification pipeline** (Phase C): Build the training data generation → model fine-tuning → ONNX inference pipeline for event classification, entity extraction, and relation inference. The classifier's purpose is not taxonomy for its own sake — it's discovering the relationships that give entities weight. See `classifying-events-and-entities.md` for the ML approach.
+3. **ML classification pipeline** (Phase C): Build the training data generation → model fine-tuning → ONNX inference pipeline for event classification, entity extraction, and relation inference. The classifier's purpose is not taxonomy for its own sake — it's discovering the relationships that give entities weight.
 
-4. **Turn-unit extraction** (Phase D): Extend the same classifier to handle Narrator prose. The same model handles both registers (player input and literary prose).
+4. **Turn-unit extraction** (Phase D): Wire the full pipeline end-to-end — Narrator rendering, turn history, committed-turn classification, and the rejection flow.
 
-5. **Composition** (Phase E): Detect compound events where the combination carries more relational weight than the sum of its parts.
+5. **Composition** (Phase E): Detect compound events at the turn level where the combination carries more relational weight than the sum of its parts.
+
+6. **Documentation** (Phase F): Update design documents to reflect what was actually built.
 
 Every phase serves the relational weight principle. Classification feeds extraction, extraction feeds relation inference, relation inference feeds weight accumulation, weight accumulation drives entity promotion. The pipeline has a single purpose: **make entities real through their relationships.**
 
@@ -27,23 +29,23 @@ Every phase serves the relational weight principle. Classification feeds extract
 ## Phase Overview
 
 ```
-Phase A: Event Grammar Types         ← pure types, no behavior
+Phase A: Event Grammar Types            ✅ COMPLETE
     │
     ▼
-Phase B: Event-Entity Bridge         ← relational weight, promotion logic
+Phase B: Event-Entity Bridge            ✅ COMPLETE
     │
     ├─── (B validates the weight principle; C builds the ML pipeline that feeds it)
     ▼
-Phase C: ML Classification Pipeline  ← training data + model + ONNX inference → EventAtom
+Phase C: ML Classification Pipeline     ✅ COMPLETE (C.0–C.6)
     │
     ▼
-Phase D: Turn-Unit Extraction        ← committed turn → events (same classifier, prose register)
+Phase D: Turn Pipeline Integration      ← wiring, LLM rendering, turn history, deduplication
     │
     ▼
-Phase E: Event Composition           ← compound events from sequential atoms
+Phase E: Turn-Level Composition         ← scoped to turn/near-turn atoms only
     │
     ▼
-Phase F: Revised event-system.md     ← documentation update
+Phase F: Documentation Update           ← update docs for this branch
 ```
 
 ### Relationship to Other Documents
@@ -52,524 +54,353 @@ Phase F: Revised event-system.md     ← documentation update
 |---|---|
 | `event-grammar.md` | Defines what an event *is* — types, composition, alignment with existing types |
 | `entity-reference-model.md` | Defines how entities are referenced, resolved, promoted through events |
-| `classifying-events-and-entities.md` | Explores ML/NLP approaches to classification — the technical foundation for Phases C and D |
+| `classifying-events-and-entities.md` | Explores ML/NLP approaches to classification — the technical foundation for Phase C |
+| `turn-cycle-architecture.md` | Actor-command-service → Bevy mapping, stage enum design, turn lifecycle |
 | This document | Sequences the work, identifies dependencies and investigation areas |
 
 ---
 
-## Phase A: Event Grammar Types
+## Phase A: Event Grammar Types — ✅ COMPLETE
 
-**Goal**: Define the complete type system for events, entity references, and their relationships. Pure type definitions with derives, constructibility tests, and serialization round-trip tests. No behavioral code.
+**Status**: Complete (Feb 8, 2026). 31 new tests (66 total in core). All checks pass.
 
-**Depends on**: Nothing. Can start immediately.
+**What was built**: All work items A.1–A.9 as specified. New file `storyteller-core/src/types/event_grammar.rs` with `EventAtom`, `EventKind` (10 variants), `Participant`, `ParticipantRole`, `RelationalImplication`, `ImplicationType`, `EventSource`, `EventConfidence`, `CompoundEvent`, `CompositionType`. Extended `entity.rs` with `EntityRef`, `ReferentialContext`, `PromotionTier`, `RelationalWeight`, `UnresolvedMention`, `EntityBudget`. Updated `event.rs` with typed `EventPayload` enum (replacing `serde_json::Value`), `TurnId` (UUID v7). Added `Turn`, `ProvisionalStatus` (originally `TurnState`, renamed during lifecycle refinement), `CommittedTurn`.
 
-**Inputs**: Type sketches from `event-grammar.md` and `entity-reference-model.md`, existing types in `storyteller-core/src/types/`.
-
-**Outputs**:
-- New file: `storyteller-core/src/types/event_grammar.rs`
-- Extended file: `storyteller-core/src/types/entity.rs` (adds `EntityRef`, `ReferentialContext`, `PromotionTier`, `RelationalWeight`)
-- Updated file: `storyteller-core/src/types/event.rs` (typed `NarrativeEvent` payload + `TurnId`)
-- Updated file: `storyteller-core/src/types/message.rs` (migration annotations for `TurnId`)
-- Module registration in `storyteller-core/src/types/mod.rs`
-
-### Work Items
-
-**A.1: EventAtom and EventKind**
-
-New types in `event_grammar.rs`:
-- `EventAtom` — the minimal event unit
-- `EventKind` — semantic event taxonomy (10 variants)
-- `SceneLifecycleType`, `EntityLifecycleType` — lifecycle subtypes
-- Tests: constructibility for each `EventKind` variant, serde round-trip
-
-Follows existing conventions:
-- Derives: `Debug, Clone, serde::Serialize, serde::Deserialize`
-- Ordered enums get `PartialOrd, Ord` where useful
-- Copy types get `Copy` where the type is small enough
-- `PartialEq, Eq` on all enums
-
-**A.2: Participant and ParticipantRole**
-
-New types in `event_grammar.rs`:
-- `Participant` — entity reference + role
-- `ParticipantRole` — 6-variant enum (Actor, Target, Instrument, Location, Witness, Subject)
-- Tests: exhaustiveness, constructibility
-
-**A.3: RelationalImplication and ImplicationType**
-
-New types in `event_grammar.rs`:
-- `RelationalImplication` — source, target, type, weight
-- `ImplicationType` — 9-variant enum (Possession, Proximity, Attention, EmotionalConnection, TrustSignal, InformationSharing, Conflict, Care, Obligation)
-- Tests: weight range validation, constructibility
-
-**A.4: EventSource, EventConfidence, ClassifierRef**
-
-New types in `event_grammar.rs`:
-- `EventSource` — 5-variant enum (PlayerInput, TurnExtraction, ConfirmedPrediction, System, Composed)
-- `ClassifierRef` — name + version
-- `EventConfidence` — value + evidence
-- `ConfidenceEvidence` — 5-variant enum
-- Tests: confidence range validation, constructibility
-
-**A.5: CompoundEvent and CompositionType**
-
-New types in `event_grammar.rs`:
-- `CompoundEvent` — ordered atoms with composition type
-- `CompositionType` — 4-variant enum (Causal, Temporal, Conditional, Thematic)
-- Tests: constructibility, serde round-trip
-
-**A.6: EntityRef and ReferentialContext**
-
-New types in `entity.rs` (extending the existing file):
-- `EntityRef` — 3-variant enum (Resolved, Unresolved, Implicit)
-- `ReferentialContext` — descriptors, spatial, possessor, prior mentions
-- `EntityRef::entity_id()` and `EntityRef::is_resolved()` methods
-- Tests: resolution state checks, constructibility
-
-**A.7: PromotionTier and RelationalWeight**
-
-New types in `entity.rs`:
-- `PromotionTier` — 5-variant ordered enum (Unmentioned through Persistent)
-- `RelationalWeight` — accumulator struct
-- `UnresolvedMention` — lightweight ledger record
-- `EntityBudget` — scene-level tracking budget
-- Tests: tier ordering, weight accumulation
-
-**A.8: NarrativeEvent Typed Payload**
-
-Update `event.rs`:
-- Add `EventPayload` enum (Atom, Compound, Untyped)
-- Migrate `NarrativeEvent::payload` from `serde_json::Value` to `EventPayload`
-- Keep `Untyped` variant for migration compatibility
-- Tests: both typed and untyped payload construction, serde round-trip
-
-**A.9: Turn Types (TurnId, Turn, TurnState)**
-
-New types — `TurnId` in `event.rs` (alongside `EventId`, follows identical UUID v7 pattern) and `Turn`, `TurnState` in `event_grammar.rs`:
-
-- `TurnId` — UUID v7 newtype with same derives as `EventId`/`SceneId` (Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize), `new()` and `Default`
-- `Turn` — first-class turn representation: `id: TurnId`, `scene_id: SceneId`, `turn_number: u32` (ordinal), `state: TurnState`, `created_at`, `rendered_at`, `committed_at` timestamps
-- `TurnState` — three-state lifecycle enum: `Hypothesized`, `Rendered`, `Committed`
-- `CommittedTurn` — the extraction bundle: `turn_id: TurnId`, `scene_id: SceneId`, `turn_number: u32`, narrator prose, player response, prediction metadata, extraction flag
-
-Migration annotations:
-- `EventAtom` gains `turn_id: Option<TurnId>` — `Option` because system events (scene lifecycle) may not belong to a specific turn
-- `EventSource::TurnExtraction` uses `turn_id: TurnId` instead of `turn_number: u32`
-- `ReferentialContext.first_mentioned_turn` migrates from `u32` to `TurnId`
-- `UnresolvedMention` gains `turn_id: TurnId`
-- Existing `PlayerInput.turn_number` and `TurnPhase.turn_number` in `message.rs` will need migration — add `turn_id: TurnId` as the authoritative identifier, preserve `turn_number` as human-readable ordinal
-
-Bevy integration note: The active `Turn` will become a Bevy Resource, replacing the current `turn_number: u32` tracking in `PlayerInput` and `TurnPhase`. This is a Phase D concern (turn lifecycle management) but the types are defined here so that Phase A establishes the vocabulary.
-
-Tests: TurnId generation and ordering, Turn construction, TurnState transitions, CommittedTurn construction, serde round-trip
-
-**Verification**: `cargo check --all-features`, `cargo test --all-features`, `cargo clippy --all-features`, `cargo fmt --check`. All existing tests continue to pass. New types have constructibility and serde round-trip tests.
+**Deviation from original plan**: `TurnState` was renamed to `ProvisionalStatus` during Phase C lifecycle work. This better captures its role — tracking data provenance (Hypothesized → Rendered → Committed), not the turn itself. The turn's lifecycle is driven by `TurnCycleStage`, not `ProvisionalStatus`.
 
 ---
 
-## Phase B: Event-Entity Bridge
+## Phase B: Event-Entity Bridge — ✅ COMPLETE
 
-**Goal**: Implement the computational logic that connects events to entity promotion. Given a stream of events involving an entity reference, compute relational weight and determine promotion tier.
+**Status**: Complete (Feb 8, 2026). 48 new tests (114 total in core). All checks pass.
 
-**Depends on**: Phase A (types must exist).
+**What was built**: All work items B.1–B.4. New directory `storyteller-core/src/promotion/` with `mod.rs` (`PromotionConfig`), `weight.rs` (`compute_relational_weight`, `normalize_mention`, `entity_matches`), `tier.rs` (`determine_promotion_tier`, `evaluate_demotion`), `resolution.rs` (`resolve_entity_ref` with 4 strategies: possessive, spatial, anaphoric, descriptive; `TrackedEntity`, `SceneResolutionContext`), `mention_index.rs` (`MentionIndex` via BTreeMap, `ResolutionRecord`, `retroactively_promote`).
 
-**Outputs**:
-- New file: `storyteller-core/src/types/promotion.rs` or functions in `entity.rs`
-- Possibly new file: `storyteller-engine/src/systems/entity_promotion.rs` (if Bevy system integration is appropriate)
-
-### Work Items
-
-**B.1: Relational Weight Computation**
-
-Given a set of `EventAtom` instances involving an `EntityRef`, compute the accumulated `RelationalWeight`:
-
-```rust
-fn compute_relational_weight(
-    entity: &EntityRef,
-    events: &[EventAtom],
-    player_entity_id: EntityId,
-) -> RelationalWeight {
-    // Sum relational implication weights
-    // Count distinct events
-    // Count distinct relationship partners
-    // Separate player-interaction weight
-}
-```
-
-Tests: weight computation for various event patterns (no implications = zero weight, player interaction = non-zero player weight, multiple implications accumulate).
-
-**B.2: Promotion Tier Determination**
-
-Given a `RelationalWeight`, determine the appropriate `PromotionTier`:
-
-```rust
-fn determine_promotion_tier(
-    weight: &RelationalWeight,
-    current_tier: PromotionTier,
-    entity_origin: EntityOrigin,
-    config: &PromotionConfig,
-) -> PromotionTier {
-    // Apply thresholds from config
-    // Respect authored overrides
-    // Apply player-interaction override
-    // Never demote below authored tier
-}
-```
-
-`[PLACEHOLDER]` Threshold values in `PromotionConfig` are initial guesses. They will be calibrated from play data.
-
-Tests: promotion for each transition, player override, authored entity protection against demotion.
-
-**B.3: EntityRef Resolution**
-
-Given an `EntityRef::Unresolved`, attempt to resolve it against known tracked entities:
-
-```rust
-fn resolve_entity_ref(
-    unresolved: &EntityRef,
-    tracked_entities: &[TrackedEntity],
-    scene_context: &SceneContext,
-) -> Option<EntityId> {
-    // Try possessive resolution
-    // Try spatial resolution
-    // Try anaphoric resolution
-    // Try descriptive resolution
-    // Return None if ambiguous
-}
-```
-
-This is the rule-based resolution pipeline. It may be extended with ML resolution later (Phase C investigation).
-
-Tests: each resolution strategy independently, ambiguous cases return None, chained resolution (possessive + spatial).
-
-**B.4: Retroactive Promotion**
-
-When an entity is promoted, walk back through the event ledger and resolve prior `Unresolved` mentions:
-
-```rust
-fn retroactively_promote(
-    new_entity_id: EntityId,
-    mention: &UnresolvedMention,
-    ledger: &mut EventLedger,
-) -> Vec<EventId> {
-    // Find all prior mentions matching this entity
-    // Resolve their EntityRef to the new EntityId
-    // Return the list of updated event IDs
-}
-```
-
-`[INVESTIGATION NEEDED]` Whether this mutates ledger entries in place or creates resolution overlay events. See `entity-reference-model.md` for the three options. Start with option 2 (separate mention index) for simplicity.
-
-Tests: retroactive resolution finds prior mentions, resolution doesn't affect unrelated entities.
-
-**Verification**: All Phase A tests still pass. New behavioral tests cover weight computation, promotion, resolution, and retroactive promotion.
+**No deviations**: Implemented as planned. Investigation question resolved — went with option 2 (separate mention index) for retroactive promotion.
 
 ---
 
-## Phase C: ML Classification Pipeline
+## Phase C: ML Classification Pipeline — ✅ COMPLETE
 
-**Goal**: Build the ML-powered classification pipeline that produces `EventAtom` instances from natural language. This replaces the naive keyword classifier with trained models following the same pattern as the character prediction pipeline (combinatorial training data → PyTorch fine-tuning → ONNX export → `ort` inference in Rust). The existing `classify_player_input()` remains as a fallback during development.
+**Status**: Complete (Feb 9, 2026). 7 work items (C.0–C.6). 316 Rust tests + 50 Python tests. All checks pass.
 
-See `classifying-events-and-entities.md` for the full ML approach, model selection rationale, and training data generation strategy.
+See `phase-c-ml-classification-pipeline.md` for detailed specifications and completion status.
 
-**Depends on**: Phase A (types), Phase B (entity resolution logic to validate outputs against).
+### What was built
 
-**Outputs**:
-- New directory: `training/event_classifier/` — Python training pipeline (templates, augmentation, fine-tuning, ONNX export)
-- New file: `storyteller-ml/src/event_schema.rs` — feature encoding/decoding for event classification (mirrors `feature_schema.rs` pattern)
-- New file: `storyteller-engine/src/inference/event_classifier.rs` — `EventClassifier` struct (ort Session, tokenizer, multi-task inference)
-- Modified file: `storyteller-engine/src/context/prediction.rs` — integrate `EventClassifier` output alongside existing `classify_player_input()`
-- New dependency: `tokenizers` crate (workspace-level)
+| Work Item | What |
+|---|---|
+| **C.0** | `EventClassifier` struct in `storyteller-engine/src/agents/classifier.rs` — tokenizers integration |
+| **C.1** | 8,000 annotated training examples at `$STORYTELLER_DATA_PATH/training-data/event_classification.jsonl` |
+| **C.2** | Python fine-tuning pipeline at `training/event_classifier/` (HuggingFace Trainer, 8 modules, 34 tests) |
+| **C.3** | ONNX inference in `storyteller-engine/src/inference/event_classifier.rs` — `classify_text()` runs both models |
+| **C.4** | Relational implication inference in `storyteller-core/src/types/implication.rs` — heuristic mapping from EventKind × participants |
+| **C.5** | Pipeline integration in `context/prediction.rs` — `classify_and_extract()`, `classification_to_event_features()` |
+| **C.6** | Python evaluation framework — `evaluation.py`, `evaluate_cli.py`, 16 tests, baseline F1=1.0 on templated data |
 
-### Work Items
+### Additionally built (beyond original plan scope)
 
-**C.1: Training Data Generation**
+| Component | What |
+|---|---|
+| **Turn cycle architecture** | `docs/technical/turn-cycle-architecture.md` — actor-command-service → Bevy mapping |
+| **TurnCycleStage** | 8-variant state machine in `storyteller-core/src/types/turn_cycle.rs` with `CommittingPrevious` |
+| **EntityCategory** | Core-level NER category abstraction (Character/Object/Location/Other) |
+| **Bevy resources** | `ActiveTurnStage`, `TurnContext`, `NarratorTask` in `storyteller-engine/src/components/turn.rs` |
+| **Bevy systems** | `classify_system` + `predict_system` (real) + 4 stubs in `systems/turn_cycle.rs` |
+| **Plugin registration** | `StorytellerEnginePlugin` registers resources and systems with `run_if` stage gating |
+| **Label contract** | `storyteller-ml/src/event_labels.rs` — shared constants between Rust and Python |
+| **Lifecycle refinement** | `TurnState` → `ProvisionalStatus`, `TurnPhaseKind` eliminated (duplicative of `TurnCycleStage`) |
 
-Build the combinatorial training data pipeline for event classification, entity extraction, and relation classification. Follows the pattern established in `storyteller-ml/src/matrix/`:
+### Key deviations from original plan
 
-- Template definitions per `EventKind` (10 classes × ~20-50 templates each)
-- Entity type templates per NER category (7 categories × referential patterns × narrative contexts)
-- Relation templates per `ImplicationType` (9 types × entity pair configurations)
-- Combinatorial expansion producing ~5,000-10,000 labeled examples per task
-- LLM augmentation (Ollama) for naturalistic literary-register variations
-- Output: JSONL files in TACRED-like format (sentence + spans + labels)
-
-Both registers represented: player-input style (imperative, short) and Narrator-prose style (literary, past tense). The combinatorial matrix includes register as an axis.
-
-Tests: generated data validates against the type schemas (EventKind, entity categories, ImplicationType are all parseable).
-
-**C.2: Model Fine-Tuning and ONNX Export**
-
-Fine-tune DeBERTa-v3-small (or DistilBERT) on the generated training data. Two approaches, evaluated in order:
-
-**Approach B (separate models, initial)**: Fine-tune independent models for each task:
-1. Event classification: sequence classification (10 EventKind labels, multi-label sigmoid)
-2. Entity extraction: token classification (7 NER categories, BIO tagging)
-3. Participant role labeling: token classification (6 ParticipantRole labels per entity token)
-
-Export each via HuggingFace Optimum: `optimum-cli export onnx --optimize O2`
-
-**Approach A (multi-task, target)**: Single shared encoder with 3 heads (event, NER, role). Export as single ONNX model with named outputs (`event_logits`, `ner_logits`, `role_logits`). Matches the `CharacterPredictor` pattern.
-
-Start with Approach B (validates each task independently), consolidate to Approach A when task definitions stabilize.
-
-Tests: exported ONNX models load in `ort`, produce expected output shapes, inference matches PyTorch within tolerance.
-
-**C.3: EventClassifier in Rust**
-
-New `EventClassifier` struct in `storyteller-engine/src/inference/event_classifier.rs`, following the `CharacterPredictor` pattern:
-
-```rust
-pub struct EventClassifier {
-    session: Mutex<Session>,
-    tokenizer: Tokenizer,
-    pool: rayon::ThreadPool,
-}
-
-impl EventClassifier {
-    pub fn classify_text(
-        &self,
-        input: &str,
-        scene_cast: &[TrackedEntity],
-    ) -> StorytellerResult<ClassificationResult> {
-        // 1. Tokenize (tokenizers crate)
-        // 2. Build tensors [1, seq_len]
-        // 3. Run inference (ort)
-        // 4. Decode: EventKind from [CLS] logits, entity spans from NER logits,
-        //    participant roles from role logits
-        // 5. Resolve extracted entities against scene_cast
-        // 6. Return ClassificationResult (atoms + entity refs + confidence)
-    }
-}
-```
-
-The `classify_text()` method returns a `ClassificationResult` containing:
-- `EventAtom` instances (with EventKind, participants, confidence)
-- `EntityRef` instances (resolved and unresolved)
-- The existing `EventFeatureInput` (backward compatible with the character prediction pipeline)
-
-The existing `classify_player_input()` → `EventFeatureInput` path is preserved as a fallback during development and for the character prediction pipeline which depends on it.
-
-Tests: `EventClassifier` loads model and tokenizer, produces valid atoms from test inputs, known entity names resolve correctly, participant roles are assigned.
-
-**C.4: Relational Implication Inference**
-
-Given an `EventAtom`'s kind and participants, infer relational implications. This is the **critical bridge** between classification and the relational weight principle — without this step, classified events produce no entity promotions.
-
-Two complementary approaches:
-
-1. **Heuristic mapping** (fast, deterministic): EventKind + ParticipantRoles → ImplicationType mapping table. `SpeechAct(Actor=A, Target=B)` → `[Attention(A→B), InformationSharing(A→B)]`. Covers ~70% of cases.
-
-2. **ML relation classifier** (higher accuracy): Entity Marker approach — insert `[E1]`/`[E2]` markers around entity pairs, classify with fine-tuned model. Covers the remaining ~30% including figurative language and complex constructions.
-
-Start with heuristic mapping (C.4a) and add ML relation classification (C.4b) when training data is available.
-
-```rust
-fn infer_implications(
-    kind: &EventKind,
-    participants: &[Participant],
-) -> Vec<RelationalImplication> {
-    // Heuristic: EventKind + roles → known implication patterns
-    // ML: entity marker classification for ambiguous cases
-}
-```
-
-Tests: each EventKind produces appropriate implications, heuristic mapping covers all EventKind × ParticipantRole combinations, weights are in valid range. **Integration test**: classified event → implications → weight computation (Phase B) → promotion decision.
-
-**C.5: Zero-Shot Bootstrapping (Optional, Parallel)**
-
-Before fine-tuned models are available, validate the pipeline with zero-shot models:
-- GLiNER for entity extraction (pass narrative entity type descriptions at inference time)
-- NLI model (DeBERTa-v3-base-mnli) for relation classification (ImplicationType as hypothesis)
-
-This produces lower-quality output but validates the full pipeline end-to-end: text → entities → events → implications → weight → promotion. The pipeline architecture is the same — only the models change when fine-tuned versions are ready.
-
-**Verification**: Existing `classify_player_input()` tests still pass. ML prediction pipeline is unaffected (EventFeatureInput still produced). New tests cover the full relationship-discovery pipeline: text → classification → extraction → implication → weight validation.
+1. **DistilBERT instead of DeBERTa-v3-small**: DeBERTa-v3-small has NaN instability on Apple MPS. DistilBERT used as production fallback.
+2. **Separate models (Approach B)**: Event classification + NER as independent ONNX models. Multi-task consolidation deferred.
+3. **EventFeatureInput is not legacy**: Recognized as a feature encoding region for the character prediction model. The EventClassifier should not produce it — conversion from `ClassificationOutput` → `EventFeatureInput` belongs in pipeline orchestration.
+4. **C.5 scope change**: Original plan had C.5 as zero-shot bootstrapping. Repurposed as pipeline integration (wiring EventClassifier into prediction pipeline) since fine-tuned models were available immediately.
+5. **Turn cycle architecture emerged organically**: Not in the original plan but needed to wire the ML systems into Bevy. Produced the `CommittingPrevious` insight — commitment of previous turn's provisional data triggered by player's next input.
 
 ---
 
-## Phase D: Turn-Unit Extraction Pipeline
+## Phase D: Turn Pipeline Integration
 
-**Goal**: Build the turn-unit extraction pipeline — the system that processes a committed turn (Narrator prose + player response + prediction metadata) into `EventAtom` instances, infers their relational implications, and feeds the results into the entity promotion pipeline. The same `EventClassifier` from Phase C handles both player input and prose — the difference is preprocessing (clause segmentation for prose) and source tagging (`EventSource::TurnExtraction`).
+**Goal**: Wire the full turn pipeline end-to-end — Narrator LLM rendering, in-memory turn history, committed-turn classification (narrator prose + player input together), prediction confirmation, narrator output deduplication, and the rejection flow. The ML and LLM infrastructure are already running; this is wiring and integration.
 
-**Depends on**: Phase A (types), Phase C (ML classifier and entity extraction). Phase D extends Phase C's classifier to the full turn unit.
+**Depends on**: Phase C (ML classifier, Bevy systems, `TurnCycleStage`).
 
-**This phase has investigation elements** (clause segmentation quality for prose) but the fundamental approach is settled: post-hoc classification of committed turns using the unified ML classifier pipeline, with implication inference feeding the relational weight accumulator.
+**Key architectural insight from Phase C**: With `CommittingPrevious`, narrator prose does not need pre-classification before the player sees it. Instead, when the player responds, the previous turn's narrator prose and the new player input are classified *together* as a unit. This provides better coreference resolution — referents span both texts (the narrator's nouns and the player's pronouns, or vice versa).
+
+**Outputs**:
+- In-memory turn history (player input, narrator rendering, classification, predictions per turn)
+- Real `commit_previous_system` (currently stub)
+- Real `start_rendering_system` / `poll_rendering_system` (currently stubs)
+- Narrator output deduplication
+- Committed-turn classification (narrator prose + player input as unit)
+- Prediction confirmation
+- X-card / rejection flow
 
 ### Work Items
 
-**D.1: Turn Lifecycle Integration**
+**D.1: In-Memory Turn History** — ✅ PARTIALLY COMPLETE
 
-The Turn types (`TurnId`, `Turn`, `TurnState`, `CommittedTurn`, `PredictionMetadata`) are defined in Phase A.9. This work item implements the *behavioral* logic:
+The `TurnContext` resource holds the current turn's accumulated data (`player_input`, `classification`, `predictions`, `rendering`). What's missing is *persistence across turns* — when `commit_previous_system` resets `TurnContext` for the new turn, the previous turn's data is lost.
 
-- **Turn state machine**: Transition logic for `Hypothesized → Rendered → Committed`, with the rejection path `Rendered → Hypothesized` (X-card / content concern). Guard against invalid transitions (e.g., `Hypothesized → Committed` without rendering).
-- **Turn creation**: Scene entry creates the first `Turn` (state = `Hypothesized`). Each player response commits the current turn and creates the next.
-- **Bevy Resource**: Register `Turn` as a Bevy Resource representing the active turn. `TurnPhase` and `TurnPhaseKind` (in `message.rs`) track pipeline progress within the active turn. Migrate `TurnPhase.turn_number: u32` → `TurnPhase.turn_id: TurnId`.
-- **Idempotency guard**: `CommittedTurn.events_extracted` flag prevents re-processing. Extracting from an already-extracted turn is a no-op.
+Add a `TurnHistory` Bevy Resource that accumulates committed turn data in memory:
 
-Tests: state transitions (valid and invalid), turn creation at scene entry, idempotency (extracting from an already-extracted turn is a no-op), Bevy Resource lifecycle.
+```rust
+/// Bevy Resource: in-memory history of committed turns.
+///
+/// Until the persistence branch (PostgreSQL + event ledger), this is the
+/// only record of previous turns. Used for:
+/// - Narrator context assembly (scene journal)
+/// - Coreference resolution (prior mentions)
+/// - Deduplication (comparing new rendering against recent output)
+#[derive(Debug, Default, Resource)]
+pub struct TurnHistory {
+    pub turns: Vec<CompletedTurn>,
+}
 
-**D.2: Narrator Prose Classification**
+/// A turn that has been committed — all provisional data confirmed.
+#[derive(Debug, Clone)]
+pub struct CompletedTurn {
+    pub turn_number: u32,
+    pub player_input: String,
+    pub narrator_rendering: Option<String>,
+    pub classification: Option<ClassificationOutput>,
+    pub predictions: Vec<CharacterPrediction>,
+    pub committed_at: std::time::Instant,
+}
+```
 
-Use the Phase C `EventClassifier` on Narrator prose. The same `classify_text()` method handles both registers — the model was trained on both player-input and literary-prose examples (see C.1 training data generation). Prose classification adds a preprocessing step:
+`commit_previous_system` archives the current `TurnContext` into `TurnHistory` before resetting.
 
-1. **Clause segmentation**: Split Narrator prose into clauses/sentences (rule-based: sentence boundaries, coordination conjunctions, semicolons). Each clause becomes an independent classification input.
-2. **Per-clause classification**: `EventClassifier.classify_text()` on each clause → EventKind, entity refs, participant roles.
-3. **Entity resolution across clauses**: Entities extracted from earlier clauses inform resolution of later clauses within the same turn. Coreference operates within the turn's text with the scene cast as constraint.
-4. **Source tagging**: All resulting atoms tagged with `EventSource::TurnExtraction { turn_id }`.
-5. **Implication inference**: Each atom's relational implications computed (C.4), feeding into the weight accumulator.
+Tests: history accumulates across turns, reset doesn't lose history, history is accessible to downstream systems.
 
-`[INVESTIGATION NEEDED]` Whether clause-level classification loses too much context for literary prose. Starting point: clause-level (simpler, reuses Phase C classifier directly). Measure: classification accuracy on manually annotated prose passages. Fallback: paragraph-level encoding with per-clause attention windows.
+**D.2: Narrator Rendering (Real System)**
 
-Tests: known prose patterns produce correct atoms (described flinch → `EmotionalExpression`, described movement → `SpatialChange`, described speech → `SpeechAct`). **Integration test**: prose → atoms → implications → weight accumulation → entity promotion decisions.
+Replace the `start_rendering_system` stub with a real async LLM call. The infrastructure exists — `ExternalServerProvider` (Ollama) is functional, `NarratorTask::InFlight` bridges async/sync. Wire:
 
-**D.3: Prediction Confirmation**
+1. `assemble_context_system` → builds `NarratorContextInput` (for now: preamble + turn history as journal + prediction markdown)
+2. `start_rendering_system` → spawns LLM call via `ExternalServerProvider`, sets `NarratorTask::InFlight`
+3. `poll_rendering_system` → checks oneshot receiver each frame, on completion: moves result to `TurnContext.rendering`, advances to `AwaitingInput`
 
-Cross-reference extracted atoms against ML prediction metadata. When a turn-extracted atom matches a prediction (same character, same action type), the atom's source is upgraded to `EventSource::ConfirmedPrediction` and its confidence is boosted:
+Model consideration: Test with both 7B and 14B parameter models. 14B may be a sweet spot for expressiveness and instruction-following over 7B, without the latency penalty of 32B Qwen (which was demonstrably worse at following instructions despite being larger).
+
+`[INVESTIGATION NEEDED]` Prompt engineering for narrator voice, instruction following, and output format. The narrator should render character intent in story voice without re-rendering previously presented content (see D.4).
+
+Tests: Bevy system tests (mock LLM provider, verify `NarratorTask` state transitions). Feature-gated `test-llm` tests that run real Ollama and verify rendering output.
+
+**D.3: Committed-Turn Classification**
+
+With `CommittingPrevious`, the classification window includes *both* the previous turn's narrator prose *and* the current player input. This is architecturally significant — noun-pronoun-subject-object referents are contextually relevant across both texts.
+
+In `commit_previous_system`:
+1. Retrieve previous narrator rendering from `TurnContext.rendering`
+2. Receive new player input
+3. Concatenate: `"{narrator_prose}\n\n{player_input}"` as a single classification input
+4. Run `classify_and_extract()` on the combined text
+5. This gives entity extraction and event classification the full coreference context
+
+The existing `classify_system` continues to classify *only* player input for the current turn's character prediction pipeline (fast, focused). The committed-turn classification is a separate, richer pass that feeds the event ledger and entity promotion.
+
+```rust
+/// Classify the committed turn unit — narrator prose + player input together.
+///
+/// This runs during CommittingPrevious and produces richer classification
+/// than the per-turn classify_system because it has full coreference context
+/// across both texts.
+fn classify_committed_turn(
+    narrator_prose: &str,
+    player_input: &str,
+    classifier: Option<&EventClassifier>,
+    target_count: usize,
+) -> (EventFeatureInput, Option<ClassificationOutput>)
+```
+
+Tests: combined text produces entities that span both narrator and player portions. Coreference (pronoun in player input referring to noun in narrator prose) resolves correctly.
+
+**D.4: Narrator Output Deduplication**
+
+The Narrator should render only *new* content — not re-render its full response each time. Because we can only prompt so far, we need similarity scanning as a safety net:
+
+1. **Prompting**: Instruct the Narrator that it is continuing a conversation, not starting over. Include recent output in the context window as "what has already been said."
+2. **Sentence-level scanning**: Compare each sentence in new output against recent turns in `TurnHistory`. Use:
+   - Hash comparison (exact match — catches verbatim repetition)
+   - Token-level overlap (catches minor rephrasing — Jaccard similarity on word tokens)
+   - If available: embedding similarity from the tokenizer (cosine distance on mean-pooled token embeddings)
+3. **Elision**: Sentences with similarity above threshold are removed from the player-facing output. The full rendering is preserved in `TurnHistory` for context assembly.
+
+Start with hash + token overlap (deterministic, no additional model). Add embedding similarity if token overlap proves insufficient.
+
+`[INVESTIGATION NEEDED]` Similarity thresholds. What level of sentence overlap constitutes "near-duplicate" vs. "intentional callback"? Narrative prose legitimately echoes previous phrases for effect. Start conservative (high threshold, only catch near-verbatim), tune from play data.
+
+Tests: exact duplicate sentences are elided, minor rephrasing detected above threshold, intentionally different content preserved, narrative callbacks (partial echoes) are not falsely elided.
+
+**D.5: Prediction Confirmation**
+
+Cross-reference extracted atoms against ML prediction metadata. When a committed-turn-extracted atom matches a prediction (same character, same action type), the atom's confidence is boosted:
 
 ```rust
 fn confirm_predictions(
     extracted_atoms: &[EventAtom],
-    predictions: &[PredictionMetadata],
-) -> Vec<EventAtom> {
-    // For each extracted atom, check if a prediction hypothesized it
-    // If match: upgrade source to ConfirmedPrediction, boost confidence
-    // If no match: keep as TurnExtraction (Narrator added something new)
-}
+    predictions: &[CharacterPrediction],
+) -> Vec<EventAtom>
 ```
 
-This provides a confidence signal: events that were both predicted and rendered are higher-confidence than events that appeared only in prose.
+Events that were both predicted and rendered are higher-confidence than events that appeared only in prose (the Narrator added something unpredicted).
 
 Tests: predicted-and-rendered atoms have higher confidence than unpredicted atoms, unmatched predictions don't produce phantom events.
 
-**D.4: Turn Extraction Integration**
+**D.6: X-Card / Rejection Flow**
 
-Wire the full `extract_turn_events()` pipeline: player classification + prose classification + prediction confirmation + deduplication. Integrate with the event ledger (atoms are committed) and the promotion pipeline (Phase B).
+Implement the rejection path: when a player rejects a rendering, the turn transitions from `Rendered` back to `Hypothesized` (predictions are preserved, prose is discarded). The rejection is recorded in `TurnHistory`. The Storykeeper adds constraints and the Narrator re-renders.
 
-Tests: end-to-end — committed turn → atoms → ledger. Workshop scene data provides test fixtures. Feature-gated tests (`test-llm`) that run real Narrator output through the pipeline.
+For now: rejection resets `TurnContext.rendering` to `None` and returns the pipeline to `AssemblingContext` (with additional constraint context). `ProvisionalStatus::Rendered` → `ProvisionalStatus::Hypothesized`.
 
-**D.5: X-Card / Rejection Flow**
+Tests: rejected turn produces no committed events, re-rendered turn can be committed normally, rejection is recorded.
 
-Implement the rejection path: when a player rejects a rendering, the turn transitions from `Rendered` back to `Hypothesized` (predictions are preserved, prose is discarded). The Storykeeper adds constraints and the Narrator re-renders.
+### Verification
 
-Tests: rejected turn produces no events, re-rendered turn can be committed normally.
-
-**Verification**: Existing tests pass. New tests cover turn lifecycle, prose classification, prediction confirmation, deduplication, and the rejection flow.
+```bash
+cargo check --all-features
+cargo test --workspace                           # Unit + system tests
+cargo test --workspace --features test-ml-model  # + ONNX model tests
+cargo test --workspace --features test-llm       # + Ollama rendering tests
+cargo clippy --all-targets --all-features
+cargo fmt --check
+```
 
 ---
 
-## Phase E: Event Composition
+## Phase E: Turn-Level Event Composition
 
-**Goal**: Detect compound events from sequential atoms. Build the composition pipeline.
+**Goal**: Detect compound events from sequential atoms *within a single committed turn or adjacent turns*. Scoped to the near-turn window only — wider event-graph composition (cross-scene causal chains, thematic arcs) is deferred to the persistence branch where real narrative graphs and event ledger infrastructure exist.
 
-**Depends on**: Phase C (atoms are being produced from player input), ideally Phase D (atoms from Narrator output, but composition can start with player+prediction atoms alone).
+**Depends on**: Phase D (committed turns producing atoms with turn-level classification).
+
+**Why scoped**: The event dependency graph (`docs/technical/event-dependency-graph.md`) describes a full DAG of combinatorial narrative triggers. Building placeholder code to mimic this without real graph infrastructure and persistence produces throwaway work. Turn-level composition is feasible now because the data (sequential atoms from a single classification pass) is available in memory.
 
 **Outputs**:
 - New file: `storyteller-engine/src/context/event_composition.rs` (or similar location)
-- CompoundEvent detection logic
+- `CompoundEvent` detection from turn-level atom sequences
 
 ### Work Items
 
 **E.1: Temporal Composition Detection**
 
-The simplest composition type — atoms within the same turn or adjacent turns with participant overlap:
+The simplest composition type — atoms within the same committed turn with participant overlap:
 
 ```rust
 fn detect_temporal_compositions(
     atoms: &[EventAtom],
-    window_turns: u32,
-) -> Vec<CompoundEvent> {
-    // Group atoms by participant overlap within temporal window
-    // Create Temporal CompoundEvent for groups of 2+ atoms
-}
+) -> Vec<CompoundEvent>
 ```
 
-Tests: adjacent atoms with shared participants compose, distant atoms do not.
+Groups atoms by participant overlap within the same turn. Atoms sharing an Actor or Target are candidates for temporal composition.
+
+Tests: adjacent atoms with shared participants compose, atoms with no participant overlap do not.
 
 **E.2: Causal Composition Detection**
 
-Detect known causal patterns:
+Detect known causal patterns within a turn:
 
 ```rust
 fn detect_causal_compositions(
     atoms: &[EventAtom],
-) -> Vec<CompoundEvent> {
-    // Pattern: Examine → EmotionalExpression (saw something → reacted)
-    // Pattern: SpeechAct → RelationalShift (said something → relationship changed)
-    // Pattern: ActionOccurrence → SpatialChange (did something → moved)
-}
+) -> Vec<CompoundEvent>
 ```
 
-`[PLACEHOLDER]` The causal pattern library needs expansion from play data. Initial implementation should include 5-10 common patterns and provide a mechanism for adding more.
+Patterns (initial set):
+- Examine → EmotionalExpression (saw something → reacted)
+- SpeechAct → RelationalShift (said something → relationship changed)
+- ActionOccurrence → SpatialChange (did something → moved)
+- InformationTransfer → EmotionalExpression (learned something → felt something)
+- SpeechAct → ActionOccurrence (said something → did something)
+
+`[PLACEHOLDER]` The causal pattern library needs expansion from play data. Start with 5-10 patterns.
 
 Tests: known causal patterns are detected, unrelated atoms are not falsely composed.
 
 **E.3: Emergent Weight Calculation**
 
-Compute the emergent relational implications of a compound event:
+Compute the emergent relational implications of a compound event — the combination carries more weight than the sum of its parts:
 
 ```rust
 fn compute_emergent_implications(
     compound: &CompoundEvent,
     atom_implications: &[Vec<RelationalImplication>],
-) -> Vec<RelationalImplication> {
-    // Apply composition multiplier to summed weights
-    // Generate new implications not present in individual atoms
-    // (e.g., the causal link itself is a new implication)
-}
+) -> Vec<RelationalImplication>
 ```
 
-`[PLACEHOLDER]` Composition multipliers (1.5x for causal, 1.0x for temporal, etc.) are initial guesses.
+`[PLACEHOLDER]` Composition multipliers (1.5x for causal, 1.0x for temporal) are initial guesses.
 
 Tests: compound weight exceeds (or equals) sum of atom weights depending on composition type.
 
-**E.4: Composition Pipeline Integration**
+**E.4: Composition Integration**
 
-Wire the composition detector into the event processing pipeline. After atoms are produced (from classifier, predictions, and Narrator extraction), run composition detection and emit compound events.
+Wire the composition detector into the committed-turn processing pipeline. After atoms are produced from the committed-turn classification (D.3), run composition detection and emit compound events alongside atoms.
 
-Tests: end-to-end — player input → atoms → composition detection → compound events with correct types and weights.
+Tests: end-to-end — committed turn → atoms → composition detection → compound events with correct types and weights.
 
-**Verification**: Existing tests pass. New tests cover each composition type and the end-to-end pipeline.
+### What is deferred
+
+The following composition capabilities are deferred to the persistence branch:
+
+- **Cross-scene composition**: Detecting causal chains that span multiple scenes (requires narrative graph traversal)
+- **Thematic composition**: Detecting thematic resonance across distant events (requires event ledger queries)
+- **Conditional composition**: "If X then Y" patterns spanning multiple turns or scenes
+- **Event dependency DAG**: The full combinatorial trigger model from `event-dependency-graph.md`
+
+### Verification
+
+Existing tests pass. New tests cover each composition type and the end-to-end turn-level pipeline.
 
 ---
 
-## Phase F: Revised event-system.md
+## Phase F: Documentation Update
 
-**Goal**: Update the existing `docs/technical/event-system.md` to reflect the narrator-centric architecture and incorporate the event grammar, entity reference model, and revised classification pipeline.
+**Goal**: Update design documents to reflect what was built in this branch. The original documents were written for the multi-agent architecture; Phases A–E introduced the narrator-centric architecture with ML classification, turn lifecycle, and Bevy system integration.
 
-**Depends on**: All previous phases (to know what was actually built vs. what was planned).
+**Depends on**: All previous phases (to know what was actually built).
 
 **Outputs**:
 - Updated file: `docs/technical/event-system.md`
+- Updated file: `docs/technical/narrator-architecture.md` (if needed)
+- Updated file: `docs/foundation/open-questions.md` (close resolved questions, add new ones)
+- Updated README files as needed
 
 ### Work Items
 
-**F.1: Architecture Revision**
+**F.1: event-system.md Revision**
 
-Update the document to reflect the narrator-centric architecture:
-- Replace multi-agent references with the single-Narrator model
-- Update the turn cycle diagram with ML prediction, rules engine, and context assembly stages
-- Revise agent subscription model (Character Agents are no longer LLM agents)
+Update to reflect the narrator-centric architecture:
+- Replace multi-agent event subscription with turn-cycle stage pipeline
+- Update event lifecycle with `ProvisionalStatus` and `CommittingPrevious`
+- Add event classification via ML models (replacing hypothetical classifier agent)
+- Integrate the relational weight principle and entity promotion pipeline
+- Mark superseded sections (agent subscriptions for Character Agents as LLM agents)
 
-**F.2: Event Grammar Integration**
+**F.2: Turn Cycle Documentation**
 
-Incorporate the event grammar into the spec:
-- Replace the `NarrativeEvent` pseudo-code with `EventAtom` and `EventKind`
-- Update the truth set section with typed propositions
-- Integrate the relational weight principle
+Ensure `turn-cycle-architecture.md` accurately reflects the implemented state:
+- Stage enum (8 variants including `CommittingPrevious`)
+- Committed-turn classification (narrator prose + player input as unit)
+- In-memory turn history model
+- Narrator output deduplication approach
 
-**F.3: Entity Reference Integration**
+**F.3: Updated Open Questions**
 
-Add entity reference and promotion to the spec:
-- New section on entity lifecycle driven by events
-- Retroactive promotion mechanism
-- Entity budget per scene
+Close questions that were resolved during implementation:
+- Classifier agent design → ML classification pipeline (Phase C)
+- Turn lifecycle → `TurnCycleStage` + `ProvisionalStatus`
+- Entity promotion heuristics → configurable `PromotionConfig` with threshold values
 
-**F.4: Mark Superseded Sections**
+Add new questions that emerged:
+- Narrator deduplication thresholds (hash vs. embedding similarity)
+- 14B vs 7B model tradeoffs for narrator rendering
+- Committed-turn classification accuracy on real (non-templated) prose
+- Optimal coreference window (single turn vs. N-turn lookback)
 
-The original event-system.md was designed for the multi-agent architecture. Some sections are fully superseded (agent subscriptions for Character Agents as LLM agents), others are modified (truth set structure), and some are unchanged (priority tiers, cascade handling). Mark each clearly.
-
-**Verification**: Document review for internal consistency. Type sketches in the revised document match the actual implemented types.
+**Verification**: Document review for internal consistency. Type sketches in revised documents match the actual implemented types.
 
 ---
 
@@ -578,31 +409,34 @@ The original event-system.md was designed for the multi-agent architecture. Some
 ### Testing Strategy
 
 All phases follow the project's test tier conventions:
-- **Unit tests** (default `cargo test`): Type constructibility, serde round-trip, weight computation, promotion logic, composition detection.
-- **Feature-gated integration tests** (`test-ml-model`): End-to-end tests that run the ONNX model and verify event atom production from real predictions.
-- **Feature-gated LLM tests** (`test-llm`): Turn extraction pipeline tests (Phase D) that require running Ollama to produce real Narrator prose for extraction.
+- **Unit tests** (default `cargo test`): Type constructibility, serde round-trip, weight computation, promotion logic, composition detection, Bevy system state transitions.
+- **Feature-gated ML tests** (`test-ml-model`): End-to-end tests that run the ONNX model and verify event atom production from real predictions.
+- **Feature-gated LLM tests** (`test-llm`): Turn extraction and rendering pipeline tests that require running Ollama to produce real Narrator prose.
+- **Python tests** (`uv run pytest` in `training/event_classifier/`): Training pipeline and evaluation framework tests.
+
+### In-Memory Until Persistence
+
+This branch deliberately stores all turn-over-turn data in memory (`TurnHistory` resource). The persistence branch will introduce:
+- PostgreSQL event ledger (append-only committed events)
+- Checkpoint snapshots (periodic state dumps for crash recovery)
+- Apache AGE graph storage (narrative graph, relational web)
+- Command sourcing (player input persisted before processing begins)
+
+The in-memory model in this branch validates the data shapes and pipeline flow. Migration to persistent storage should be mechanical — the `CompletedTurn` struct maps directly to ledger entries.
 
 ### Scene Gravity as Downstream Benefit
 
-The Turn → Scene hierarchy enables post-hoc scene gravity computation. Once events are being extracted and committed against turns (Phase D), the system can compute:
-
-- **Turn density**: Events extracted per turn, weighted by relational implications. High-density turns (many entity promotions, substrate shifts) indicate narrative intensity.
-- **Scene gravity**: Aggregate turn density across a scene. A scene with many high-density turns has higher actual gravity than its authored mass alone.
-- **Attractor refinement**: Feed computed gravity back into the narrative graph, refining the authored gravitational landscape with empirical play data.
-
-This is not a deliverable of any specific phase — it emerges naturally from the Turn/Scene/Event hierarchy once events flow through the system. It belongs to the Storykeeper's context assembly responsibilities (when computing which scenes to retrieve for Tier 3 context) and to the narrative graph's gravitational model.
+The Turn → Scene hierarchy enables post-hoc scene gravity computation. Once events are being extracted and committed against turns (Phase D), the system can compute turn density, scene gravity, and attractor refinement. This is not a deliverable of this branch — it emerges naturally once events flow through the system and persistence is available.
 
 ### Existing Code Preservation
 
 Each phase is designed to be additive:
-- Phase A adds new types without modifying existing ones (except the `NarrativeEvent` payload).
-- Phase B adds new logic without changing existing functions.
-- Phase C extends `classify_player_input()` without changing its signature — the new path runs alongside the existing one.
-- Phase D builds on Phase C's classifier and extends it for prose — additive, not replacing.
-- Phase E adds a new pipeline stage without changing existing stages.
+- Phase A added new types without modifying existing ones (except the `NarrativeEvent` payload).
+- Phase B added new logic without changing existing functions.
+- Phase C extended `classify_player_input()` alongside the new ML path.
+- Phase D fills in existing stubs (no signature changes).
+- Phase E adds a new pipeline stage.
 - Phase F is documentation only.
-
-The one breaking change is `NarrativeEvent::payload` (Phase A.8), which changes from `serde_json::Value` to `EventPayload`. The `EventPayload::Untyped` variant preserves backward compatibility for any code that constructs `NarrativeEvent` with raw JSON.
 
 ### `[PLACEHOLDER]` Summary
 
@@ -616,49 +450,58 @@ The following values need calibration from play data:
 | `DEMOTION_SCENE_COUNT` | 3 | B | Scenes without events before demotion |
 | `DEMOTION_TURN_COUNT` | 10 | B | Turns without events before scene-local demotion |
 | Entity budget soft limit | 12-20 | B | Max tracked entities per scene |
+| Deduplication similarity threshold | 0.9 | D | Sentence-level near-duplicate detection |
 | Composition multiplier (causal) | 1.5x | E | Weight amplification for causal composition |
-| Composition multiplier (thematic) | 0.5x entity / 2.0x narrative mass | E | Weight for thematic composition |
+| Composition multiplier (temporal) | 1.0x | E | Weight for temporal composition |
 | Max composition depth | 2 | E | Compounds contain atoms only, not other compounds |
 | Causal pattern library | 5-10 patterns | E | Known causal event patterns |
 
 ### `[INVESTIGATION NEEDED]` Summary
 
-The following areas require experimentation before committing to an approach. See `classifying-events-and-entities.md` for the ML research informing these decisions.
-
 | Area | Phase | Question | Starting Point |
 |---|---|---|---|
-| Multi-task vs. separate models | C | Does multi-task training degrade individual task accuracy? | Start separate (Approach B), consolidate to multi-task (Approach A) when tasks stabilize |
-| Prose clause segmentation | D | Does clause-level classification lose too much context for literary prose? | Start clause-level, measure quality on annotated passages |
-| Training data register balance | C | Do player-input and Narrator-prose registers need separate models or just balanced training data? | Balanced training data with register as combinatorial axis |
-| Relation extraction approach | C | Heuristic mapping vs. entity-marker ML classifier? | Start heuristic (C.4a), add ML (C.4b) when training data is available |
+| Narrator prompt engineering | D | How to instruct the Narrator to render only new content? | Include recent output in context, explicit instruction not to repeat |
+| Deduplication approach | D | Hash vs. token overlap vs. embedding similarity? | Start with hash + Jaccard on word tokens |
+| Deduplication threshold | D | Where is the line between "near-duplicate" and "intentional callback"? | Start conservative (0.9), tune from play data |
+| 14B vs 7B model selection | D | Which parameter count gives best expressiveness/latency/instruction-following? | Test both with same prompts, compare output quality and latency |
+| Prose clause segmentation | D | Does clause-level classification lose too much context for literary prose? | Whole-turn classification first (narrator prose + player input together), segment only if needed |
+| Coreference window | D | How many turns back should coreference resolution look? | Start with 1-turn (narrator + player), extend if insufficient |
 | Prediction confirmation matching | D | How to match extracted atoms to predictions (exact type match vs. fuzzy)? | Start with exact action-type match |
-| Entity resolution | B | Rule-based vs. embedding-based? | Start rule-based with cast-list constraint, add embedding similarity for cross-scene resolution |
-| Coreference scope | C/D | Per-turn vs. per-scene coreference window? | Per-turn with cast-list constraint (~80% resolution), extend to per-scene over Tier 2 journal |
-| Ledger storage for unresolved mentions | B | Inline mutation vs. separate index vs. resolution overlay? | Start with option 2 (separate mention index) |
-| Composition detection heuristics | E | What patterns indicate causal/conditional/thematic composition? | Start with 5-10 manual patterns |
-| Zero-shot bootstrapping value | C | Is GLiNER/NLI useful enough to justify the zero-shot prototyping path? | Evaluate GLiNER entity quality on workshop scene text |
+| Composition detection heuristics | E | What patterns indicate causal/conditional composition? | Start with 5-10 manual patterns |
 
 ---
 
 ## Sequencing Recommendation
 
-For a single developer working on this, the recommended sequence is:
+For a single developer working on this, the recommended sequence for remaining work (D–F) is:
 
-1. **Phase A** — 2-3 sessions. Pure types, satisfying to write, establishes the vocabulary. Can be reviewed and merged independently.
+1. **D.1 + D.2** (in-memory turn history + real Narrator rendering) — the foundation. Everything else depends on having real LLM output flowing through the pipeline. Estimate: 2-3 sessions.
 
-2. **Phase B** — 2-3 sessions. The core logic. Weight computation and promotion are the conceptual heart of the system. Tests here validate the relational weight principle *before* we build classifiers — establishing what classification is for.
+2. **D.4** (narrator output deduplication) — address this early because it directly affects the quality of D.3's classification input. If the narrator repeats itself, the repeated content contaminates classification. Estimate: 1-2 sessions.
 
-3. **Phase C** — 4-6 sessions (the largest phase, with Python and Rust work). Has two parallel tracks:
-   - **C.1-C.2** (Python): Training data generation and model fine-tuning. Can start as soon as Phase A types stabilize. This is creative/generative work — defining templates, running augmentation, evaluating model quality.
-   - **C.3-C.4** (Rust): `EventClassifier` struct and implication inference. Depends on C.2 producing ONNX models, but the Rust scaffolding (tokenizer loading, session management, post-processing) can be built against test fixtures before real models are available.
-   - **C.5** (optional): Zero-shot bootstrapping with GLiNER/NLI — validates the pipeline end-to-end before fine-tuned models are ready. Can run in parallel with C.1-C.2.
+3. **D.3** (committed-turn classification) — classify narrator prose + player input together. Can only be meaningfully tested once D.2 produces real rendering. Estimate: 1-2 sessions.
 
-4. **Phase D** — 2-3 sessions. Extends Phase C's classifier to the full turn unit. The same model handles prose — the difference is clause segmentation preprocessing and turn lifecycle management. The turn state machine and X-card flow are the main new concepts.
+4. **D.5** (prediction confirmation) — cross-reference extracted atoms against predictions. Quick once D.3 works. Estimate: 1 session.
 
-5. **Phase E** — 2-3 sessions. Composition detection. Operates on committed atoms from Phases C and D.
+5. **D.6** (X-card / rejection flow) — the safety valve. Important but not blocking. Estimate: 1 session.
 
-6. **Phase F** — 1 session. Documentation update. Best done after all implementation is settled.
+6. **Phase E** (turn-level composition) — operates on committed atoms from D.3. Estimate: 2-3 sessions.
 
-Phases A-B form a foundational unit (types + weight computation). Phase C is the ML pipeline (largest effort, with Python + Rust tracks). Phase D extends C to prose. Phase E builds on committed atoms. Phase F is cleanup.
+7. **Phase F** (documentation) — after everything is settled. Estimate: 1 session.
 
-The relational weight principle provides the integration test at every boundary: does the pipeline output produce meaningful entity promotions for test scenarios?
+Total remaining: approximately 8-12 sessions, dominated by D.2 (Narrator rendering integration) and E (composition detection).
+
+---
+
+## Appendix: Phase History
+
+This plan was originally written to cover Phases A–F from scratch. Phases A, B, and C are now complete. The plan was revised on Feb 9, 2026 to:
+
+1. Mark completed phases with deviation notes
+2. Revise Phase D to reflect the `CommittingPrevious` timing insight — narrator prose and player input are classified *together* after commitment, not separately
+3. Add narrator output deduplication (D.4) as a new concern
+4. Add in-memory turn history (D.1) as explicit requirement (until persistence branch)
+5. Scope Phase E to turn-level composition only — wider event-graph composition deferred to the persistence branch
+6. Scope Phase F to documentation for this branch's changes
+
+The original Phase C.5 (zero-shot bootstrapping) was repurposed as pipeline integration since fine-tuned models were available immediately. The original Phase D.2 (narrator prose pre-classification) was revised to post-commitment classification based on the `CommittingPrevious` architecture.
