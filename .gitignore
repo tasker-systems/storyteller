@@ -16,6 +16,9 @@ target
 # Environment variables (see .env.example)
 .env
 
+# Generated configs (produced by setup-env.sh and config merger)
+config/storyteller/generated/*.toml
+
 # Legacy symlink (removed — use STORYTELLER_DATA_PATH instead)
 docs/storybook
 

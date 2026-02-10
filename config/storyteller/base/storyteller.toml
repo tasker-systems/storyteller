@@ -1,0 +1,28 @@
+# =============================================================================
+# Storyteller — Base Configuration
+# =============================================================================
+# Shared defaults. Environment-specific overrides in environments/<env>/storyteller.toml.
+# Placeholders use ${VAR} or ${VAR:-default} syntax, resolved at load time.
+
+[database]
+url = "${DATABASE_URL:-postgresql://localhost:5432/storyteller_dev}"
+
+[database.pool]
+max_connections = 10
+min_connections = 2
+idle_timeout_secs = 300
+
+[llm]
+provider = "external"
+
+[llm.external]
+base_url = "${OLLAMA_BASE_URL:-http://localhost:11434}"
+model = "llama3.2"
+
+[inference]
+thread_pool_size = 4
+
+[context]
+preamble_budget_tokens = 800
+journal_budget_tokens = 1200
+retrieved_budget_tokens = 800

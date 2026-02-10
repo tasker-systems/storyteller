@@ -1,0 +1,14 @@
+# =============================================================================
+# Storyteller — Test Environment Overrides
+# =============================================================================
+# Merged on top of base/storyteller.toml when STORYTELLER_ENV=test.
+
+[database]
+url = "${DATABASE_URL:-postgresql://localhost:5432/storyteller_test}"
+
+[database.pool]
+max_connections = 5
+min_connections = 1
+
+[inference]
+thread_pool_size = 2

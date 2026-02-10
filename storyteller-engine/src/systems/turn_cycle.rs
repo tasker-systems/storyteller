@@ -268,13 +268,31 @@ pub fn assemble_context_system(
     stage.0 = stage.0.next();
 }
 
+/// Build the combined text for committed-turn classification (D.3).
+///
+/// Concatenates narrator rendering text and player input with a newline
+/// separator. Handles partial data (only rendering, only input, neither).
+/// Returns `None` when neither text is available or both are empty.
+fn build_committed_text(rendering: Option<&str>, player_input: Option<&str>) -> Option<String> {
+    match (
+        rendering.filter(|s| !s.is_empty()),
+        player_input.filter(|s| !s.is_empty()),
+    ) {
+        (Some(r), Some(p)) => Some(format!("{r}\n{p}")),
+        (Some(r), None) => Some(r.to_string()),
+        (None, Some(p)) => Some(p.to_string()),
+        (None, None) => None,
+    }
+}
+
 /// Commit the previous turn's provisional data, then prepare for the new turn.
 ///
 /// 1. If TurnContext has previous data (rendering or classification), archive
 ///    as a `CompletedTurn` and add rendering text to the journal.
-/// 2. Reset TurnContext for the new turn.
-/// 3. Move `PendingInput` → `TurnContext.player_input`.
-/// 4. Advance to `Classifying`.
+/// 2. Run committed-turn classification on the combined narrator + player text (D.3).
+/// 3. Reset TurnContext for the new turn.
+/// 4. Move `PendingInput` → `TurnContext.player_input`.
+/// 5. Advance to `Classifying`.
 ///
 /// On the first turn of a scene, there is no previous data to archive —
 /// the system simply moves PendingInput and advances.
@@ -284,6 +302,7 @@ pub fn commit_previous_system(
     mut pending: ResMut<PendingInput>,
     mut history: ResMut<TurnHistory>,
     journal: Option<ResMut<JournalResource>>,
+    classifier: Option<Res<ClassifierResource>>,
 ) {
     let has_previous_data = turn_ctx.rendering.is_some() || turn_ctx.classification.is_some();
 
@@ -304,11 +323,36 @@ pub fn commit_previous_system(
             }
         }
 
+        // D.3: Committed-turn classification on combined text
+        let committed_classification = build_committed_text(
+            turn_ctx.rendering.as_ref().map(|r| r.text.as_str()),
+            turn_ctx.player_input.as_deref(),
+        )
+        .and_then(|combined_text| {
+            let event_classifier = classifier.as_ref().map(|c| &c.0);
+            let (_event_features, classification) =
+                crate::context::prediction::classify_and_extract(
+                    &combined_text,
+                    event_classifier,
+                    0,
+                );
+
+            tracing::debug!(
+                turn_number,
+                has_committed_classification = classification.is_some(),
+                combined_text_len = combined_text.len(),
+                "commit_previous_system: committed-turn classification"
+            );
+
+            classification
+        });
+
         let completed = CompletedTurn {
             turn_number,
             player_input: turn_ctx.player_input.clone().unwrap_or_default(),
             narrator_rendering: turn_ctx.rendering.clone(),
             classification: turn_ctx.classification.clone(),
+            committed_classification,
             predictions: turn_ctx.predictions.clone(),
             committed_at: chrono::Utc::now(),
         };
@@ -317,6 +361,7 @@ pub fn commit_previous_system(
             turn_number,
             has_rendering = completed.narrator_rendering.is_some(),
             has_classification = completed.classification.is_some(),
+            has_committed_classification = completed.committed_classification.is_some(),
             "commit_previous_system: archived turn"
         );
 
@@ -758,9 +803,242 @@ mod tests {
             player_input: "test".to_string(),
             narrator_rendering: None,
             classification: None,
+            committed_classification: None,
             predictions: None,
             committed_at: chrono::Utc::now(),
         });
         assert_eq!(history.next_turn_number(), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // D.3: Committed-turn classification
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_committed_text_both_texts() {
+        let result =
+            super::build_committed_text(Some("The narrator speaks."), Some("I walk forward"));
+        assert_eq!(
+            result.as_deref(),
+            Some("The narrator speaks.\nI walk forward")
+        );
+    }
+
+    #[test]
+    fn build_committed_text_rendering_only() {
+        let result = super::build_committed_text(Some("The narrator speaks."), None);
+        assert_eq!(result.as_deref(), Some("The narrator speaks."));
+    }
+
+    #[test]
+    fn build_committed_text_input_only() {
+        let result = super::build_committed_text(None, Some("I walk forward"));
+        assert_eq!(result.as_deref(), Some("I walk forward"));
+    }
+
+    #[test]
+    fn build_committed_text_neither() {
+        let result = super::build_committed_text(None, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_committed_text_empty_strings() {
+        let result = super::build_committed_text(Some(""), Some(""));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_committed_text_one_empty_one_present() {
+        let result = super::build_committed_text(Some(""), Some("I walk forward"));
+        assert_eq!(result.as_deref(), Some("I walk forward"));
+
+        let result = super::build_committed_text(Some("The narrator speaks."), Some(""));
+        assert_eq!(result.as_deref(), Some("The narrator speaks."));
+    }
+
+    #[test]
+    fn committed_classification_with_both_texts() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("I walk to the door".to_string());
+            ctx.rendering = Some(NarratorRendering {
+                text: "The old house creaks in the wind.".to_string(),
+                stage_directions: None,
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next input".to_string());
+
+        // No ClassifierResource → keyword fallback → committed_classification is None
+        // (keyword fallback returns None for ClassificationOutput)
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        // Without ML classifier, committed_classification is None (keyword fallback)
+        assert!(history.turns[0].committed_classification.is_none());
+        // Per-input classification should still be None (wasn't set on TurnContext)
+        assert!(history.turns[0].classification.is_none());
+    }
+
+    #[test]
+    fn committed_classification_rendering_only() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            // No player_input — only rendering triggers archival
+            ctx.rendering = Some(NarratorRendering {
+                text: "The old house creaks.".to_string(),
+                stage_directions: None,
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        // Combined text is just the rendering — fallback classification returns None
+        assert!(history.turns[0].committed_classification.is_none());
+    }
+
+    #[test]
+    fn committed_classification_input_only() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("I walk to the door".to_string());
+            // classification present to trigger archival, but no rendering
+            ctx.classification = Some(crate::inference::event_classifier::ClassificationOutput {
+                event_kinds: vec![],
+                entity_mentions: vec![],
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        // Combined text is just player input — fallback returns None
+        assert!(history.turns[0].committed_classification.is_none());
+    }
+
+    #[test]
+    fn committed_classification_neither_text() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            // classification present to trigger archival, but no input or rendering
+            ctx.classification = Some(crate::inference::event_classifier::ClassificationOutput {
+                event_kinds: vec![],
+                entity_mentions: vec![],
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        assert!(history.turns[0].committed_classification.is_none());
+    }
+
+    #[test]
+    fn committed_classification_empty_strings() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some(String::new());
+            ctx.rendering = Some(NarratorRendering {
+                text: String::new(),
+                stage_directions: None,
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        // Both texts empty → build_committed_text returns None → no classification
+        assert!(history.turns[0].committed_classification.is_none());
+    }
+
+    #[test]
+    fn committed_classification_without_classifier() {
+        let mut app = test_app();
+        // No ClassifierResource inserted
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("I approach the gate".to_string());
+            ctx.rendering = Some(NarratorRendering {
+                text: "A figure stands at the gate.".to_string(),
+                stage_directions: None,
+            });
+        }
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("next".to_string());
+
+        app.add_systems(Update, commit_previous_system);
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+        // Without ClassifierResource, keyword fallback → None for ClassificationOutput
+        assert!(history.turns[0].committed_classification.is_none());
+    }
+
+    #[test]
+    fn committed_classification_preserved_in_history() {
+        let mut app = test_app();
+        app.add_systems(Update, commit_previous_system);
+
+        // Turn 1: set up with rendering
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("turn 1 input".to_string());
+        app.update();
+
+        // Simulate turn 1 completing
+        app.world_mut().resource_mut::<TurnContext>().rendering = Some(NarratorRendering {
+            text: "The scene unfolds before you.".to_string(),
+            stage_directions: None,
+        });
+
+        // Turn 2: archives turn 1
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("turn 2 input".to_string());
+        app.update();
+
+        // Simulate turn 2 completing
+        app.world_mut().resource_mut::<TurnContext>().rendering = Some(NarratorRendering {
+            text: "A second scene emerges.".to_string(),
+            stage_directions: None,
+        });
+
+        // Turn 3: archives turn 2
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("turn 3 input".to_string());
+        app.update();
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 2);
+        // Both archived turns should have the committed_classification field
+        // (None without ML classifier, but the field exists and is preserved)
+        assert!(history.turns[0].committed_classification.is_none());
+        assert!(history.turns[1].committed_classification.is_none());
+        assert_eq!(history.turns[0].turn_number, 1);
+        assert_eq!(history.turns[1].turn_number, 2);
     }
 }
