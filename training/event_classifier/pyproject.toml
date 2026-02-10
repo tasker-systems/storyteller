@@ -1,0 +1,45 @@
+[project]
+name = "storyteller-event-classifier"
+version = "0.1.0"
+description = "Event classification and NER model training for the storyteller engine"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.2.0",
+    "transformers>=4.40.0",
+    "datasets>=2.19.0",
+    "optimum[exporters]>=1.19.0",
+    "onnx>=1.15.0",
+    "onnxruntime>=1.17.0",
+    "scikit-learn>=1.4.0",
+    "seqeval>=1.2.2",
+    "accelerate>=0.30.0",
+    "numpy>=1.26.0",
+    "sentencepiece>=0.2.0",
+    "protobuf>=4.25.0",
+    "onnxscript>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
+
+# uv dependency groups for native uv sync --dev support
+[dependency-groups]
+dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
+
+[project.scripts]
+train-event-classifier = "event_classifier.cli:main"
+evaluate-classifier = "event_classifier.evaluate_cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/event_classifier"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]

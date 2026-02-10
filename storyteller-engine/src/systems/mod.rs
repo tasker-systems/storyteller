@@ -6,5 +6,6 @@
 pub mod entity_lifecycle;
 pub mod event_pipeline;
 pub mod observability;
+pub mod rendering;
 pub mod scene_lifecycle;
 pub mod turn_cycle;

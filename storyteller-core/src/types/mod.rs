@@ -6,6 +6,8 @@
 pub mod character;
 pub mod entity;
 pub mod event;
+pub mod event_grammar;
+pub mod implication;
 pub mod message;
 pub mod narrative;
 pub mod narrator_context;
@@ -14,4 +16,5 @@ pub mod relational;
 pub mod resolver;
 pub mod scene;
 pub mod tensor;
+pub mod turn_cycle;
 pub mod world_model;

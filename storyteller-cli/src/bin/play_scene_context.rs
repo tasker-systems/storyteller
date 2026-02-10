@@ -27,6 +27,7 @@ use storyteller_engine::agents::narrator::NarratorAgent;
 use storyteller_engine::context::journal::add_turn;
 use storyteller_engine::context::prediction::predict_character_behaviors;
 use storyteller_engine::context::{assemble_narrator_context, DEFAULT_TOTAL_TOKEN_BUDGET};
+use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
 use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::workshop::the_flute_kept;
@@ -106,6 +107,33 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!(
                     "[No ML model found. Set STORYTELLER_MODEL_PATH or STORYTELLER_DATA_PATH. \
                      Running without predictions.]"
+                );
+                None
+            }
+        }
+    };
+
+    // Load event classifier (optional — graceful fallback)
+    let event_classifier = if args.no_ml {
+        None
+    } else {
+        match resolve_event_classifier_path() {
+            Some(path) => match EventClassifier::load(&path) {
+                Ok(c) => {
+                    eprintln!("[Event classifier loaded: {}]", path.display());
+                    Some(c)
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[Warning: Event classifier failed to load: {e}. \
+                         Using keyword fallback.]"
+                    );
+                    None
+                }
+            },
+            None => {
+                eprintln!(
+                    "[No event classifier found. Using keyword fallback for event classification.]"
                 );
                 None
             }
@@ -218,9 +246,35 @@ async fn main() -> anyhow::Result<()> {
         // ML predictions (if model available)
         let resolver_output = if let Some(ref predictor) = predictor {
             let predict_start = Instant::now();
-            let predictions =
-                predict_character_behaviors(predictor, &characters, &scene, input, &grammar);
+            let (predictions, classification) = predict_character_behaviors(
+                predictor,
+                &characters,
+                &scene,
+                input,
+                &grammar,
+                event_classifier.as_ref(),
+            );
             let predict_elapsed = predict_start.elapsed();
+
+            // Display classification results
+            if let Some(ref output) = classification {
+                let kinds: Vec<_> = output
+                    .event_kinds
+                    .iter()
+                    .map(|(k, c)| format!("{k}({c:.0}%)"))
+                    .collect();
+                let entities: Vec<_> = output
+                    .entity_mentions
+                    .iter()
+                    .map(|e| format!("{}:{:?}", e.text, e.category))
+                    .collect();
+                eprintln!(
+                    "[Turn {turn}: ML classification: [{}] entities: [{}]]",
+                    kinds.join(", "),
+                    entities.join(", ")
+                );
+            }
+
             eprintln!(
                 "[Turn {turn}: {} predictions in {:.1}ms]",
                 predictions.len(),
@@ -384,7 +438,7 @@ fn print_observer_summary(observer: &CollectingObserver) {
     }
 }
 
-/// Resolve the path to the ONNX model file.
+/// Resolve the path to the character predictor ONNX model file.
 ///
 /// Checks in order:
 /// 1. `STORYTELLER_MODEL_PATH` env var (directory containing model files)
@@ -401,6 +455,30 @@ fn resolve_model_path() -> Option<PathBuf> {
             .join("models")
             .join("character_predictor.onnx");
         if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Resolve the path to the event classifier model directory.
+///
+/// Expects a directory containing `event_classifier.onnx`, `ner_classifier.onnx`,
+/// and `tokenizer.json`.
+///
+/// Checks in order:
+/// 1. `STORYTELLER_MODEL_PATH/event_classifier/`
+/// 2. `STORYTELLER_DATA_PATH/models/event_classifier/`
+fn resolve_event_classifier_path() -> Option<PathBuf> {
+    if let Ok(model_dir) = std::env::var("STORYTELLER_MODEL_PATH") {
+        let path = PathBuf::from(model_dir).join("event_classifier");
+        if path.join("event_classifier.onnx").exists() {
+            return Some(path);
+        }
+    }
+    if let Ok(data_path) = std::env::var("STORYTELLER_DATA_PATH") {
+        let path = PathBuf::from(data_path).join("models/event_classifier");
+        if path.join("event_classifier.onnx").exists() {
             return Some(path);
         }
     }

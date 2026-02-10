@@ -1,9 +1,10 @@
 name: Python Tests
 
 # =============================================================================
-# Two Python packages:
-#   doc-tools/  — Document extraction utilities (no tests, lint only)
-#   training/   — PyTorch training pipeline (lint + tests with synthetic data)
+# Three Python packages:
+#   doc-tools/                — Document extraction utilities (no tests, lint only)
+#   training/                 — Character prediction training (lint + tests)
+#   training/event_classifier — Event classification training (lint + tests)
 #
 # Training tests are self-contained — they generate synthetic JSONL fixtures
 # and don't require the storyteller-data repo or a trained model.
@@ -42,14 +43,14 @@ jobs:
         working-directory: doc-tools
 
       # ========================================================================
-      # training: lint + test
+      # training (character prediction): lint + test
       # ========================================================================
       - name: "training: ruff check"
-        run: uvx ruff check .
+        run: uvx ruff check src/ tests/
         working-directory: training
 
       - name: "training: ruff format check"
-        run: uvx ruff format --check .
+        run: uvx ruff format --check src/ tests/
         working-directory: training
 
       - name: "training: install dependencies"
@@ -57,6 +58,24 @@ jobs:
         working-directory: training
 
       - name: "training: pytest"
-        # Use python -m pytest to avoid shebang/path issues with venv scripts
-        run: uv run python -m pytest -v
+        run: uv run python -m pytest tests/ -v
         working-directory: training
+
+      # ========================================================================
+      # training/event_classifier: lint + test
+      # ========================================================================
+      - name: "event_classifier: ruff check"
+        run: uvx ruff check .
+        working-directory: training/event_classifier
+
+      - name: "event_classifier: ruff format check"
+        run: uvx ruff format --check .
+        working-directory: training/event_classifier
+
+      - name: "event_classifier: install dependencies"
+        run: uv sync --dev
+        working-directory: training/event_classifier
+
+      - name: "event_classifier: pytest"
+        run: uv run python -m pytest -v
+        working-directory: training/event_classifier

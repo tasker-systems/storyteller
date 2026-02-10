@@ -9,6 +9,8 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use super::event_grammar::EventPayload;
+
 /// Unique identifier for an event in the ledger.
 ///
 /// Uses UUID v7 (time-ordered) for efficient BTree indexing and natural
@@ -26,6 +28,28 @@ impl EventId {
 }
 
 impl Default for EventId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Unique identifier for a turn within a scene.
+///
+/// Uses UUID v7 (time-ordered) for efficient BTree indexing and natural
+/// temporal ordering, following the same pattern as `EventId` and `SceneId`.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub struct TurnId(pub Uuid);
+
+impl TurnId {
+    /// Create a new time-ordered turn ID (UUID v7).
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+}
+
+impl Default for TurnId {
     fn default() -> Self {
         Self::new()
     }
@@ -60,6 +84,50 @@ pub struct NarrativeEvent {
     pub timestamp: DateTime<Utc>,
     /// Processing priority.
     pub priority: EventPriority,
-    /// Event payload — the actual content depends on the event type.
-    pub payload: serde_json::Value,
+    /// Event payload — typed event data.
+    ///
+    /// Uses `EventPayload::Untyped` for migration compatibility with
+    /// existing untyped payloads.
+    pub payload: EventPayload,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn turn_id_generation_and_ordering() {
+        let first = TurnId::new();
+        let second = TurnId::new();
+        // UUID v7 is time-ordered — second should sort after first.
+        assert!(second >= first);
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn turn_id_default_creates_new_id() {
+        let id = TurnId::default();
+        // Verify it's a valid UUID (not nil).
+        assert_ne!(id.0, Uuid::nil());
+    }
+
+    #[test]
+    fn event_payload_untyped_construction() {
+        let payload = EventPayload::Untyped(serde_json::json!({"type": "legacy"}));
+        assert!(matches!(payload, EventPayload::Untyped(_)));
+    }
+
+    #[test]
+    fn narrative_event_with_untyped_payload_serde_roundtrip() {
+        let event = NarrativeEvent {
+            id: EventId::new(),
+            timestamp: Utc::now(),
+            priority: EventPriority::Normal,
+            payload: EventPayload::Untyped(serde_json::json!({"action": "walk"})),
+        };
+        let json = serde_json::to_string(&event).expect("serialize");
+        let deserialized: NarrativeEvent = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(event.id, deserialized.id);
+        assert_eq!(event.priority, deserialized.priority);
+    }
 }

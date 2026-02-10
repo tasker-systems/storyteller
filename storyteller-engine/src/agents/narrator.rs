@@ -14,8 +14,9 @@ use chrono::Utc;
 use storyteller_core::errors::StorytellerResult;
 use storyteller_core::traits::llm::{CompletionRequest, LlmProvider, Message, MessageRole};
 use storyteller_core::traits::phase_observer::{PhaseEvent, PhaseEventDetail, PhaseObserver};
-use storyteller_core::types::message::{NarratorRendering, TurnPhaseKind};
+use storyteller_core::types::message::NarratorRendering;
 use storyteller_core::types::narrator_context::NarratorContextInput;
+use storyteller_core::types::turn_cycle::TurnCycleStage;
 
 use crate::context::journal::render_journal;
 use crate::context::preamble::render_preamble;
@@ -75,7 +76,7 @@ impl NarratorAgent {
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: context.journal.entries.last().map_or(0, |e| e.turn_number),
-            phase: TurnPhaseKind::Rendering,
+            stage: TurnCycleStage::Rendering,
             detail: PhaseEventDetail::NarratorPromptBuilt {
                 system_prompt_chars: system_prompt_len,
                 user_message_chars: user_message_len,
@@ -106,7 +107,7 @@ impl NarratorAgent {
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: context.journal.entries.last().map_or(0, |e| e.turn_number),
-            phase: TurnPhaseKind::Rendering,
+            stage: TurnCycleStage::Rendering,
             detail: PhaseEventDetail::NarratorRenderingComplete {
                 tokens_used: Some(response.tokens_used),
                 elapsed_ms: elapsed.as_millis() as u64,
@@ -138,7 +139,7 @@ impl NarratorAgent {
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: 0,
-            phase: TurnPhaseKind::Rendering,
+            stage: TurnCycleStage::Rendering,
             detail: PhaseEventDetail::NarratorPromptBuilt {
                 system_prompt_chars: self.system_prompt.len(),
                 user_message_chars: user_message.len(),
@@ -169,7 +170,7 @@ impl NarratorAgent {
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: 0,
-            phase: TurnPhaseKind::Rendering,
+            stage: TurnCycleStage::Rendering,
             detail: PhaseEventDetail::NarratorRenderingComplete {
                 tokens_used: Some(response.tokens_used),
                 elapsed_ms: elapsed.as_millis() as u64,

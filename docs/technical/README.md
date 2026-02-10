@@ -126,6 +126,21 @@ Asymmetric relational web for all 6 TFATD characters.
 - The `debt` dimension is the plot engine in TFATD
 - Unknown/sparse values handled gracefully — better sparse than hallucinated
 
+### Event Dependency Graph
+
+#### [event-dependency-graph.md](event-dependency-graph.md)
+
+The event dependency DAG — how events depend on, enable, exclude, and compose with each other across the full scope of a narrative.
+
+**Key insights captured here**:
+- Combinatorial narrative triggers (events depending on other events' resolution) cannot be modeled as predicate trees or recursive CTEs — they are a directed acyclic graph
+- Four graph structures in the system: narrative graph (where), relational web (who), event ledger (what happened), event dependency graph (what can happen given what has)
+- The DAG is complementary to the set-theoretic trigger system: triggers evaluate individual conditions, the DAG models the dependency structure between conditions
+- Node resolution states: unresolved, resolved, unreachable, orphaned — with unreachability as narratively meaningful (roads not taken)
+- Edge types: requires, excludes, enables, amplifies
+- Incremental evaluation: only the frontier of newly-resolved nodes propagates on each turn
+- The DAG is the backing representation for story designer "narrative triggers" — the authorable artifact that composes events into arcs
+
 ### Crate Architecture
 
 #### [crate-architecture.md](crate-architecture.md)
@@ -170,6 +185,55 @@ How the technology choices integrate into a coherent runtime — data flows, lif
 - Session resilience: server crash recovery via checkpoint + ledger replay, player disconnect with grace period, client-side input buffering
 - All three graph structures (relational web, narrative graph, setting topology) in a single AGE graph with cross-graph Cypher queries
 - LLM abstraction trait: `CloudLlmProvider`, `CandleLlmProvider`, `ExternalServerProvider` — agents don't know which is active
+
+### ML Strategy
+
+#### [`ml_strategy/`](ml_strategy/README.md)
+
+ML pipeline architecture — how character prediction and event classification models replaced multi-agent LLM calls in the narrator-centric architecture.
+
+| Document | Description |
+|---|---|
+| [`ml_strategy/character-prediction.md`](ml_strategy/character-prediction.md) | Feature schema, MLP architecture, inference, enrichment and rendering |
+| [`ml_strategy/event-classification.md`](ml_strategy/event-classification.md) | Dual-model architecture, BIO tagging, entity extraction, label contract |
+| [`ml_strategy/training-data-generation.md`](ml_strategy/training-data-generation.md) | Combinatorial generation: descriptors, templates, reproducibility |
+| [`ml_strategy/model-selection.md`](ml_strategy/model-selection.md) | Model choices, DeBERTa/DistilBERT tradeoffs, ONNX validation |
+
+**Key decisions made here**:
+- MLP for structured features (38KB, <1ms), transformer for text understanding (~268MB, ~5-15ms)
+- DistilBERT over DeBERTa-v3-small: DeBERTa NaN instability on Apple MPS
+- Two separate models (event + NER) for independent iteration; single multi-task model as future consolidation
+- ONNX as abstraction layer: swap encoders without changing Rust inference code
+- Combinatorial training data generation: descriptor-based (character) and template-based (event)
+- Feature schemas as Rust-Python contracts: `feature_schema.rs` (453-dim) and `event_labels.rs` (8 + 15 labels)
+
+### Narrator Architecture
+
+#### [narrator-architecture.md](narrator-architecture.md)
+
+The architectural revision that collapsed multi-agent LLM calls to a single Narrator, motivated by the first playable scene.
+
+**Key decisions made here**:
+- Narrator is the sole LLM agent — character behavior via ML prediction, world constraints via rules engine
+- Three-tier context architecture: persistent preamble (~600-800t), rolling scene journal (~800-1200t), retrieved context (~400-800t)
+- Turn latency reduced from minutes (3+ LLM calls) to ~2-8.5s (one LLM call)
+- The Resolver: deterministic rules engine replacing Reconciler and World Agent, with hidden RPG-like mechanics
+- The Storykeeper reimagined as a GraphRAG context assembly system
+- Character prediction as the "psychological frame" concept promoted from preprocessing to primary behavior path
+
+### Turn Cycle Architecture
+
+#### [turn-cycle-architecture.md](turn-cycle-architecture.md)
+
+How tasker-core's actor-command-service pattern maps to Bevy ECS, and the turn cycle state machine design.
+
+**Key decisions made here**:
+- Actor → Resource, Handler → System with `run_if`, Message → Bevy Event, ActorRegistry → Plugin::build
+- Two lifecycle concepts: TurnCycleStage (orchestration + observability), ProvisionalStatus (data provenance)
+- CommittingPrevious precedes Classifying — player response commits previous turn's provisional data before new classification begins
+- Services (classify, predict, render) are framework-independent — testable without Bevy
+- TurnContext in engine (references engine types), TurnCycleStage in core (pure domain concept)
+- Async LLM bridge via NarratorTask (Idle/InFlight/Complete) polling pattern
 
 ## Relationship to Other Documentation
 

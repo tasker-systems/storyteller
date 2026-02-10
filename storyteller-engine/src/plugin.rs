@@ -3,7 +3,19 @@
 //! The `StorytellerEnginePlugin` registers all systems, components, events,
 //! and resources needed to run the storytelling engine within a Bevy App.
 
-use bevy_app::{App, Plugin};
+use bevy_app::{App, Plugin, Update};
+use bevy_ecs::prelude::IntoSystemConfigs;
+use bevy_ecs::schedule::IntoSystemSetConfigs;
+
+use crate::components::turn::{
+    ActiveTurnStage, NarratorTask, PendingInput, TurnContext, TurnHistory,
+};
+use crate::systems::rendering::rendering_system;
+use crate::systems::turn_cycle::{
+    assemble_context_system, classify_system, commit_previous_system, in_stage, predict_system,
+    resolve_system, TurnCycleSets,
+};
+use storyteller_core::types::turn_cycle::TurnCycleStage;
 
 /// Main plugin for the storyteller engine.
 ///
@@ -13,8 +25,95 @@ use bevy_app::{App, Plugin};
 pub struct StorytellerEnginePlugin;
 
 impl Plugin for StorytellerEnginePlugin {
-    fn build(&self, _app: &mut App) {
-        // Systems, events, and resources will be registered here
-        // as they are implemented. For now, this is a valid empty plugin.
+    fn build(&self, app: &mut App) {
+        // Turn cycle resources
+        app.init_resource::<ActiveTurnStage>()
+            .init_resource::<TurnContext>()
+            .init_resource::<NarratorTask>()
+            .init_resource::<TurnHistory>()
+            .init_resource::<PendingInput>();
+
+        // System set ordering — sequential pipeline within a single frame
+        app.configure_sets(
+            Update,
+            (
+                TurnCycleSets::Input,
+                TurnCycleSets::CommittingPrevious.after(TurnCycleSets::Input),
+                TurnCycleSets::Classification.after(TurnCycleSets::CommittingPrevious),
+                TurnCycleSets::Prediction.after(TurnCycleSets::Classification),
+                TurnCycleSets::Resolution.after(TurnCycleSets::Prediction),
+                TurnCycleSets::ContextAssembly.after(TurnCycleSets::Resolution),
+                TurnCycleSets::Rendering.after(TurnCycleSets::ContextAssembly),
+            ),
+        );
+
+        // Turn cycle systems — each gated by its stage
+        app.add_systems(
+            Update,
+            (
+                commit_previous_system
+                    .run_if(in_stage(TurnCycleStage::CommittingPrevious))
+                    .in_set(TurnCycleSets::CommittingPrevious),
+                classify_system
+                    .run_if(in_stage(TurnCycleStage::Classifying))
+                    .in_set(TurnCycleSets::Classification),
+                predict_system
+                    .run_if(in_stage(TurnCycleStage::Predicting))
+                    .in_set(TurnCycleSets::Prediction),
+                resolve_system
+                    .run_if(in_stage(TurnCycleStage::Resolving))
+                    .in_set(TurnCycleSets::Resolution),
+                assemble_context_system
+                    .run_if(in_stage(TurnCycleStage::AssemblingContext))
+                    .in_set(TurnCycleSets::ContextAssembly),
+                rendering_system
+                    .run_if(in_stage(TurnCycleStage::Rendering))
+                    .in_set(TurnCycleSets::Rendering),
+            ),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_builds_without_panic() {
+        let mut app = App::new();
+        app.add_plugins(StorytellerEnginePlugin);
+        // One update cycle with default AwaitingInput — no systems should run
+        app.update();
+
+        let stage = app.world().resource::<ActiveTurnStage>();
+        assert_eq!(stage.0, TurnCycleStage::AwaitingInput);
+    }
+
+    #[test]
+    fn plugin_runs_full_pipeline_in_one_frame() {
+        let mut app = App::new();
+        app.add_plugins(StorytellerEnginePlugin);
+
+        // Set stage to CommittingPrevious with PendingInput — simulates player input received
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
+        app.world_mut().resource_mut::<PendingInput>().0 = Some("hello".to_string());
+
+        // One update — all stages fire in sequence (no NarratorResource so
+        // rendering skips), ending back at AwaitingInput.
+        app.update();
+
+        let stage = app.world().resource::<ActiveTurnStage>();
+        assert_eq!(
+            stage.0,
+            TurnCycleStage::AwaitingInput,
+            "full pipeline should complete in one frame"
+        );
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert_eq!(
+            ctx.player_input.as_deref(),
+            Some("hello"),
+            "Player input should be moved from PendingInput"
+        );
     }
 }

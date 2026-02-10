@@ -624,6 +624,35 @@ The ludic contract is the implicit agreement between the system and the player: 
 
 This contract is expressed through several mechanisms, all operating within the fiction rather than breaking it.
 
+### Player Register and Character POV
+
+A foundational term of the ludic contract: **within a scene, the Player inhabits a Character's point of view, and the expected register is first-person present tense.**
+
+```
+"I turn to the left, and look deeply into Diamanta's eyes,
+ hoping to find a spark that I fear has been lost."
+```
+
+This is not an arbitrary convention — it is an affordance that shapes the entire system. The first-person present register:
+
+1. **Establishes immediacy.** The player is *here*, acting *now*. Past tense narration is the Narrator's voice; present tense is the player's. This separation of registers is how the system knows who is speaking.
+
+2. **Grounds entity resolution.** "I" always resolves to the Player-Character in the current scene. The event classification pipeline, the entity extraction model, and the promotion system all depend on this: first-person pronouns map to a known entity without ambiguity.
+
+3. **Simplifies the information boundary.** First-person perspective naturally enforces what the player-character can perceive, know, and act upon. "I look through the keyhole" is a perceptual action bounded by the character's position. Third-person narration ("Pyotir looks through the keyhole") subtly detaches the player from the character's constraints.
+
+**The Player-Character binding**: Within the scope of a Scene, the Player inhabits exactly one Character's POV. While future design could allow POV shifts between scenes (the player inhabits Pyotir in one scene, then experiences a scene from the Wolf's perspective), within a single scene the binding is fixed. This means:
+
+- "I" = the Player-Character for this scene
+- The Player-Character's tensor, relationships, and information state define what the player can perceive and do
+- The `PlayerPresence` in the scene cast carries the Player-Character's activated frame
+
+**Third-person self-reference as fallback**: A player inhabiting Pyotir's POV might write "Pyotir looks down thoughtfully, nudging a clod of dirt with his worn boot." The system should recognize this as a self-referential action — the player describing their own character in third person — and process it equivalently to "I look down thoughtfully, nudging a clod of dirt with my worn boot." This is a fallback inference, not the designed-for path. The entity classifier can match the Player-Character's name against the scene cast to detect this case.
+
+**What this means for the ML pipeline**: The training data in C.1 reflects this register assumption — player-register templates use first-person present ("I pick up the stone"), narrator-register templates use third-person past ("Sarah picked up the stone"). The event classifier's `register` field distinguishes these. The `PLAYER_ACTORS` vocabulary is `&["I"]` — deliberately singular, because the player is always "I" in the expected register.
+
+**What this does not preclude**: The system could eventually support alternative registers as player preferences or accessibility features — some players may prefer third-person ("my character examines the door"), and the classifier could learn to handle this. But the default contract, and the one the system optimizes for, is first-person present.
+
 ### Narrator as Active Guide
 
 The Narrator is not a passive describer waiting for the player to trigger events. The Narrator is an active participant in the ludic contract — a guide who shapes the player's attention through the craft of storytelling.
