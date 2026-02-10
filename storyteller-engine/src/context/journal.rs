@@ -18,8 +18,8 @@ use chrono::Utc;
 
 use storyteller_core::traits::phase_observer::{PhaseEvent, PhaseEventDetail, PhaseObserver};
 use storyteller_core::types::entity::EntityId;
-use storyteller_core::types::message::TurnPhaseKind;
 use storyteller_core::types::narrator_context::{CompressionLevel, JournalEntry, SceneJournal};
+use storyteller_core::types::turn_cycle::TurnCycleStage;
 
 use super::tokens::estimate_tokens;
 
@@ -47,7 +47,7 @@ pub fn add_turn(
     observer.emit(PhaseEvent {
         timestamp: Utc::now(),
         turn_number,
-        phase: TurnPhaseKind::ContextAssembly,
+        stage: TurnCycleStage::AssemblingContext,
         detail: PhaseEventDetail::JournalEntryAdded {
             entry_turn: turn_number,
             referenced_entity_count: entry.referenced_entities.len(),
@@ -107,7 +107,7 @@ pub fn compress_if_needed(journal: &mut SceneJournal, observer: &dyn PhaseObserv
             observer.emit(PhaseEvent {
                 timestamp: Utc::now(),
                 turn_number: journal.entries[i].turn_number,
-                phase: TurnPhaseKind::ContextAssembly,
+                stage: TurnCycleStage::AssemblingContext,
                 detail: PhaseEventDetail::JournalEntryCompressed {
                     turn_number: journal.entries[i].turn_number,
                     from,
@@ -125,7 +125,7 @@ pub fn compress_if_needed(journal: &mut SceneJournal, observer: &dyn PhaseObserv
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: journal.entries.last().map_or(0, |e| e.turn_number),
-            phase: TurnPhaseKind::ContextAssembly,
+            stage: TurnCycleStage::AssemblingContext,
             detail: PhaseEventDetail::JournalCompressed {
                 entries_compressed,
                 entries_resisted,

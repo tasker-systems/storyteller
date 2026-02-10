@@ -1,6 +1,6 @@
 # Phase C: ML Classification Pipeline
 
-**Status**: C.0–C.2 complete, C.3–C.6 not started
+**Status**: C.0–C.5 complete, C.6 not started
 **Branch**: `jcoletaylor/event-system-foundations`
 **Depends on**: Phase A (types), Phase B (promotion logic)
 
@@ -244,7 +244,7 @@ uv run train-event-classifier --task event --cpu $DATA
 
 ---
 
-### C.3: EventClassifier in Rust
+### C.3: EventClassifier in Rust ✅
 
 **Goal**: Build the `EventClassifier` struct that loads ONNX model(s) and tokenizer, runs inference, and decodes outputs into Phase A types.
 
@@ -332,7 +332,7 @@ pub struct ExtractedEntity {
 
 ---
 
-### C.4: Relational Implication Inference
+### C.4: Relational Implication Inference ✅
 
 **Goal**: Given classified events and extracted entities, infer relational implications. This is the **critical bridge** — without it, classified events produce no entity promotions.
 
@@ -390,7 +390,7 @@ This is imprecise but covers ~80% of cases for typical player input. The 20% tha
 
 ---
 
-### C.5: Pipeline Integration
+### C.5: Pipeline Integration ✅
 
 **Goal**: Wire the EventClassifier into the existing turn cycle alongside the character prediction pipeline. Both paths run from the same player input.
 

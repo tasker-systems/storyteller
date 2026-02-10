@@ -19,10 +19,10 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 
 use crate::types::entity::EntityId;
-use crate::types::message::TurnPhaseKind;
 use crate::types::narrator_context::CompressionLevel;
+use crate::types::turn_cycle::TurnCycleStage;
 
-/// A structured event emitted by a pipeline phase.
+/// A structured event emitted by a pipeline stage.
 ///
 /// These events form Layer 2 (session observability) — domain-language
 /// records of what the system did and why, not just that it did something.
@@ -32,8 +32,8 @@ pub struct PhaseEvent {
     pub timestamp: DateTime<Utc>,
     /// Which turn this belongs to (0 for scene-entry events).
     pub turn_number: u32,
-    /// Which pipeline phase emitted this event.
-    pub phase: TurnPhaseKind,
+    /// Which pipeline stage emitted this event.
+    pub stage: TurnCycleStage,
     /// The specific event detail.
     pub detail: PhaseEventDetail,
 }
@@ -169,7 +169,7 @@ impl fmt::Display for PhaseEvent {
         write!(
             f,
             "[turn {}] {:?}: {}",
-            self.turn_number, self.phase, self.detail
+            self.turn_number, self.stage, self.detail
         )
     }
 }
@@ -356,7 +356,7 @@ mod tests {
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: 1,
-            phase: TurnPhaseKind::ContextAssembly,
+            stage: TurnCycleStage::AssemblingContext,
             detail: PhaseEventDetail::PreambleBuilt {
                 cast_count: 2,
                 boundary_count: 3,
@@ -374,7 +374,7 @@ mod tests {
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: 1,
-            phase: TurnPhaseKind::ContextAssembly,
+            stage: TurnCycleStage::AssemblingContext,
             detail: PhaseEventDetail::PreambleBuilt {
                 cast_count: 2,
                 boundary_count: 3,
@@ -384,7 +384,7 @@ mod tests {
         observer.emit(PhaseEvent {
             timestamp: Utc::now(),
             turn_number: 1,
-            phase: TurnPhaseKind::ContextAssembly,
+            stage: TurnCycleStage::AssemblingContext,
             detail: PhaseEventDetail::JournalEntryAdded {
                 entry_turn: 1,
                 referenced_entity_count: 2,
@@ -403,7 +403,7 @@ mod tests {
         let event = PhaseEvent {
             timestamp: Utc::now(),
             turn_number: 3,
-            phase: TurnPhaseKind::ContextAssembly,
+            stage: TurnCycleStage::AssemblingContext,
             detail: PhaseEventDetail::JournalCompressed {
                 entries_compressed: 2,
                 entries_resisted: 1,
@@ -413,7 +413,7 @@ mod tests {
         };
         let display = format!("{event}");
         assert!(display.contains("turn 3"));
-        assert!(display.contains("ContextAssembly"));
+        assert!(display.contains("AssemblingContext"));
         assert!(display.contains("2 entries"));
         assert!(display.contains("1 resisted"));
         assert!(display.contains("1400t"));

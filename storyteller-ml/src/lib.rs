@@ -21,6 +21,7 @@
 //! Inference runs in `storyteller-engine` via `ort`. This crate produces the
 //! training data and defines the encoding contract that both sides share.
 
+pub mod event_labels;
 pub mod event_templates;
 pub mod feature_schema;
 pub mod matrix;

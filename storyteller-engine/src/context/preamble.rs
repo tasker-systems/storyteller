@@ -10,8 +10,8 @@ use chrono::Utc;
 
 use storyteller_core::traits::phase_observer::{PhaseEvent, PhaseEventDetail, PhaseObserver};
 use storyteller_core::types::character::{CharacterSheet, SceneData};
-use storyteller_core::types::message::TurnPhaseKind;
 use storyteller_core::types::narrator_context::{CastDescription, PersistentPreamble};
+use storyteller_core::types::turn_cycle::TurnCycleStage;
 
 use super::tokens::estimate_tokens;
 
@@ -91,7 +91,7 @@ pub fn build_preamble(
     observer.emit(PhaseEvent {
         timestamp: Utc::now(),
         turn_number: 0,
-        phase: TurnPhaseKind::ContextAssembly,
+        stage: TurnCycleStage::AssemblingContext,
         detail: PhaseEventDetail::PreambleBuilt {
             cast_count: preamble.cast_descriptions.len(),
             boundary_count: preamble.boundaries.len(),

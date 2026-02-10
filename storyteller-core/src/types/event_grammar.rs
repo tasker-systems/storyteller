@@ -406,23 +406,26 @@ pub enum CompositionType {
 // Turn types — the atomic unit of event extraction
 // ===========================================================================
 
-/// The lifecycle state of a turn.
+/// The provenance lifecycle of ML/LLM outputs within a turn.
+///
+/// This tracks how final the data produced by inference stages is — not
+/// the turn itself. ML character predictions start as `Hypothesized`,
+/// Narrator prose moves to `Rendered`, and player response triggers
+/// `Committed` (data is written to the event ledger and truth set).
 ///
 /// Ordering is meaningful: `Hypothesized < Rendered < Committed`.
-/// Events progress through these states and are only committed to the
-/// event ledger at the `Committed` stage.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
-pub enum TurnState {
+pub enum ProvisionalStatus {
     /// ML predictions computed. Working state only — informs Narrator
-    /// context assembly.
+    /// context assembly. Not yet shown to the player.
     Hypothesized,
-    /// Narrator has produced prose. Player may or may not have seen it.
-    /// Provisional — can be rejected/re-rendered.
+    /// Narrator has produced prose from predictions. Player may or may
+    /// not have seen it. Can be rejected/re-rendered (X-card safety).
     Rendered,
-    /// Player has responded. Turn is complete. Events are extracted,
-    /// ledger updated, truth set modified.
+    /// Player has responded. Provisional data is committed: events
+    /// extracted, ledger updated, truth set modified.
     Committed,
 }
 
@@ -443,8 +446,8 @@ pub struct Turn {
     pub scene_id: SceneId,
     /// Ordinal position within the scene (1-indexed).
     pub turn_number: u32,
-    /// Current lifecycle state.
-    pub state: TurnState,
+    /// Current provisional status of this turn's ML/LLM outputs.
+    pub status: ProvisionalStatus,
     /// When the turn was created (predictions begin).
     pub created_at: DateTime<Utc>,
     /// When the Narrator's rendering was completed.
@@ -815,13 +818,13 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // TurnState
+    // ProvisionalStatus
     // -----------------------------------------------------------------------
 
     #[test]
-    fn turn_state_ordering() {
-        assert!(TurnState::Hypothesized < TurnState::Rendered);
-        assert!(TurnState::Rendered < TurnState::Committed);
+    fn provisional_status_ordering() {
+        assert!(ProvisionalStatus::Hypothesized < ProvisionalStatus::Rendered);
+        assert!(ProvisionalStatus::Rendered < ProvisionalStatus::Committed);
     }
 
     // -----------------------------------------------------------------------
@@ -834,13 +837,13 @@ mod tests {
             id: TurnId::new(),
             scene_id: SceneId::new(),
             turn_number: 1,
-            state: TurnState::Hypothesized,
+            status: ProvisionalStatus::Hypothesized,
             created_at: Utc::now(),
             rendered_at: None,
             committed_at: None,
         };
         assert_eq!(turn.turn_number, 1);
-        assert_eq!(turn.state, TurnState::Hypothesized);
+        assert_eq!(turn.status, ProvisionalStatus::Hypothesized);
     }
 
     // -----------------------------------------------------------------------

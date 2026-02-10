@@ -15,8 +15,8 @@ use chrono::Utc;
 use storyteller_core::traits::phase_observer::{PhaseEvent, PhaseEventDetail, PhaseObserver};
 use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::entity::EntityId;
-use storyteller_core::types::message::TurnPhaseKind;
 use storyteller_core::types::narrator_context::RetrievedContext;
+use storyteller_core::types::turn_cycle::TurnCycleStage;
 
 use super::tokens::estimate_tokens;
 
@@ -51,7 +51,7 @@ pub fn retrieve_context(
                 observer.emit(PhaseEvent {
                     timestamp: Utc::now(),
                     turn_number: 0,
-                    phase: TurnPhaseKind::ContextAssembly,
+                    stage: TurnCycleStage::AssemblingContext,
                     detail: PhaseEventDetail::InformationBoundaryApplied {
                         entity_id,
                         available,
@@ -69,7 +69,7 @@ pub fn retrieve_context(
     observer.emit(PhaseEvent {
         timestamp: Utc::now(),
         turn_number: 0,
-        phase: TurnPhaseKind::ContextAssembly,
+        stage: TurnCycleStage::AssemblingContext,
         detail: PhaseEventDetail::ContextRetrieved {
             entity_ids: referenced_entities.to_vec(),
             item_count: results.len(),
