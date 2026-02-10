@@ -28,8 +28,14 @@ async-trait = { workspace = true }
 # Observability
 tracing = { workspace = true }
 
+# Configuration
+toml = { workspace = true }
+regex = { workspace = true }
+dotenvy = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true }
+serial_test = { workspace = true }
 
 [lints]
 workspace = true

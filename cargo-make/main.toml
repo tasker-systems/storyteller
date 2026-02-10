@@ -11,8 +11,8 @@ description = "Run all quality checks"
 dependencies = ["rust-fmt-check", "rust-clippy", "rust-docs"]
 
 [tasks.test]
-description = "Run all tests"
-dependencies = ["rust-test"]
+description = "Run tests (unit tests, no feature flags)"
+dependencies = ["test-unit"]
 
 [tasks.fix]
 description = "Auto-fix formatting and lint issues"
@@ -46,7 +46,7 @@ command = "cargo"
 args = ["clippy", "--all-targets", "--all-features", "--fix", "--allow-dirty", "--allow-staged"]
 
 [tasks.rust-test]
-description = "Run all Rust tests"
+description = "Run all Rust tests (all feature flags)"
 command = "cargo"
 args = ["test", "--workspace", "--all-features"]
 
@@ -54,6 +54,59 @@ args = ["test", "--workspace", "--all-features"]
 description = "Check documentation builds"
 command = "cargo"
 args = ["doc", "--workspace", "--no-deps", "--document-private-items"]
+
+# --- Test Tiers ---
+
+[tasks.test-unit]
+description = "Run unit tests (no feature flags)"
+command = "cargo"
+args = ["test", "--workspace"]
+
+[tasks.test-ml]
+description = "Run tests including ML model tests (needs ONNX model on disk)"
+command = "cargo"
+args = ["test", "--workspace", "--features", "test-ml-model"]
+
+[tasks.test-llm]
+description = "Run all test tiers including LLM integration (needs Ollama)"
+command = "cargo"
+args = ["test", "--workspace", "--features", "test-ml-model,test-llm"]
+
+[tasks.test-all]
+description = "Run all test tiers"
+alias = "test-llm"
+
+# --- Python Tasks ---
+
+[tasks.check-python]
+description = "Lint all Python packages"
+script = [
+    "cd doc-tools && uv run ruff check .",
+    "cd training && uv run ruff check src/ tests/",
+    "cd training/event_classifier && uv run ruff check .",
+]
+
+[tasks.test-python]
+description = "Test all Python packages"
+script = [
+    "cd doc-tools && uv run pytest",
+    "cd training && uv run pytest tests/",
+    "cd training/event_classifier && uv run pytest",
+]
+
+# --- Environment Setup ---
+
+[tasks.setup-env]
+description = "Generate .env for unit tests"
+script = ["bash cargo-make/scripts/setup-env.sh --mode=test"]
+
+[tasks.setup-env-ml]
+description = "Generate .env for ML model tests"
+script = ["bash cargo-make/scripts/setup-env.sh --mode=test-ml"]
+
+[tasks.setup-env-dev]
+description = "Generate .env for development"
+script = ["bash cargo-make/scripts/setup-env.sh --mode=dev"]
 
 # --- Shortcuts ---
 
@@ -72,3 +125,15 @@ description = "Shortcut for fix"
 [tasks.b]
 alias = "build"
 description = "Shortcut for build"
+
+[tasks.tu]
+alias = "test-unit"
+description = "Shortcut for test-unit"
+
+[tasks.tm]
+alias = "test-ml"
+description = "Shortcut for test-ml"
+
+[tasks.tl]
+alias = "test-llm"
+description = "Shortcut for test-llm"
