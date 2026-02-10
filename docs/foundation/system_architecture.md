@@ -1,5 +1,11 @@
 # System Architecture: The Minds of the System
 
+> **Architectural note (Feb 2026):** This foundation document describes the conceptual roles and information boundaries of the system's agents. These concepts remain valid as design principles — the theater company metaphor, imperfect information, the constraint framework, and the philosophical grounding of each role.
+>
+> The **implementation model** changed with the narrator-centric pivot (`narrator-architecture.md`, Feb 7 2026). Character Agents are now ML prediction models (not LLM agents), the Reconciler is a deterministic rules engine (not an LLM coordinator), and the World Agent's constraint logic is absorbed into the resolver. Only the Narrator makes LLM calls. The *roles* described here remain valid as conceptual boundaries even though their *embodiment* is different — ML models express character behavior, deterministic logic resolves conflicts, but the information boundaries and design philosophy are unchanged.
+>
+> See `narrator-architecture.md` and `turn-cycle-architecture.md` for how these roles are implemented.
+
 ## On Agents as Collaborators
 
 A common framing in AI systems engineering speaks of "agent swarms" — collections of autonomous processes coordinated through frameworks, passing messages, competing for resources, optimized for throughput. We reject this framing, not because coordination and message-passing are wrong, but because the metaphor is wrong. A swarm is undifferentiated. What we are building is closer to a theater company: distinct roles, distinct perspectives, distinct knowledge, working together to create something none of them could produce alone.
@@ -81,6 +87,8 @@ The story designer's authored intent lives primarily in the Storykeeper's data: 
 
 ### Character Agents
 
+> **Implementation note:** Character Agents are currently implemented as ML prediction models (`CharacterPredictor` using ONNX inference), not LLM agents. The philosophical description below — what a character knows, how they express intent, their ephemeral lifecycle — remains the design target. ML models encode these constraints as input features and training data rather than as LLM prompts. The separation between character *intent* and narrative *rendering* described below is precisely what the current architecture implements: ML predicts intent, the Narrator renders it.
+
 Each significant character in the story is inhabited by a **Character Agent** — a mind given the relevant slice of that character's tensor representation, their current emotional state, their relational context, and their knowledge of the situation.
 
 **What a Character Agent knows:**
@@ -112,6 +120,8 @@ It is also, practically, a resource consideration. Not every character needs to 
 ---
 
 ### The Reconciler
+
+> **Implementation note:** The Reconciler is currently implemented as a deterministic rules engine (`ResolverOutput` type), not an LLM agent. It sequences character actions by initiative order and resolves conflicts via graduated success outcomes. The philosophical description below — sequencing, conflict resolution, surfacing dramatic potential — describes the *intent* that the deterministic resolver implements through structured logic rather than LLM reasoning.
 
 When multiple characters share a scene — when intentions collide, conversations overlap, conflicts erupt, or a moment of collective action unfolds — something must weave these separate expressions of agency into a coherent whole. This is the role of the **Reconciler**.
 
