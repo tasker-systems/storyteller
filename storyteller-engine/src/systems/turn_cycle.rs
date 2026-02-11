@@ -347,12 +347,36 @@ pub fn commit_previous_system(
             classification
         });
 
+        // Phase E: Build event atoms and detect compositions
+        let (committed_atoms, committed_compounds) = committed_classification
+            .as_ref()
+            .map(|classification| {
+                let scene_id = storyteller_core::types::scene::SceneId::new();
+                let turn_id = storyteller_core::types::event::TurnId::new();
+                let atoms = crate::context::event_composition::build_event_atoms(
+                    classification,
+                    scene_id,
+                    turn_id,
+                );
+                let compounds = crate::context::event_composition::detect_compositions(&atoms);
+                tracing::debug!(
+                    turn_number,
+                    atom_count = atoms.len(),
+                    compound_count = compounds.len(),
+                    "commit_previous_system: Phase E composition detection"
+                );
+                (atoms, compounds)
+            })
+            .unwrap_or_default();
+
         let completed = CompletedTurn {
             turn_number,
             player_input: turn_ctx.player_input.clone().unwrap_or_default(),
             narrator_rendering: turn_ctx.rendering.clone(),
             classification: turn_ctx.classification.clone(),
             committed_classification,
+            committed_atoms,
+            committed_compounds,
             predictions: turn_ctx.predictions.clone(),
             committed_at: chrono::Utc::now(),
         };
@@ -362,6 +386,8 @@ pub fn commit_previous_system(
             has_rendering = completed.narrator_rendering.is_some(),
             has_classification = completed.classification.is_some(),
             has_committed_classification = completed.committed_classification.is_some(),
+            atom_count = completed.committed_atoms.len(),
+            compound_count = completed.committed_compounds.len(),
             "commit_previous_system: archived turn"
         );
 
@@ -804,6 +830,8 @@ mod tests {
             narrator_rendering: None,
             classification: None,
             committed_classification: None,
+            committed_atoms: vec![],
+            committed_compounds: vec![],
             predictions: None,
             committed_at: chrono::Utc::now(),
         });

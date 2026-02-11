@@ -12,6 +12,7 @@
 //! All assembly steps emit `PhaseEvent`s through the `PhaseObserver` trait
 //! for Layer 2 (session) observability.
 
+pub mod event_composition;
 pub mod journal;
 pub mod preamble;
 pub mod prediction;
