@@ -17,7 +17,7 @@ provider = "external"
 
 [llm.external]
 base_url = "${OLLAMA_BASE_URL:-http://localhost:11434}"
-model = "llama3.2"
+model = "qwen2.5:14b"
 
 [inference]
 thread_pool_size = 4

@@ -4,11 +4,13 @@
 //! with a single Narrator LLM call per turn.
 //!
 //! Usage:
-//!   cargo run --bin play-scene -- --model mistral
-//!   cargo run --bin play-scene -- --model qwen2.5:32b --temperature 0.7
+//!   cargo run --bin play-scene -- --model qwen2.5:14b
+//!   cargo run --bin play-scene -- --model mistral --temperature 0.7
+//!   cargo run --bin play-scene -- --inputs test_inputs.txt --no-ml
 //!
 //! Requires a running Ollama instance at localhost:11434.
 
+use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,7 +41,7 @@ use storyteller_engine::workshop::the_flute_kept;
 )]
 struct Args {
     /// Ollama model name
-    #[arg(long, default_value = "mistral")]
+    #[arg(long, default_value = "qwen2.5:14b")]
     model: String,
 
     /// LLM sampling temperature
@@ -57,6 +59,11 @@ struct Args {
     /// Show timing details for each phase
     #[arg(long, default_value_t = true)]
     timing: bool,
+
+    /// Read player inputs from a file (one per line) instead of stdin.
+    /// Useful for scripted evaluation sessions.
+    #[arg(long)]
+    inputs: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -187,7 +194,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Create narrator from assembled context
-    let mut narrator =
+    let narrator =
         NarratorAgent::new(&context, Arc::clone(&llm)).with_temperature(args.temperature);
 
     // Scene opening — single LLM call
@@ -219,26 +226,53 @@ async fn main() -> anyhow::Result<()> {
 
     let mut turn: u32 = 0;
 
+    // Build input source: scripted file or interactive stdin.
+    let scripted_inputs: Option<Vec<String>> = if let Some(ref path) = args.inputs {
+        let content = fs::read_to_string(path)?;
+        let lines: Vec<String> = content
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty() && l != "/quit" && l != "/q")
+            .collect();
+        eprintln!("[Scripted mode: {} inputs from {}]", lines.len(), path.display());
+        Some(lines)
+    } else {
+        None
+    };
+
+    let mut script_iter = scripted_inputs.as_ref().map(|v| v.iter());
+
     // Turn loop
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     loop {
-        print!("> ");
-        stdout.flush()?;
-
-        let mut line = String::new();
-        let bytes = stdin.lock().read_line(&mut line)?;
-        if bytes == 0 {
-            break;
-        }
-
-        let input = line.trim();
-        if input.is_empty() {
-            continue;
-        }
-        if input == "/quit" || input == "/q" {
-            break;
-        }
+        let input: String = if let Some(ref mut iter) = script_iter {
+            // Scripted: take next line, or end the scene.
+            match iter.next() {
+                Some(line) => {
+                    println!("> {line}");
+                    line.clone()
+                }
+                None => break,
+            }
+        } else {
+            // Interactive: read from stdin.
+            print!("> ");
+            stdout.flush()?;
+            let mut line = String::new();
+            let bytes = stdin.lock().read_line(&mut line)?;
+            if bytes == 0 {
+                break;
+            }
+            let trimmed = line.trim().to_string();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed == "/quit" || trimmed == "/q" {
+                break;
+            }
+            trimmed
+        };
 
         turn += 1;
         let turn_start = Instant::now();
@@ -250,7 +284,7 @@ async fn main() -> anyhow::Result<()> {
                 predictor,
                 &characters,
                 &scene,
-                input,
+                &input,
                 &grammar,
                 event_classifier.as_ref(),
             );
@@ -306,7 +340,7 @@ async fn main() -> anyhow::Result<()> {
             &characters,
             &journal,
             &resolver_output,
-            input,
+            &input,
             &[bramblehoof_sheet.entity_id, pyotir_sheet.entity_id],
             DEFAULT_TOTAL_TOKEN_BUDGET,
             &observer,
@@ -346,7 +380,7 @@ async fn main() -> anyhow::Result<()> {
             turn,
             &rendering.text,
             vec![bramblehoof_sheet.entity_id, pyotir_sheet.entity_id],
-            extract_emotional_markers(input),
+            extract_emotional_markers(&input),
             &noop,
         );
     }
