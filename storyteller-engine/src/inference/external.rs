@@ -29,7 +29,7 @@ impl Default for ExternalServerConfig {
     fn default() -> Self {
         Self {
             base_url: "http://localhost:11434".to_string(),
-            model: "mistral".to_string(),
+            model: "qwen2.5:14b".to_string(),
             timeout: Duration::from_secs(120),
         }
     }
@@ -205,7 +205,7 @@ mod tests {
     fn default_config_points_to_localhost() {
         let config = ExternalServerConfig::default();
         assert_eq!(config.base_url, "http://localhost:11434");
-        assert_eq!(config.model, "mistral");
+        assert_eq!(config.model, "qwen2.5:14b");
     }
 
     #[test]

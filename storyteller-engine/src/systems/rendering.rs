@@ -67,7 +67,7 @@ pub fn rendering_system(
             let agent = narrator.0.clone();
 
             rt.0.spawn(async move {
-                let mut agent = agent.lock().await;
+                let agent = agent.lock().await;
                 let result = agent.render(&context, &NoopObserver).await;
                 // If the receiver was dropped, that's fine — the result is discarded
                 let _ = tx.send(result);

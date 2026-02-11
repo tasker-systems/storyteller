@@ -42,8 +42,9 @@ pub fn build_preamble(
         "Exclamation marks".to_string(),
         "Adverbs where a better verb would serve".to_string(),
         "Fantasy exposition or lore dumps".to_string(),
-        "Telling the reader what characters feel".to_string(),
-        "Summarizing what just happened".to_string(),
+        "Telling the reader what characters think, feel, or realize".to_string(),
+        "Re-rendering or summarizing what the player has already read".to_string(),
+        "Inventing goodbyes, departures, or scene resolutions not in the facts".to_string(),
         "Breaking the fourth wall".to_string(),
     ];
 

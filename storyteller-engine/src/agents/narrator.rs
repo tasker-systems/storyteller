@@ -22,11 +22,12 @@ use crate::context::journal::render_journal;
 use crate::context::preamble::render_preamble;
 
 /// The narrator agent — renders character intents into literary prose
-/// for the player. Maintains conversation history across turns.
+/// for the player. Each turn is a one-shot LLM call; the three-tier
+/// context assembly provides all continuity. The narrator doesn't
+/// remember — the system remembers and provides on demand.
 #[derive(Debug)]
 pub struct NarratorAgent {
     system_prompt: String,
-    history: Vec<Message>,
     llm: Arc<dyn LlmProvider>,
     temperature: f32,
 }
@@ -40,7 +41,6 @@ impl NarratorAgent {
         let system_prompt = build_system_prompt(context);
         Self {
             system_prompt,
-            history: Vec::new(),
             llm,
             temperature: 0.8,
         }
@@ -54,15 +54,16 @@ impl NarratorAgent {
 
     /// Render a turn from assembled three-tier context.
     ///
-    /// The Narrator receives structured facts with emotional annotation,
-    /// not prose to parrot. The LLM prompt is constructed from:
+    /// Each turn is a one-shot LLM call. The Narrator receives structured
+    /// facts with emotional annotation, not prose to parrot. All continuity
+    /// comes from the three-tier context assembly:
     ///
     /// 1. System prompt (from Tier 1 preamble)
     /// 2. Scene journal (Tier 2, rendered as structured narrative record)
     /// 3. Retrieved context (Tier 3, rendered as annotated facts)
     /// 4. Current turn data (resolver output + player input)
     pub async fn render(
-        &mut self,
+        &self,
         context: &NarratorContextInput,
         observer: &dyn PhaseObserver,
     ) -> StorytellerResult<NarratorRendering> {
@@ -83,15 +84,15 @@ impl NarratorAgent {
             },
         });
 
-        self.history.push(Message {
+        let messages = vec![Message {
             role: MessageRole::User,
             content: user_message,
-        });
+        }];
 
         let request = CompletionRequest {
             system_prompt: self.system_prompt.clone(),
-            messages: self.history.clone(),
-            max_tokens: 800,
+            messages,
+            max_tokens: 400,
             temperature: self.temperature,
         };
 
@@ -114,11 +115,6 @@ impl NarratorAgent {
             },
         });
 
-        self.history.push(Message {
-            role: MessageRole::Assistant,
-            content: response.content.clone(),
-        });
-
         Ok(NarratorRendering {
             text: response.content,
             stage_directions: Some(context.resolver_output.scene_dynamics.clone()),
@@ -127,7 +123,7 @@ impl NarratorAgent {
 
     /// Render a scene opening from assembled context.
     pub async fn render_opening(
-        &mut self,
+        &self,
         observer: &dyn PhaseObserver,
     ) -> StorytellerResult<NarratorRendering> {
         let start = Instant::now();
@@ -146,14 +142,14 @@ impl NarratorAgent {
             },
         });
 
-        self.history.push(Message {
+        let messages = vec![Message {
             role: MessageRole::User,
             content: user_message,
-        });
+        }];
 
         let request = CompletionRequest {
             system_prompt: self.system_prompt.clone(),
-            messages: self.history.clone(),
+            messages,
             max_tokens: 600,
             temperature: self.temperature,
         };
@@ -175,11 +171,6 @@ impl NarratorAgent {
                 tokens_used: Some(response.tokens_used),
                 elapsed_ms: elapsed.as_millis() as u64,
             },
-        });
-
-        self.history.push(Message {
-            role: MessageRole::Assistant,
-            content: response.content.clone(),
         });
 
         Ok(NarratorRendering {
@@ -204,13 +195,26 @@ fn build_system_prompt(context: &NarratorContextInput) -> String {
 
 ## Your Task
 You receive structured facts about what characters did, said, and felt.
-You see actions, speech directions, and emotional subtext — but you render
-only what is observable. Never state internal thoughts directly.
+You render only what is observable — physical actions, speech, gestures.
+Never state what a character thinks, feels, or realizes. Show it through
+the body. Trust the reader to infer.
 
 Weave the facts into a single narrative passage. Use physical detail to
-carry emotional weight. Trust the reader.
+carry emotional weight.
 
-Write in present tense. Under 300 words per turn."#
+## Already Presented
+Each turn includes a record of what the player has already read. This
+record is context for continuity — not material to re-render. Your job
+is to advance the scene, not summarize it. If a detail from a previous
+turn is relevant, reference it obliquely through a character's gesture
+or awareness, never by restating it. Assume the reader remembers.
+
+## Scope
+Render ONLY the actions and events described in "This Turn." Do not
+invent departures, goodbyes, or scene resolutions. Do not write beyond
+the moment. The scene continues after your passage ends.
+
+Write in present tense, third person. HARD LIMIT: under 200 words."#
     )
 }
 
@@ -218,10 +222,12 @@ Write in present tense. Under 300 words per turn."#
 fn build_turn_message(context: &NarratorContextInput) -> String {
     let mut message = String::new();
 
-    // Tier 2: Scene journal
+    // Tier 2: Scene journal — framed as "already presented" to discourage
+    // the narrator from re-rendering previous content (D.4 deduplication).
     let journal = render_journal(&context.journal);
     if !journal.is_empty() {
-        message.push_str("## What Has Happened\n");
+        message.push_str("## Already Presented to the Player\n");
+        message.push_str("(For continuity reference only — do not re-render.)\n");
         message.push_str(&journal);
         message.push('\n');
     }
@@ -274,10 +280,7 @@ fn build_turn_message(context: &NarratorContextInput) -> String {
         ));
     }
 
-    message.push_str(
-        "Render this moment as narrative prose. Weave the characters' actions \
-         and subtext into a single passage. Under 300 words.",
-    );
+    message.push_str("Render ONLY this moment. Do not resolve the scene. Under 200 words.");
 
     message
 }
@@ -352,7 +355,7 @@ mod tests {
         let message = build_turn_message(&context);
 
         // Journal section (empty journal → "no prior turns")
-        assert!(message.contains("What Has Happened"));
+        assert!(message.contains("Already Presented to the Player"));
 
         // Retrieved context section
         assert!(message.contains("Relevant Context"));
@@ -367,7 +370,7 @@ mod tests {
         assert!(message.contains("Quiet tension"));
 
         // Rendering instruction
-        assert!(message.contains("Under 300 words"));
+        assert!(message.contains("Under 200 words"));
     }
 
     #[test]
@@ -423,7 +426,7 @@ mod tests {
 
         let context = mock_context();
         let llm: Arc<dyn LlmProvider> = Arc::new(MockLlm);
-        let mut narrator = NarratorAgent::new(&context, llm);
+        let narrator = NarratorAgent::new(&context, llm);
 
         let observer = NoopObserver;
         let rendering = narrator
@@ -459,7 +462,7 @@ mod tests {
 
         let context = mock_context();
         let llm: Arc<dyn LlmProvider> = Arc::new(MockLlm);
-        let mut narrator = NarratorAgent::new(&context, llm);
+        let narrator = NarratorAgent::new(&context, llm);
 
         let observer = CollectingObserver::new();
         let _rendering = narrator
