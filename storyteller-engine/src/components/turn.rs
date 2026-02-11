@@ -10,6 +10,7 @@ use std::sync::Arc;
 use bevy_ecs::prelude::*;
 use chrono::{DateTime, Utc};
 
+use storyteller_core::types::event_grammar::{CompoundEvent, EventAtom};
 use storyteller_core::types::message::NarratorRendering;
 use storyteller_core::types::narrator_context::{NarratorContextInput, SceneJournal};
 use storyteller_core::types::prediction::CharacterPrediction;
@@ -76,6 +77,10 @@ pub struct CompletedTurn {
     /// Combined-text classification from committed-turn analysis (D.3).
     /// Classifies narrator prose + player input together for richer event extraction.
     pub committed_classification: Option<ClassificationOutput>,
+    /// Event atoms built from committed-turn classification (Phase E).
+    pub committed_atoms: Vec<EventAtom>,
+    /// Compound events detected from committed atoms (Phase E).
+    pub committed_compounds: Vec<CompoundEvent>,
     /// ML character predictions (if predictor was available).
     pub predictions: Option<Vec<CharacterPrediction>>,
     /// When this turn was committed.
@@ -256,6 +261,8 @@ mod tests {
             }),
             classification: None,
             committed_classification: None,
+            committed_atoms: vec![],
+            committed_compounds: vec![],
             predictions: None,
             committed_at: chrono::Utc::now(),
         };
