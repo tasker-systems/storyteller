@@ -280,9 +280,7 @@ fn build_turn_message(context: &NarratorContextInput) -> String {
         ));
     }
 
-    message.push_str(
-        "Render ONLY this moment. Do not resolve the scene. Under 200 words.",
-    );
+    message.push_str("Render ONLY this moment. Do not resolve the scene. Under 200 words.");
 
     message
 }

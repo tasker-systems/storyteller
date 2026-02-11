@@ -234,7 +234,11 @@ async fn main() -> anyhow::Result<()> {
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty() && l != "/quit" && l != "/q")
             .collect();
-        eprintln!("[Scripted mode: {} inputs from {}]", lines.len(), path.display());
+        eprintln!(
+            "[Scripted mode: {} inputs from {}]",
+            lines.len(),
+            path.display()
+        );
         Some(lines)
     } else {
         None
