@@ -9,11 +9,4 @@
 |----|------|---|-------|------|
 | #2592 | 9:55 PM | 🔵 | Tensor system uses statistical distribution model with geological temporal layers | ~480 |
 | #2526 | 9:51 PM | 🔵 | Narrative graph system uses gravitational mass model for story attraction | ~412 |
-
-### Feb 8, 2026
-
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #3378 | 8:16 AM | 🔵 | ML Feature Schema Comprehensively Documented via Explore Agent | ~688 |
-| #3367 | 8:15 AM | 🔵 | Core Prediction Types Define Two-Tier ML Architecture | ~622 |
 </claude-mem-context>
