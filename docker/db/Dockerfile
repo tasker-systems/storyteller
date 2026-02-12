@@ -18,8 +18,9 @@ RUN cat > /docker-entrypoint-initdb.d/01-create-age-extension.sql <<'SQL'
 CREATE EXTENSION IF NOT EXISTS age;
 LOAD 'age';
 
--- Add ag_catalog to default search path so Cypher functions resolve
-ALTER DATABASE storyteller_development SET search_path = ag_catalog, "$user", public;
+-- Add ag_catalog to search path so Cypher functions resolve.
+-- public comes first so unqualified CREATE TABLE lands in public schema.
+ALTER DATABASE storyteller_development SET search_path = public, ag_catalog, "$user";
 SQL
 
 # 2. Create compatibility alias for uuid_generate_v7()

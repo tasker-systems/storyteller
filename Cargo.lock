@@ -4299,6 +4299,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "storyteller-storykeeper"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "storyteller-core",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
