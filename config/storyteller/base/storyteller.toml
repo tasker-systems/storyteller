@@ -5,7 +5,7 @@
 # Placeholders use ${VAR} or ${VAR:-default} syntax, resolved at load time.
 
 [database]
-url = "${DATABASE_URL:-postgresql://localhost:5432/storyteller_dev}"
+url = "${DATABASE_URL:-postgres://storyteller:storyteller@localhost:5435/storyteller_development}"
 
 [database.pool]
 max_connections = 10
