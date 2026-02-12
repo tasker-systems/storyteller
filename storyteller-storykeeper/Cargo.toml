@@ -1,0 +1,35 @@
+[package]
+name = "storyteller-storykeeper"
+version = "0.1.0"
+edition = "2021"
+description = "Persistence layer for the storyteller engine — Storykeeper trait implementations, migrations, and database access"
+readme = "../README.md"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+keywords = ["storytelling", "database", "persistence"]
+categories = ["game-engines"]
+
+[dependencies]
+storyteller-core = { path = "../storyteller-core" }
+
+# Database
+sqlx = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Types and serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

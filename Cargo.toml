@@ -13,6 +13,7 @@ categories = ["game-engines", "simulation"]
 members = [
     ".",
     "storyteller-core",
+    "storyteller-storykeeper",
     "storyteller-engine",
     "storyteller-api",
     "storyteller-cli",
