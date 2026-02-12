@@ -59,6 +59,32 @@ uv run convert-docx <path>          # Convert DOCX to structured markdown
 
 Python config: `doc-tools/pyproject.toml` — requires Python >=3.11, ruff line-length 100, target py311.
 
+### Database
+
+```bash
+# Start PostgreSQL 18 + Apache AGE (port 5435 to avoid tasker-core conflict)
+cargo make docker-up
+
+# Stop database
+cargo make docker-down
+
+# Stop and remove data volumes (fresh start)
+cargo make docker-down-volumes
+
+# Open psql shell
+cargo make docker-psql
+
+# Follow logs
+cargo make docker-logs
+
+# Direct docker compose (alternative)
+docker compose -f docker/docker-compose.dev.yml up -d
+```
+
+Connection: `postgres://storyteller:storyteller@localhost:5435/storyteller_development`
+
+Requires Docker. The image is built from `docker/db/Dockerfile` (AGE 1.7.0 on PostgreSQL 18 with UUIDv7).
+
 ## Workspace Architecture
 
 ### Crate Dependency Graph

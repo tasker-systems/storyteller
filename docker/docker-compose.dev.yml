@@ -1,0 +1,47 @@
+# =============================================================================
+# Development Compose Configuration — PostgreSQL 18 with Apache AGE
+# =============================================================================
+# Provides persistent graph-capable database for local development.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#   docker compose -f docker/docker-compose.dev.yml down
+#
+# Access:
+#   PostgreSQL: localhost:5435 (storyteller/storyteller)
+#   Database:   storyteller_development
+#
+# Port 5435 avoids conflict with tasker-core's PostgreSQL (5432/5433).
+
+services:
+  # ==========================================================================
+  # PostgreSQL 18 with Apache AGE Graph Extension
+  # ==========================================================================
+  postgres:
+    build:
+      context: ..
+      dockerfile: docker/db/Dockerfile
+    container_name: storyteller-postgres
+    environment:
+      POSTGRES_DB: storyteller_development
+      POSTGRES_USER: storyteller
+      POSTGRES_PASSWORD: storyteller
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U storyteller -d storyteller_development"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - storyteller-development
+
+volumes:
+  postgres_data:
+
+networks:
+  storyteller-development:
+    driver: bridge

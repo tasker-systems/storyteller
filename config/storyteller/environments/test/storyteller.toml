@@ -4,7 +4,7 @@
 # Merged on top of base/storyteller.toml when STORYTELLER_ENV=test.
 
 [database]
-url = "${DATABASE_URL:-postgresql://localhost:5432/storyteller_test}"
+url = "${DATABASE_URL:-postgres://storyteller:storyteller@localhost:5435/storyteller_test}"
 
 [database.pool]
 max_connections = 5
