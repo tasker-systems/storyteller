@@ -17,7 +17,7 @@ services:
   # ==========================================================================
   # PostgreSQL 18 with Apache AGE Graph Extension
   # ==========================================================================
-  postgres:
+  postgres-age:
     build:
       context: ..
       dockerfile: docker/db/Dockerfile
@@ -32,7 +32,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U storyteller -d storyteller_development"]
+      test:
+        ["CMD-SHELL", "pg_isready -U storyteller -d storyteller_development"]
       interval: 5s
       timeout: 3s
       retries: 5
