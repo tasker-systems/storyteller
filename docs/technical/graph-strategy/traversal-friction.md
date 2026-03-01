@@ -406,6 +406,173 @@ fn update_permeability(
 
 ---
 
+## Temporal Friction: Narrative-Chronological Bounds on Propagation
+
+### The Problem
+
+The friction model as described above is purely **structural** — it governs how signals attenuate across graph distance and permeability. But information propagation is also bounded by **time**. When a scene closes and the Storykeeper resolves relational changes, the question is: how far could those changes have propagated before the next scene begins?
+
+The answer depends on the narrative-chronological duration between scenes and the communication affordances available in the setting. If two days pass between scenes, news can travel several relational hops. If five minutes pass — or the next scene picks up immediately from a different point of view — almost nothing has propagated beyond the immediate scene participants.
+
+### Communication Velocity
+
+Information travels at a rate determined by the setting's available communication channels. This is a **setting-level property**, not a per-edge property:
+
+```rust
+struct CommunicationAffordance {
+    /// Maximum relational hops per narrative time unit
+    velocity: f32,
+    /// What information categories this channel carries
+    categories: Vec<SignalCategory>,
+}
+
+struct SettingCommunication {
+    /// Baseline: face-to-face, word-of-mouth
+    baseline: CommunicationAffordance,
+    /// Additional channels available in this setting
+    channels: Vec<CommunicationAffordance>,
+}
+```
+
+| Setting Type | Baseline Velocity | Additional Channels | Notes |
+|-------------|------------------|--------------------| ------|
+| Medieval village | 0.5 hops/day | Messenger (1.0 hops/day, factual only) | Gossip travels slowly; messengers carry specific news |
+| Pre-industrial town | 1.0 hops/day | Post (0.3 hops/day, factual) | Dense social network but slow long-distance |
+| Modern suburban | 3.0 hops/day | Phone/text (instant, factual + emotional) | Fast informal channels |
+| Contemporary urban | 5.0 hops/day | Social media (instant, factual — distorted) | Many channels but low-fidelity |
+| Fantasy with magic | Configurable | Scrying, sending spells (instant, targeted) | Author-defined affordances |
+
+### Temporal Propagation Ceiling
+
+The narrative-chronological duration between scenes imposes a **hard ceiling** on how many hops a signal can traverse:
+
+```rust
+fn temporal_propagation_ceiling(
+    duration: f32,              // narrative time units between scenes
+    setting: &SettingCommunication,
+    signal_category: &SignalCategory,
+) -> usize {
+    // Find the fastest channel that carries this signal category
+    let max_velocity = std::iter::once(&setting.baseline)
+        .chain(setting.channels.iter())
+        .filter(|ch| ch.categories.contains(signal_category))
+        .map(|ch| ch.velocity)
+        .fold(0.0_f32, f32::max);
+
+    (duration * max_velocity).floor() as usize
+}
+```
+
+The temporal ceiling interacts with the structural max propagation distance:
+
+```
+effective_max_hops = min(structural_max_hops, temporal_ceiling)
+```
+
+Where `structural_max_hops = ⌊log(threshold) / log(F)⌋` as defined earlier. The signal propagates no further than the more restrictive bound.
+
+### Resolution Order
+
+When a scene closes, the Storykeeper resolves information propagation in a specific order that accounts for temporal constraints:
+
+```rust
+fn resolve_scene_cascade(
+    scene: &ClosedScene,
+    next_scene: &SceneMetadata,
+    web: &mut RelationalWeb,
+    setting: &SettingCommunication,
+) {
+    let duration = next_scene.narrative_time - scene.narrative_time;
+
+    // Step 1: Immediate — resolve relational changes for in-scene characters
+    // These characters observed events directly. No friction, no delay.
+    for change in &scene.relational_changes {
+        web.apply_direct_change(change);
+    }
+
+    // Step 2: In-scene communication events — create temporary zero-distance edges
+    // A character who sent a text message, cast a sending spell, or called someone
+    // creates a direct information channel regardless of physical distance.
+    let mut temporary_edges: Vec<TemporaryEdge> = Vec::new();
+    for event in &scene.communication_events {
+        temporary_edges.push(TemporaryEdge {
+            from: event.sender,
+            to: event.recipient,
+            categories: event.information_categories.clone(),
+            // Permeability of the communication channel itself
+            permeability: event.channel_fidelity,
+        });
+    }
+
+    // Step 3: Temporally-bounded cascade — propagate outward up to ceiling
+    let ceiling = temporal_propagation_ceiling(
+        duration, setting, &SignalCategory::General,
+    );
+    for signal in &scene.propagating_signals {
+        propagate_with_ceiling(web, signal, ceiling, &temporary_edges);
+    }
+
+    // Step 4: Decay temporary edges — communication channels close
+    // (The text was sent; the spell expired. The information was delivered,
+    // but the channel doesn't persist.)
+    temporary_edges.clear();
+}
+```
+
+### In-Scene Communication as Zero-Distance Edges
+
+When a character in-scene communicates with a character off-stage — sending a text, dispatching a messenger, casting a spell — the off-stage character becomes **temporarily adjacent** in the relational graph for that specific information transfer:
+
+```rust
+struct TemporaryEdge {
+    from: EntityId,
+    to: EntityId,
+    /// What categories of information this channel carries
+    categories: Vec<SignalCategory>,
+    /// How faithfully the channel transmits (1.0 = perfect, 0.5 = lossy)
+    permeability: f32,
+}
+```
+
+The temporary edge bypasses temporal friction for the transmitted information — the recipient receives the signal as if at distance 1, regardless of how many structural hops separate them. However:
+
+- The **channel permeability** still applies — a hurried text message has lower fidelity than a long conversation
+- The **category filter** still applies — a text can convey facts but not the emotional subtlety of a face-to-face trust shift
+- **Onward propagation** from the recipient is still temporally bounded — they received the information, but their ability to spread it further is constrained by the remaining duration
+
+### TFATD Worked Example: Temporal Friction
+
+**Scenario**: Sarah departs Adam's dwelling (end of S2). The next scene (S3, Kate's blessing) begins the following morning — approximately 0.5 days later.
+
+Setting: pre-industrial rural. Baseline velocity = 0.5 hops/day. No additional channels (no phones, no magic).
+
+```
+temporal_ceiling = floor(0.5 days × 0.5 hops/day) = floor(0.25) = 0 hops
+```
+
+**Result**: With a temporal ceiling of 0, no cascade propagates beyond the immediate scene participants. Sarah's trust shift toward Adam remains entirely private — not because the structural friction blocked it (with F=0.7 it would reach Kate), but because there simply wasn't enough time for word to travel.
+
+**Contrast**: If S3 occurred a week later (7.0 days):
+```
+temporal_ceiling = floor(7.0 × 0.5) = 3 hops
+```
+
+Now the structural limit (3 hops for F=0.5) governs, and Kate could potentially receive the signal through normal social channels — overheard conversations, changes in Sarah's behavior noticed over days.
+
+**Communication event variant**: If Sarah had a magical sending stone and used it to tell Kate about Adam during S2:
+
+```
+temporary_edge: Sarah → Kate
+    categories: [Factual, Emotional]
+    permeability: 0.6 (magical communication loses nuance)
+
+Signal at Kate: 0.25 × 0.6 = 0.15 (above threshold)
+```
+
+Kate receives the signal despite the temporal ceiling of 0 — the sending stone bypassed the time constraint. But Kate's ability to propagate this further to John is still temporally bounded: 0 hops of onward propagation before the next scene.
+
+---
+
 ## Full Cascade Trace: TFATD Worked Example
 
 ### Scenario: Sarah Confronts Adam (Hypothetical S2 Extension)
@@ -467,6 +634,8 @@ If the signal to Kate were above threshold:
 | Category-shift distortion | Per-hop transformation | O(path length) | < 0.01ms |
 | Max propagation distance | Logarithmic formula | O(1) | < 0.01ms |
 | Boundary permeability update | Increment + clamp | O(1) | < 0.01ms |
+| Temporal ceiling computation | Max velocity × duration | O(channels) | < 0.01ms |
+| Scene cascade resolution | 4-step sequential | O((V+E) log V) | < 5ms |
 
 ---
 
@@ -491,9 +660,12 @@ If the signal to Kate were above threshold:
 | **Sub-graph boundary as friction layer** | Narrative layer boundaries as permeability gates with sigmoid dynamics |
 | **Unified friction comparison** | Comparing attenuation semantics across all four graph types |
 | **Inverse friction (amplification)** | The event DAG's amplification as the dual of attenuation |
+| **Temporal propagation ceiling** | Narrative-chronological duration bounding cascade reach, with setting-specific communication velocity |
+| **In-scene communication as temporary edges** | Off-stage characters becoming temporarily adjacent via communication events |
 
 ### What We Defer
 
 - **Frequency-dependent attenuation** — Different signal types (trust, affection, information) propagating with different friction factors. Currently all signals use the same F.
 - **Adaptive friction** — Friction factor changing based on recent cascade history (communities that have been through crisis might propagate more freely). Interesting but adds state.
 - **Bidirectional cascade** — Currently signals propagate forward only (from source outward). Bidirectional cascade (the destination "pulls" information from the source) is a natural extension but adds complexity.
+- **Communication network as persistent graph** — Currently, communication channels are modeled as temporary edges created by in-scene events. A persistent communication network (who has whose phone number, which messengers serve which routes) would allow richer temporal friction modeling but adds a fifth graph to maintain.
