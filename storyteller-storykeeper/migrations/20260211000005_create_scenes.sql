@@ -12,6 +12,7 @@ CREATE TABLE scenes (
     layer_id       UUID REFERENCES sub_graph_layers(id),
     title          TEXT NOT NULL,
     scene_type     scene_type NOT NULL,
+    provenance     scene_provenance NOT NULL DEFAULT 'authored',
     narrative_mass JSONB NOT NULL,
     scene_data     JSONB NOT NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
