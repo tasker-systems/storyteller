@@ -138,6 +138,12 @@ description = "Shortcut for test-ml"
 alias = "test-llm"
 description = "Shortcut for test-llm"
 
+# --- Code Generation ---
+
+[tasks.generate-db-schema]
+description = "Generate database schema ER diagram (Mermaid)"
+script = ["bash cargo-make/scripts/generate-db-schema.sh"]
+
 # --- Docker Tasks ---
 
 [tasks.docker-up]
