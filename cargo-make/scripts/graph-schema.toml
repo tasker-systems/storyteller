@@ -1,0 +1,62 @@
+# =============================================================================
+# AGE Graph Schema Definition (Planned — TAS-244/245)
+# =============================================================================
+# Static definition of planned Apache AGE vertex and edge labels.
+# Used by generate-db-schema.sh to document graph structure before
+# AGE migrations are implemented. Update or replace with SQL parsing
+# when TAS-244/245 migrations land.
+# =============================================================================
+
+# --- Vertex Labels ---
+
+[[vertex]]
+label = "RelEntity"
+graph = "Relational Web"
+description = "Character/entity node in the relational web"
+properties = ["pg_id UUID", "name TEXT", "entity_type TEXT"]
+
+[[vertex]]
+label = "Setting"
+graph = "Setting Topology"
+description = "Physical location node in the setting topology"
+properties = ["pg_id UUID", "name TEXT", "traversal_cost FLOAT"]
+
+[[vertex]]
+label = "Scene"
+graph = "Narrative Graph"
+description = "Scene node in the narrative graph with gravitational mass"
+properties = ["pg_id UUID", "title TEXT", "scene_type TEXT", "mass FLOAT"]
+
+# --- Edge Labels ---
+
+[[edge]]
+label = "RELATES_TO"
+graph = "Relational Web"
+from = "RelEntity"
+to = "RelEntity"
+description = "Relational substrate between entities"
+properties = ["substrate_dimensions JSONB", "tension FLOAT"]
+
+[[edge]]
+label = "CONNECTS_TO"
+graph = "Setting Topology"
+from = "Setting"
+to = "Setting"
+description = "Spatial connection between settings"
+properties = ["traversal_cost FLOAT", "bidirectional BOOLEAN"]
+
+[[edge]]
+label = "TRANSITIONS_TO"
+graph = "Narrative Graph"
+from = "Scene"
+to = "Scene"
+description = "Scene transition with gravitational weight"
+properties = ["transition_weight FLOAT"]
+
+[[edge]]
+label = "LOCATED_AT"
+graph = "Cross-Graph"
+from = "Scene"
+to = "Setting"
+description = "Cross-graph link: scene to its physical setting"
+properties = []

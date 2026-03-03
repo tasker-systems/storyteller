@@ -60,3 +60,28 @@ CREATE TYPE scene_instance_status AS ENUM (
 CREATE TYPE layer_type AS ENUM (
     'memory', 'dream', 'fairy_tale', 'parallel_pov', 'embedded_text', 'epistle'
 );
+
+-- Discriminator: scene origin tracking (authored by designer, collaborative, or runtime-generated)
+CREATE TYPE scene_provenance AS ENUM (
+    'authored', 'collaborative', 'generated'
+);
+
+-- State machine: session-scoped scene activation lifecycle
+CREATE TYPE scene_activation AS ENUM (
+    'dormant', 'approaching', 'active', 'completed', 'bypassed'
+);
+
+-- Discriminator: event DAG condition classification
+CREATE TYPE condition_type AS ENUM (
+    'prerequisite', 'discovery', 'gate', 'emergent', 'exclusion'
+);
+
+-- Discriminator: event DAG dependency edge type
+CREATE TYPE dependency_type AS ENUM (
+    'requires', 'excludes', 'enables', 'amplifies'
+);
+
+-- State machine: event condition resolution lifecycle
+CREATE TYPE resolution_state AS ENUM (
+    'unresolved', 'resolved', 'excluded', 'unreachable'
+);

@@ -13,6 +13,8 @@
 #
 # Port 5435 avoids conflict with tasker-core's PostgreSQL (5432/5433).
 
+name: storyteller-dev
+
 services:
   # ==========================================================================
   # PostgreSQL 18 with Apache AGE Graph Extension

@@ -5,10 +5,11 @@
 -- =============================================================================
 
 CREATE TABLE stories (
-    id          UUID PRIMARY KEY DEFAULT uuidv7(),
-    title       TEXT NOT NULL,
-    description TEXT,
-    metadata    JSONB,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id           UUID PRIMARY KEY DEFAULT uuidv7(),
+    title        TEXT NOT NULL,
+    description  TEXT,
+    story_config JSONB NOT NULL DEFAULT '{}',
+    metadata     JSONB,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
