@@ -9,8 +9,8 @@ lint = "clippy --all-targets --all-features -- -D warnings"
 WORKSPACE_PATH = { value = ".", relative = true }
 
 [profile.dev]
-incremental = false
-split-debuginfo = "unpacked"
+incremental = true
+split-debuginfo = "unpacked"  # Reduces debug artifact size on macOS
 
 [profile.release]
 incremental = false
