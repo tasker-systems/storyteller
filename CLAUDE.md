@@ -48,7 +48,7 @@ cargo lint                      # clippy --all-targets --all-features -- -D warn
 ### Python (doc-tools)
 
 ```bash
-cd doc-tools
+cd tools/doc-tools
 uv sync --dev                       # Install dependencies
 uv run pytest                       # Run tests
 uv run ruff check .                 # Lint
@@ -57,7 +57,7 @@ uv run extract-scrivener <path>     # Extract Scrivener project to markdown
 uv run convert-docx <path>          # Convert DOCX to structured markdown
 ```
 
-Python config: `doc-tools/pyproject.toml` — requires Python >=3.11, ruff line-length 100, target py311.
+Python config: `tools/doc-tools/pyproject.toml` — requires Python >=3.11, ruff line-length 100, target py311.
 
 ### Database
 
@@ -101,7 +101,7 @@ The root `storyteller` crate is a workspace coordinator for integration tests on
 Foundation layer. Types, traits, errors, database operations, and graph queries. **No Bevy dependency** — the headless layer that can be tested and reused independently of the ECS runtime.
 
 ```
-storyteller-core/src/
+crates/storyteller-core/src/
 ├── lib.rs              # Public API: re-exports StorytellerError, StorytellerResult
 ├── errors.rs           # StorytellerError enum with domain variants
 ├── config.rs           # StorytellerConfig, environment loading
@@ -133,7 +133,7 @@ storyteller-core/src/
 Bevy ECS runtime. Components, systems, agent implementations, ML inference, and messaging. This is where the storytelling happens.
 
 ```
-storyteller-engine/src/
+crates/storyteller-engine/src/
 ├── lib.rs              # Public API: re-exports StorytellerEnginePlugin
 ├── plugin.rs           # Bevy Plugin registration
 ├── components/
@@ -178,7 +178,7 @@ storyteller-engine/src/
 Deployment-agnostic HTTP layer. Axum routes for player input, session management, and health checks. Produces a `Router` that any deployment target can mount.
 
 ```
-storyteller-api/src/
+crates/storyteller-api/src/
 ├── lib.rs              # Public API: router(state) → axum::Router
 ├── state.rs            # AppState — shared state for handlers
 ├── routes/
@@ -196,7 +196,7 @@ storyteller-api/src/
 Self-hosted entry point. Assembles the Bevy App with the engine plugin, starts the HTTP server, and provides CLI subcommands.
 
 ```
-storyteller-cli/src/
+crates/storyteller-cli/src/
 ├── main.rs             # CLI entry point (clap subcommands)
 └── bin/
     └── server.rs       # Game engine server (Bevy App + tracing + engine plugin)
@@ -241,7 +241,7 @@ The system's defining architectural choice is **imperfect information by design*
 ### Python doc-tools
 
 ```
-doc-tools/src/doc_tools/
+tools/doc-tools/src/doc_tools/
 ├── docx_reader.py        # DOCX extraction with ParagraphType enum
 ├── docx_converter.py     # CLI: DOCX → markdown with chapter splitting
 ├── markdown_writer.py    # Markdown output, slug generation

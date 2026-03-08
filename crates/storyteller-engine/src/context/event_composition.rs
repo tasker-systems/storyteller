@@ -878,7 +878,7 @@ mod tests {
             .fold(0.0_f32, f32::max);
 
         let emergent = compute_emergent_implications(
-            &[a.clone()],
+            std::slice::from_ref(&a),
             &[a.id],
             &CompositionType::Causal {
                 mechanism: "test".to_string(),
@@ -910,8 +910,11 @@ mod tests {
             .map(|i| i.weight)
             .fold(0.0_f32, f32::max);
 
-        let emergent =
-            compute_emergent_implications(&[a.clone()], &[a.id], &CompositionType::Temporal);
+        let emergent = compute_emergent_implications(
+            std::slice::from_ref(&a),
+            &[a.id],
+            &CompositionType::Temporal,
+        );
 
         assert!(!emergent.is_empty());
         let emergent_max = emergent.iter().map(|i| i.weight).fold(0.0_f32, f32::max);

@@ -50,18 +50,24 @@ See [`docs/technical/technical-stack.md`](docs/technical/technical-stack.md) for
 
 ```
 storyteller/
-├── storyteller-core/           # Foundation: types, traits, errors, database, graph queries
-├── storyteller-engine/         # Runtime: Bevy ECS, agents, turn cycle, ML inference
-├── storyteller-api/            # HTTP layer: axum routes, session management (deployment-agnostic)
-├── storyteller-cli/            # Binary: self-hosted server entry point
-├── src/                        # Root crate: integration test coordinator
+├── crates/
+│   ├── storyteller-core/       # Foundation: types, traits, errors, database, graph queries
+│   ├── storyteller-engine/     # Runtime: Bevy ECS, agents, turn cycle, ML inference
+│   ├── storyteller-api/        # HTTP layer: axum routes, session management (deployment-agnostic)
+│   ├── storyteller-cli/        # Binary: self-hosted server entry point
+│   ├── storyteller-ml/         # ML feature pipeline and training data generation
+│   ├── storyteller-storykeeper/ # Persistence traits and database migrations
+│   └── storyteller/            # Integration test coordinator
+├── tools/
+│   ├── cargo-make/             # Build task templates and scripts
+│   ├── doc-tools/              # Python package for Scrivener/DOCX extraction
+│   └── training/               # Python ML training packages
+├── tests/fixtures/             # Test data and model fixtures
 ├── docs/
 │   ├── foundation/             # Design philosophy and principles (9 documents)
 │   ├── technical/              # Specifications and case studies (12 documents)
 │   └── storybook/              # Symlink → storyteller-data repo (private, gitignored)
-├── doc-tools/                  # Python package for Scrivener/DOCX extraction
-├── cargo-make/                 # Build task templates
-└── Cargo.toml                  # Workspace root
+└── Cargo.toml                  # Workspace root (pure virtual manifest)
 ```
 
 Dependencies flow in one direction: `cli → api → engine → core`. See [`docs/technical/crate-architecture.md`](docs/technical/crate-architecture.md) for the full breakdown.

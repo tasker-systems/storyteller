@@ -81,32 +81,32 @@ alias = "test-llm"
 [tasks.check-python]
 description = "Lint all Python packages"
 script = [
-    "cd doc-tools && uv run ruff check .",
-    "cd training && uv run ruff check src/ tests/",
-    "cd training/event_classifier && uv run ruff check .",
+    "cd tools/doc-tools && uv run ruff check .",
+    "cd tools/training && uv run ruff check src/ tests/",
+    "cd tools/training/event_classifier && uv run ruff check .",
 ]
 
 [tasks.test-python]
 description = "Test all Python packages"
 script = [
-    "cd doc-tools && uv run pytest",
-    "cd training && uv run pytest tests/",
-    "cd training/event_classifier && uv run pytest",
+    "cd tools/doc-tools && uv run pytest",
+    "cd tools/training && uv run pytest tests/",
+    "cd tools/training/event_classifier && uv run pytest",
 ]
 
 # --- Environment Setup ---
 
 [tasks.setup-env]
 description = "Generate .env for unit tests"
-script = ["bash cargo-make/scripts/setup-env.sh --mode=test"]
+script = ["bash tools/cargo-make/scripts/setup-env.sh --mode=test"]
 
 [tasks.setup-env-ml]
 description = "Generate .env for ML model tests"
-script = ["bash cargo-make/scripts/setup-env.sh --mode=test-ml"]
+script = ["bash tools/cargo-make/scripts/setup-env.sh --mode=test-ml"]
 
 [tasks.setup-env-dev]
 description = "Generate .env for development"
-script = ["bash cargo-make/scripts/setup-env.sh --mode=dev"]
+script = ["bash tools/cargo-make/scripts/setup-env.sh --mode=dev"]
 
 # --- Shortcuts ---
 
@@ -142,7 +142,7 @@ description = "Shortcut for test-llm"
 
 [tasks.generate-db-schema]
 description = "Generate database schema ER diagram (Mermaid)"
-script = ["bash cargo-make/scripts/generate-db-schema.sh"]
+script = ["bash tools/cargo-make/scripts/generate-db-schema.sh"]
 
 # --- Docker Tasks ---
 

@@ -21,7 +21,7 @@ MODE="test"
 OUTPUT=""
 DRY_RUN=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_PATH="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+WORKSPACE_PATH="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 DOTENV_DIR="${WORKSPACE_PATH}/config/dotenv"
 
 usage() {

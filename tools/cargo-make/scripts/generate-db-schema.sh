@@ -10,8 +10,8 @@
 # Also reads graph-schema.toml for planned AGE graph labels (TAS-244/245).
 #
 # Source files:
-#   storyteller-storykeeper/migrations/*.sql
-#   cargo-make/scripts/graph-schema.toml
+#   crates/storyteller-storykeeper/migrations/*.sql
+#   tools/cargo-make/scripts/graph-schema.toml
 #
 # Compatible with macOS bash 3.2 (no associative arrays or GNU extensions).
 # =============================================================================
@@ -19,9 +19,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 OUTPUT="${REPO_ROOT}/docs/generated/database-schema.md"
-MIGRATIONS_DIR="${REPO_ROOT}/storyteller-storykeeper/migrations"
+MIGRATIONS_DIR="${REPO_ROOT}/crates/storyteller-storykeeper/migrations"
 GRAPH_TOML="${SCRIPT_DIR}/graph-schema.toml"
 
 if [[ ! -d "${MIGRATIONS_DIR}" ]]; then
@@ -579,7 +579,7 @@ HEADER
         echo "## Apache AGE Graph Schema (Planned)"
         echo ""
         echo "> These graph labels are **planned for TAS-244/245** and are not yet migrated."
-        echo "> Source: \`cargo-make/scripts/graph-schema.toml\`"
+        echo "> Source: \`tools/cargo-make/scripts/graph-schema.toml\`"
         echo ""
         echo '```mermaid'
         echo 'graph LR'
