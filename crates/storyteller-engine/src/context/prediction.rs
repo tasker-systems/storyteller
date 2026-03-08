@@ -1022,13 +1022,9 @@ mod with_model {
         CharacterTensor, EmotionalPrimary, EmotionalState, SelfEdge, SelfEdgeTrust, SelfKnowledge,
     };
     use storyteller_core::types::entity::EntityId;
-    use storyteller_core::types::prediction::{EmotionalRegister, EventType};
     use storyteller_core::types::scene::SceneType;
     use storyteller_core::types::tensor::{AxisValue, Provenance, TemporalLayer};
     use storyteller_core::types::world_model::CapabilityProfile;
-    use storyteller_ml::feature_schema::{EventFeatureInput, PredictionInput, SceneFeatureInput};
-
-    use crate::inference::frame::CharacterPredictor;
 
     fn model_path() -> PathBuf {
         let data_path = std::env::var("STORYTELLER_MODEL_PATH")
@@ -1236,7 +1232,7 @@ mod with_model {
         let valid_axes: Vec<&String> = sheet.tensor.axes.keys().collect();
         for axis in &enriched.frame.activated_axes {
             assert!(
-                valid_axes.iter().any(|k| *k == axis),
+                valid_axes.contains(&axis),
                 "axis '{axis}' not found in character tensor"
             );
         }
