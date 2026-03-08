@@ -1,23 +1,13 @@
-[package]
-name = "storyteller"
-version = "0.1.0"
-edition = "2021"
-description = "Multi-agent storytelling engine — narrative gravity, character tensors, and collaborative world-building"
-readme = "README.md"
-license = "MIT"
-repository = "https://github.com/tasker-systems/storyteller"
-keywords = ["storytelling", "narrative", "agents", "bevy", "ecs"]
-categories = ["game-engines", "simulation"]
-
 [workspace]
+resolver = "2"
 members = [
-    ".",
-    "storyteller-core",
-    "storyteller-storykeeper",
-    "storyteller-engine",
-    "storyteller-api",
-    "storyteller-cli",
-    "storyteller-ml",
+    "crates/storyteller",
+    "crates/storyteller-core",
+    "crates/storyteller-storykeeper",
+    "crates/storyteller-engine",
+    "crates/storyteller-api",
+    "crates/storyteller-cli",
+    "crates/storyteller-ml",
 ]
 
 # =============================================================================
@@ -125,30 +115,6 @@ uninlined_format_args = "allow"
 missing_debug_implementations = "warn"
 redundant_imports = "warn"
 unsafe_op_in_unsafe_fn = "warn"
-
-# =============================================================================
-# Root Crate (integration test coordinator)
-# =============================================================================
-
-[features]
-test-ml-model = ["storyteller-engine/test-ml-model"]
-test-llm = ["storyteller-engine/test-llm"]
-
-[lib]
-crate-type = ["rlib"]
-name = "storyteller"
-path = "src/lib.rs"
-
-[dependencies]
-
-[dev-dependencies]
-storyteller-core = { path = "storyteller-core" }
-storyteller-engine = { path = "storyteller-engine" }
-storyteller-api = { path = "storyteller-api" }
-tokio = { workspace = true }
-
-[lints]
-workspace = true
 
 # =============================================================================
 # Build Profiles
