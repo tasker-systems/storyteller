@@ -10,9 +10,9 @@
 #   cargo make fix      Auto-fix all fixable issues
 #   cargo make build    Build everything
 #
-# See: cargo-make/main.toml for task definitions.
+# See: tools/cargo-make/main.toml for task definitions.
 
-extend = "./cargo-make/main.toml"
+extend = "./tools/cargo-make/main.toml"
 
 [config]
 default_to_workspace = false
