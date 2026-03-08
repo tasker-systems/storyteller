@@ -85,7 +85,7 @@ pub struct ExtractedEntity {
 /// The `Tokenizer` is `Send + Sync` and shared without locking.
 #[derive(Debug)]
 pub struct EventClassifier {
-    /// Event classification model (sequence-level [CLS] head).
+    /// Event classification model (sequence-level \[CLS\] head).
     /// Produces EventKind logits from tokenized text.
     event_session: Mutex<Session>,
     /// NER model (token-level BIO head).
@@ -299,11 +299,11 @@ pub struct TokenizedInput {
     /// Attention mask (1 for real tokens, 0 for padding).
     pub attention_mask: Vec<u32>,
     /// Character-level offsets: `(start, end)` in the original text.
-    /// Special tokens ([CLS], [SEP]) have offset `(0, 0)`.
+    /// Special tokens (\[CLS\], \[SEP\]) have offset `(0, 0)`.
     pub offsets: Vec<(usize, usize)>,
     /// Word IDs: maps each token to its original word index.
     /// `None` for special tokens. Used to group subword tokens
-    /// (e.g., "playing" → ["play", "##ing"] both map to word 0).
+    /// (e.g., "playing" → \["play", "##ing"\] both map to word 0).
     pub word_ids: Vec<Option<u32>>,
 }
 
@@ -331,7 +331,7 @@ pub fn load_tokenizer(path: &Path) -> Result<Tokenizer, StorytellerError> {
 ///
 /// Returns `(token_ids, attention_mask)` as i64 vectors ready for ONNX.
 /// Token IDs are padded with 0 (PAD token); attention mask with 0.
-/// Truncation preserves the first `max_len` tokens (including [CLS]).
+/// Truncation preserves the first `max_len` tokens (including \[CLS\]).
 fn pad_or_truncate(input: &TokenizedInput, max_len: usize) -> (Vec<i64>, Vec<i64>) {
     let len = input.token_ids.len().min(max_len);
 
