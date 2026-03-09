@@ -100,6 +100,12 @@ impl Visit for JsonVisitor {
     }
 }
 
+impl fmt::Debug for TauriTracingLayer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TauriTracingLayer").finish()
+    }
+}
+
 impl<S: Subscriber> Layer<S> for TauriTracingLayer {
     fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
         let metadata = event.metadata();
@@ -133,5 +139,54 @@ impl<S: Subscriber> Layer<S> for TauriTracingLayer {
         };
 
         let _ = self.app_handle.emit(LOG_EVENT_CHANNEL, &entry);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_visitor_new_starts_empty() {
+        let visitor = JsonVisitor::new();
+        assert!(visitor.message.is_none());
+        assert!(visitor.fields.is_empty());
+    }
+
+    #[test]
+    fn log_entry_serializes_to_expected_json_shape() {
+        let entry = LogEntry {
+            timestamp: "2026-03-09T20:15:00.123Z".to_string(),
+            level: "DEBUG".to_string(),
+            target: "storyteller_engine::inference::external".to_string(),
+            message: "sending request".to_string(),
+            fields: serde_json::json!({"model": "qwen2.5:14b"}),
+        };
+
+        let json = serde_json::to_value(&entry).expect("serialize");
+        assert_eq!(json["timestamp"], "2026-03-09T20:15:00.123Z");
+        assert_eq!(json["level"], "DEBUG");
+        assert_eq!(json["target"], "storyteller_engine::inference::external");
+        assert_eq!(json["message"], "sending request");
+        assert_eq!(json["fields"]["model"], "qwen2.5:14b");
+    }
+
+    #[test]
+    fn log_entry_empty_fields_serializes_as_empty_object() {
+        let entry = LogEntry {
+            timestamp: "2026-03-09T20:15:00.123Z".to_string(),
+            level: "INFO".to_string(),
+            target: "storyteller_workshop".to_string(),
+            message: "startup".to_string(),
+            fields: serde_json::Value::Object(serde_json::Map::new()),
+        };
+
+        let json = serde_json::to_value(&entry).expect("serialize");
+        assert_eq!(json["fields"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn log_event_channel_matches_frontend_constant() {
+        assert_eq!(LOG_EVENT_CHANNEL, "workshop:logs");
     }
 }

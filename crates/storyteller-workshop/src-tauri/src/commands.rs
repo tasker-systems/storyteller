@@ -820,3 +820,94 @@ fn resolve_event_classifier_path() -> Option<PathBuf> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_emotional_markers_finds_sadness() {
+        let markers = extract_emotional_markers("I begin to cry softly");
+        assert!(markers.contains(&"sadness".to_string()));
+    }
+
+    #[test]
+    fn extract_emotional_markers_finds_joy() {
+        let markers = extract_emotional_markers("She smiled and laughed");
+        assert!(markers.contains(&"joy".to_string()));
+    }
+
+    #[test]
+    fn extract_emotional_markers_finds_recognition() {
+        let markers = extract_emotional_markers("I play the flute and remember");
+        assert!(markers.contains(&"recognition".to_string()));
+        assert_eq!(markers.iter().filter(|m| *m == "recognition").count(), 2);
+    }
+
+    #[test]
+    fn extract_emotional_markers_returns_empty_for_neutral_input() {
+        let markers = extract_emotional_markers("I open the door and walk inside.");
+        assert!(markers.is_empty());
+    }
+
+    #[test]
+    fn extract_emotional_markers_is_case_insensitive() {
+        let markers = extract_emotional_markers("I am AFRAID and ANGRY");
+        assert!(markers.contains(&"fear".to_string()));
+        assert!(markers.contains(&"anger".to_string()));
+    }
+
+    #[test]
+    fn llm_status_serializes_to_expected_shape() {
+        let status = LlmStatus {
+            reachable: true,
+            endpoint: "http://127.0.0.1:11434".to_string(),
+            model: "qwen2.5:14b".to_string(),
+            provider: "Ollama".to_string(),
+            available_models: vec!["qwen2.5:14b".to_string(), "mistral".to_string()],
+            error: None,
+            latency_ms: 42,
+        };
+        let json = serde_json::to_value(&status).expect("serialize");
+        assert_eq!(json["reachable"], true);
+        assert_eq!(json["provider"], "Ollama");
+        assert!(json["error"].is_null());
+        assert_eq!(json["available_models"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn scene_info_serializes() {
+        let info = SceneInfo {
+            title: "The Fair and the Dead".to_string(),
+            setting_description: "A twilight meadow".to_string(),
+            cast: vec!["Bramblehoof".to_string(), "Pyotir".to_string()],
+            opening_prose: "The meadow stretches before you.".to_string(),
+        };
+        let json = serde_json::to_value(&info).expect("serialize");
+        assert_eq!(json["title"], "The Fair and the Dead");
+        assert_eq!(json["cast"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn turn_result_serializes_nested_structs() {
+        let result = TurnResult {
+            turn: 3,
+            narrator_prose: "The wind howls.".to_string(),
+            timing: TurnTiming {
+                prediction_ms: 50,
+                assembly_ms: 12,
+                narrator_ms: 2400,
+            },
+            context_tokens: ContextTokens {
+                preamble: 600,
+                journal: 800,
+                retrieved: 400,
+                total: 1800,
+            },
+        };
+        let json = serde_json::to_value(&result).expect("serialize");
+        assert_eq!(json["turn"], 3);
+        assert_eq!(json["timing"]["narrator_ms"], 2400);
+        assert_eq!(json["context_tokens"]["total"], 1800);
+    }
+}

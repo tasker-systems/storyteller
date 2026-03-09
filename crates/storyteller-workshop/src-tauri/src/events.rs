@@ -88,3 +88,115 @@ pub struct TokenCounts {
     pub retrieved: u32,
     pub total: u32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_event_channel_matches_frontend_constant() {
+        assert_eq!(DEBUG_EVENT_CHANNEL, "workshop:debug");
+    }
+
+    #[test]
+    fn phase_started_serializes_with_type_tag() {
+        let event = DebugEvent::PhaseStarted {
+            turn: 1,
+            phase: "prediction".to_string(),
+        };
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["type"], "phase_started");
+        assert_eq!(json["turn"], 1);
+        assert_eq!(json["phase"], "prediction");
+    }
+
+    #[test]
+    fn error_event_serializes_with_type_tag() {
+        let event = DebugEvent::Error {
+            turn: 3,
+            phase: "narrator".to_string(),
+            message: "LLM timeout".to_string(),
+        };
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["type"], "error");
+        assert_eq!(json["turn"], 3);
+        assert_eq!(json["phase"], "narrator");
+        assert_eq!(json["message"], "LLM timeout");
+    }
+
+    #[test]
+    fn context_assembled_serializes_token_counts() {
+        let event = DebugEvent::ContextAssembled {
+            turn: 2,
+            preamble_text: "narrator text".to_string(),
+            journal_text: String::new(),
+            retrieved_text: String::new(),
+            token_counts: TokenCounts {
+                preamble: 450,
+                journal: 300,
+                retrieved: 200,
+                total: 950,
+            },
+            timing_ms: 12,
+        };
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["type"], "context_assembled");
+        assert_eq!(json["token_counts"]["preamble"], 450);
+        assert_eq!(json["token_counts"]["total"], 950);
+    }
+
+    #[test]
+    fn narrator_complete_serializes_all_fields() {
+        let event = DebugEvent::NarratorComplete {
+            turn: 1,
+            system_prompt: "You are a narrator.".to_string(),
+            user_message: "I look around.".to_string(),
+            raw_response: "The room is dimly lit.".to_string(),
+            model: "qwen2.5:14b".to_string(),
+            temperature: 0.8,
+            max_tokens: 400,
+            tokens_used: 120,
+            timing_ms: 2500,
+        };
+        let json = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(json["type"], "narrator_complete");
+        assert_eq!(json["model"], "qwen2.5:14b");
+        // f32 → f64 conversion introduces precision noise; check approximate equality
+        let temp = json["temperature"].as_f64().unwrap();
+        assert!((temp - 0.8).abs() < 0.001, "temperature was {temp}");
+        assert_eq!(json["timing_ms"], 2500);
+    }
+
+    #[test]
+    fn phase_started_round_trips_through_json() {
+        let original = DebugEvent::PhaseStarted {
+            turn: 5,
+            phase: "context".to_string(),
+        };
+        let json_str = serde_json::to_string(&original).expect("serialize");
+        let restored: DebugEvent = serde_json::from_str(&json_str).expect("deserialize");
+
+        match restored {
+            DebugEvent::PhaseStarted { turn, phase } => {
+                assert_eq!(turn, 5);
+                assert_eq!(phase, "context");
+            }
+            _ => panic!("expected PhaseStarted variant"),
+        }
+    }
+
+    #[test]
+    fn token_counts_serializes_correctly() {
+        let counts = TokenCounts {
+            preamble: 600,
+            journal: 800,
+            retrieved: 400,
+            total: 1800,
+        };
+        let json = serde_json::to_value(&counts).expect("serialize");
+        assert_eq!(json["preamble"], 600);
+        assert_eq!(json["journal"], 800);
+        assert_eq!(json["retrieved"], 400);
+        assert_eq!(json["total"], 1800);
+    }
+}

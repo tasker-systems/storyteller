@@ -1,7 +1,7 @@
 # Tracing Layer & Resizable Inspector Design
 
 **Date:** 2026-03-09
-**Status:** Approved
+**Status:** Implemented
 **Branch:** `jcoletaylor/workshopping-even-more`
 
 ## Overview
