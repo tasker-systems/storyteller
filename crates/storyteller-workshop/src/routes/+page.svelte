@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { startScene, submitInput } from "$lib/api";
+  import { checkLlm, startScene, submitInput } from "$lib/api";
   import type { StoryBlock, SceneInfo } from "$lib/types";
   import StoryPane from "$lib/StoryPane.svelte";
   import InputBar from "$lib/InputBar.svelte";
@@ -24,6 +24,14 @@
 
     (async () => {
       try {
+        // Fail-fast: check LLM reachability before starting the scene
+        const llm = await checkLlm();
+        if (!llm.reachable) {
+          error = `LLM unreachable at ${llm.endpoint}: ${llm.error ?? "unknown error"}. Start Ollama and reload.`;
+          loading = false;
+          return;
+        }
+
         const info = await startScene();
         sceneInfo = info;
         blocks = [{ kind: "opening", text: info.opening_prose }];

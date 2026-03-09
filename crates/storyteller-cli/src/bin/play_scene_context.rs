@@ -8,7 +8,7 @@
 //!   cargo run --bin play-scene -- --model mistral --temperature 0.7
 //!   cargo run --bin play-scene -- --inputs test_inputs.txt --no-ml
 //!
-//! Requires a running Ollama instance at localhost:11434.
+//! Requires a running Ollama instance at 127.0.0.1:11434.
 
 use std::fs;
 use std::io::{self, BufRead, Write};
@@ -49,7 +49,7 @@ struct Args {
     temperature: f32,
 
     /// Ollama base URL
-    #[arg(long, default_value = "http://localhost:11434")]
+    #[arg(long, default_value = "http://127.0.0.1:11434")]
     ollama_url: String,
 
     /// Disable ML predictions (run without ONNX model)

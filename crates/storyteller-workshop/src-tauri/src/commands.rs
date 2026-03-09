@@ -87,6 +87,93 @@ pub struct ContextTokens {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// Result of an LLM health check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmStatus {
+    /// Whether the server responded to a health probe.
+    pub reachable: bool,
+    /// Base URL of the configured server.
+    pub endpoint: String,
+    /// Model name configured.
+    pub model: String,
+    /// Provider type (e.g., "Ollama").
+    pub provider: String,
+    /// Available models on the server (if reachable).
+    pub available_models: Vec<String>,
+    /// Error message if unreachable.
+    pub error: Option<String>,
+    /// Probe latency in milliseconds.
+    pub latency_ms: u64,
+}
+
+/// Probe the configured LLM server for reachability before starting a scene.
+#[tauri::command]
+pub async fn check_llm() -> Result<LlmStatus, String> {
+    let config = ExternalServerConfig::default();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let start = Instant::now();
+    let tags_url = format!("{}/api/tags", config.base_url);
+
+    match client.get(&tags_url).send().await {
+        Ok(response) if response.status().is_success() => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            let available_models = match response.json::<serde_json::Value>().await {
+                Ok(json) => json
+                    .get("models")
+                    .and_then(|m| m.as_array())
+                    .map(|models| {
+                        models
+                            .iter()
+                            .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
+                            .map(String::from)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                Err(_) => vec![],
+            };
+
+            Ok(LlmStatus {
+                reachable: true,
+                endpoint: config.base_url,
+                model: config.model,
+                provider: "Ollama".to_string(),
+                available_models,
+                error: None,
+                latency_ms,
+            })
+        }
+        Ok(response) => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            let status = response.status();
+            Ok(LlmStatus {
+                reachable: false,
+                endpoint: config.base_url,
+                model: config.model,
+                provider: "Ollama".to_string(),
+                available_models: vec![],
+                error: Some(format!("Server returned HTTP {status}")),
+                latency_ms,
+            })
+        }
+        Err(e) => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            Ok(LlmStatus {
+                reachable: false,
+                endpoint: config.base_url,
+                model: config.model,
+                provider: "Ollama".to_string(),
+                available_models: vec![],
+                error: Some(format!("{e}")),
+                latency_ms,
+            })
+        }
+    }
+}
+
 /// Load the workshop scene, create the LLM provider, and generate the opening.
 #[tauri::command]
 pub async fn start_scene(
@@ -101,7 +188,7 @@ pub async fn start_scene(
 
     // Create Ollama LLM provider
     let config = ExternalServerConfig {
-        base_url: "http://localhost:11434".to_string(),
+        base_url: "http://127.0.0.1:11434".to_string(),
         model: "qwen2.5:14b".to_string(),
         ..Default::default()
     };

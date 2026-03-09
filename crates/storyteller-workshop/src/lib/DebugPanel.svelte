@@ -1,14 +1,16 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import type { DebugState, DebugEvent, PhaseStatus } from "./types";
+  import type { DebugState, DebugEvent, PhaseStatus, LlmStatus } from "./types";
   import { DEBUG_EVENT_CHANNEL } from "./types";
+  import { checkLlm } from "./api";
 
   let { visible }: { visible: boolean } = $props();
 
-  const TABS = ["Context", "ML Predictions", "Characters", "Events", "Narrator"] as const;
+  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Narrator"] as const;
   type TabName = (typeof TABS)[number];
   const TAB_PHASE_MAP: Record<TabName, string> = {
+    LLM: "llm",
     Context: "context",
     "ML Predictions": "prediction",
     Characters: "characters",
@@ -16,7 +18,9 @@
     Narrator: "narrator",
   };
 
-  let activeTab: TabName = $state("Context");
+  let activeTab: TabName = $state("LLM");
+  let llmStatus: LlmStatus | null = $state(null);
+  let llmChecking = $state(false);
   let debugState: DebugState = $state({
     turn: 0,
     phases: {},
@@ -42,8 +46,31 @@
   }
 
   function phaseStatus(tab: TabName): PhaseStatus {
+    if (tab === "LLM") {
+      if (llmChecking) return "processing";
+      if (!llmStatus) return "pending";
+      return llmStatus.reachable ? "complete" : "error";
+    }
     const phase = TAB_PHASE_MAP[tab];
     return debugState.phases[phase] ?? "pending";
+  }
+
+  async function runLlmCheck() {
+    llmChecking = true;
+    try {
+      llmStatus = await checkLlm();
+    } catch (e) {
+      llmStatus = {
+        reachable: false,
+        endpoint: "unknown",
+        model: "unknown",
+        provider: "Ollama",
+        available_models: [],
+        error: e instanceof Error ? e.message : String(e),
+        latency_ms: 0,
+      };
+    }
+    llmChecking = false;
   }
 
   function handleDebugEvent(event: DebugEvent) {
@@ -86,14 +113,17 @@
 
   let unlisten: UnlistenFn | undefined;
 
-  onMount(async () => {
-    unlisten = await listen<DebugEvent>(DEBUG_EVENT_CHANNEL, (e) => {
-      handleDebugEvent(e.payload);
-    });
-  });
+  onMount(() => {
+    (async () => {
+      unlisten = await listen<DebugEvent>(DEBUG_EVENT_CHANNEL, (e) => {
+        handleDebugEvent(e.payload);
+      });
+    })();
 
-  onDestroy(() => {
-    unlisten?.();
+    // Run LLM health check immediately
+    runLlmCheck();
+
+    return () => unlisten?.();
   });
 </script>
 
@@ -117,7 +147,42 @@
     </div>
 
     <div class="debug-content">
-      {#if activeTab === "Context"}
+      {#if activeTab === "LLM"}
+        <div class="debug-tab-content">
+          {#if llmChecking}
+            <p class="debug-empty">Checking LLM connectivity...</p>
+          {:else if llmStatus}
+            <div class="debug-section">
+              <h4>Status</h4>
+              <pre class={llmStatus.reachable ? "llm-ok" : "llm-fail"}>{llmStatus.reachable ? "Reachable" : "Unreachable"} ({llmStatus.latency_ms}ms)</pre>
+            </div>
+            {#if llmStatus.error}
+              <div class="debug-section">
+                <h4>Error</h4>
+                <pre class="llm-fail">{llmStatus.error}</pre>
+              </div>
+            {/if}
+            <div class="debug-section">
+              <h4>Configuration</h4>
+              <pre>Provider: {llmStatus.provider}
+Endpoint: {llmStatus.endpoint}
+Model:    {llmStatus.model}</pre>
+            </div>
+            {#if llmStatus.available_models.length > 0}
+              <div class="debug-section">
+                <h4>Available Models ({llmStatus.available_models.length})</h4>
+                <pre>{llmStatus.available_models.join("\n")}</pre>
+              </div>
+              {#if !llmStatus.available_models.some(m => m.startsWith(llmStatus!.model))}
+                <p class="debug-notice">Configured model "{llmStatus.model}" not found in available models.</p>
+              {/if}
+            {/if}
+            <button class="llm-recheck" onclick={runLlmCheck}>Re-check</button>
+          {:else}
+            <p class="debug-empty">No status yet.</p>
+          {/if}
+        </div>
+      {:else if activeTab === "Context"}
         <div class="debug-tab-content">
           {#if debugState.context}
             <div class="debug-section">
@@ -371,6 +436,33 @@
     color: var(--debug-yellow);
     font-size: 0.75rem;
     padding: 0.25rem 0;
+  }
+
+  .llm-ok {
+    color: var(--debug-green);
+  }
+
+  .llm-fail {
+    color: #d88;
+  }
+
+  .llm-recheck {
+    background: var(--bg-debug-tab);
+    border: 1px solid var(--border-debug);
+    color: var(--text-debug);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 3px;
+    cursor: pointer;
+    width: fit-content;
+    box-shadow: none;
+    margin-top: 0.25rem;
+  }
+
+  .llm-recheck:hover {
+    border-color: var(--accent-dim);
+    color: var(--text-primary);
   }
 
   .debug-error {

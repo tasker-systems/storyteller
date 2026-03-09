@@ -32,6 +32,7 @@ storyteller-core = { path = "../../storyteller-core" }
 storyteller-engine = { path = "../../storyteller-engine" }
 tracing = { workspace = true }
 reqwest = { workspace = true }
+dotenvy = { workspace = true }
 
 [lints]
 workspace = true

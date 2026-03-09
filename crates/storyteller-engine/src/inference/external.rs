@@ -17,7 +17,7 @@ use tracing::instrument;
 /// Configuration for an external LLM server.
 #[derive(Debug, Clone)]
 pub struct ExternalServerConfig {
-    /// Base URL of the server (e.g., "http://localhost:11434").
+    /// Base URL of the server (e.g., "http://127.0.0.1:11434").
     pub base_url: String,
     /// Model name to use (e.g., "mistral", "llama3.1").
     pub model: String,
@@ -28,7 +28,7 @@ pub struct ExternalServerConfig {
 impl Default for ExternalServerConfig {
     fn default() -> Self {
         Self {
-            base_url: "http://localhost:11434".to_string(),
+            base_url: "http://127.0.0.1:11434".to_string(),
             model: "qwen2.5:14b".to_string(),
             timeout: Duration::from_secs(120),
         }
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn default_config_points_to_localhost() {
         let config = ExternalServerConfig::default();
-        assert_eq!(config.base_url, "http://localhost:11434");
+        assert_eq!(config.base_url, "http://127.0.0.1:11434");
         assert_eq!(config.model, "qwen2.5:14b");
     }
 
@@ -212,7 +212,7 @@ mod tests {
     fn ollama_constructor_uses_custom_model() {
         let provider = ExternalServerProvider::ollama("llama3.1");
         assert_eq!(provider.config.model, "llama3.1");
-        assert_eq!(provider.config.base_url, "http://localhost:11434");
+        assert_eq!(provider.config.base_url, "http://127.0.0.1:11434");
     }
 
     #[test]

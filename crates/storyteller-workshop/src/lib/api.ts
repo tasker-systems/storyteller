@@ -1,5 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SceneInfo, TurnResult, LogEntry } from "./types";
+import type { SceneInfo, TurnResult, LogEntry, LlmStatus } from "./types";
+
+export async function checkLlm(): Promise<LlmStatus> {
+  return invoke<LlmStatus>("check_llm");
+}
 
 export async function startScene(): Promise<SceneInfo> {
   return invoke<SceneInfo>("start_scene");

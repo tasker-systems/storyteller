@@ -43,6 +43,16 @@ export interface LogEntry {
   };
 }
 
+export interface LlmStatus {
+  reachable: boolean;
+  endpoint: string;
+  model: string;
+  provider: string;
+  available_models: string[];
+  error: string | null;
+  latency_ms: number;
+}
+
 export type StoryBlock =
   | { kind: "narrator"; turn: number; text: string }
   | { kind: "player"; turn: number; text: string }
