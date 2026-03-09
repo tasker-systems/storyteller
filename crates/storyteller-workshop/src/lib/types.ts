@@ -154,3 +154,17 @@ export interface DebugState {
   narrator: NarratorCompleteEvent | null;
   error: ErrorEvent | null;
 }
+
+// ---------------------------------------------------------------------------
+// Structured log streaming — events arrive on "workshop:logs" channel.
+// ---------------------------------------------------------------------------
+
+export const LOG_EVENT_CHANNEL = "workshop:logs";
+
+export interface TracingLogEntry {
+  timestamp: string;
+  level: string;
+  target: string;
+  message: string;
+  fields: Record<string, unknown>;
+}

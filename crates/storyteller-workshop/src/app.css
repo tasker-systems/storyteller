@@ -44,3 +44,16 @@ body {
 #app {
   height: 100%;
 }
+
+/* svelte-json-tree theme overrides */
+:root {
+  --json-tree-string-color: #a8cc8c;
+  --json-tree-number-color: #dbab79;
+  --json-tree-boolean-color: #e88388;
+  --json-tree-null-color: #777;
+  --json-tree-property-color: #7c9cbf;
+  --json-tree-label-color: #ccc;
+  --json-tree-arrow-color: #777;
+  --json-tree-font-family: var(--font-mono);
+  --json-tree-font-size: 0.7rem;
+}

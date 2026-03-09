@@ -1,13 +1,14 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import type { DebugState, DebugEvent, PhaseStatus, LlmStatus } from "./types";
-  import { DEBUG_EVENT_CHANNEL } from "./types";
+  import JSONTree from "svelte-json-tree";
+  import type { DebugState, DebugEvent, PhaseStatus, LlmStatus, TracingLogEntry } from "./types";
+  import { DEBUG_EVENT_CHANNEL, LOG_EVENT_CHANNEL } from "./types";
   import { checkLlm } from "./api";
 
   let { visible }: { visible: boolean } = $props();
 
-  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Narrator"] as const;
+  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Narrator", "Logs"] as const;
   type TabName = (typeof TABS)[number];
   const TAB_PHASE_MAP: Record<TabName, string> = {
     LLM: "llm",
@@ -16,11 +17,17 @@
     Characters: "characters",
     Events: "events",
     Narrator: "narrator",
+    Logs: "logs",
   };
 
   let activeTab: TabName = $state("LLM");
   let llmStatus: LlmStatus | null = $state(null);
   let llmChecking = $state(false);
+  const MAX_LOG_ENTRIES = 500;
+  let logEntries: TracingLogEntry[] = $state([]);
+  let logAutoScroll = $state(true);
+  let logContainer: HTMLDivElement | undefined = $state(undefined);
+  let expandedLogIndices: Set<number> = $state(new Set());
   let debugState: DebugState = $state({
     turn: 0,
     phases: {},
@@ -111,19 +118,70 @@
     debugState = debugState; // trigger reactivity
   }
 
-  let unlisten: UnlistenFn | undefined;
+  function handleLogEntry(entry: TracingLogEntry) {
+    logEntries = [...logEntries, entry].slice(-MAX_LOG_ENTRIES);
+    if (logAutoScroll && logContainer) {
+      requestAnimationFrame(() => {
+        logContainer?.scrollTo({ top: logContainer.scrollHeight });
+      });
+    }
+  }
+
+  function clearLogs() {
+    logEntries = [];
+    expandedLogIndices = new Set();
+  }
+
+  function toggleLogExpand(index: number) {
+    const next = new Set(expandedLogIndices);
+    if (next.has(index)) {
+      next.delete(index);
+    } else {
+      next.add(index);
+    }
+    expandedLogIndices = next;
+  }
+
+  function handleLogScroll() {
+    if (!logContainer) return;
+    const { scrollTop, scrollHeight, clientHeight } = logContainer;
+    logAutoScroll = scrollHeight - scrollTop - clientHeight < 20;
+  }
+
+  function levelColor(level: string): string {
+    switch (level) {
+      case "ERROR": return "log-error";
+      case "WARN": return "log-warn";
+      case "DEBUG": return "log-debug";
+      case "TRACE": return "log-trace";
+      default: return "log-info";
+    }
+  }
+
+  function shortTimestamp(ts: string): string {
+    const match = ts.match(/T(\d{2}:\d{2}:\d{2}\.\d{3})/);
+    return match ? match[1] : ts;
+  }
 
   onMount(() => {
+    let unlistenDebug: UnlistenFn | undefined;
+    let unlistenLogs: UnlistenFn | undefined;
+
     (async () => {
-      unlisten = await listen<DebugEvent>(DEBUG_EVENT_CHANNEL, (e) => {
+      unlistenDebug = await listen<DebugEvent>(DEBUG_EVENT_CHANNEL, (e) => {
         handleDebugEvent(e.payload);
+      });
+      unlistenLogs = await listen<TracingLogEntry>(LOG_EVENT_CHANNEL, (e) => {
+        handleLogEntry(e.payload);
       });
     })();
 
-    // Run LLM health check immediately
     runLlmCheck();
 
-    return () => unlisten?.();
+    return () => {
+      unlistenDebug?.();
+      unlistenLogs?.();
+    };
   });
 </script>
 
@@ -217,7 +275,7 @@ Model:    {llmStatus.model}</pre>
             {#if debugState.prediction.resolver_output.original_predictions.length > 0}
               <div class="debug-section">
                 <h4>Character Predictions</h4>
-                <pre>{JSON.stringify(debugState.prediction.resolver_output.original_predictions, null, 2)}</pre>
+                <JSONTree value={debugState.prediction.resolver_output.original_predictions} />
               </div>
             {/if}
             <div class="debug-section">
@@ -237,7 +295,7 @@ Model:    {llmStatus.model}</pre>
             {#each debugState.characters.characters as char}
               <div class="debug-section">
                 <h4>{(char as any).name ?? "Character"}</h4>
-                <pre>{JSON.stringify(char, null, 2)}</pre>
+                <JSONTree value={char} />
               </div>
             {/each}
           {:else}
@@ -284,6 +342,35 @@ Model:    {llmStatus.model}</pre>
           {:else}
             <p class="debug-empty">Waiting for turn data...</p>
           {/if}
+        </div>
+      {:else if activeTab === "Logs"}
+        <div class="debug-tab-content logs-tab">
+          <div class="logs-toolbar">
+            <span class="log-count">{logEntries.length} entries</span>
+            {#if !logAutoScroll}
+              <button class="logs-btn" onclick={() => { logAutoScroll = true; logContainer?.scrollTo({ top: logContainer.scrollHeight }); }}>Resume scroll</button>
+            {/if}
+            <button class="logs-btn" onclick={clearLogs}>Clear</button>
+          </div>
+          <div
+            class="logs-stream"
+            bind:this={logContainer}
+            onscroll={handleLogScroll}
+          >
+            {#each logEntries as entry, i}
+              <div class="log-line" onclick={() => toggleLogExpand(i)}>
+                <span class="log-ts">{shortTimestamp(entry.timestamp)}</span>
+                <span class="log-level {levelColor(entry.level)}">{entry.level.substring(0, 4).padEnd(4)}</span>
+                <span class="log-target">{entry.target.replace("storyteller_", "")}</span>
+                <span class="log-msg">{entry.message}</span>
+              </div>
+              {#if expandedLogIndices.has(i)}
+                <div class="log-expanded">
+                  <JSONTree value={entry} />
+                </div>
+              {/if}
+            {/each}
+          </div>
         </div>
       {/if}
 
@@ -472,5 +559,107 @@ Model:    {llmStatus.model}</pre>
     border-radius: 4px;
     margin-top: 0.5rem;
     font-size: 0.75rem;
+  }
+
+  .logs-tab {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 0;
+  }
+
+  .logs-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border-debug);
+    flex-shrink: 0;
+  }
+
+  .log-count {
+    color: var(--text-debug-dim);
+    font-size: 0.7rem;
+    margin-right: auto;
+  }
+
+  .logs-btn {
+    background: var(--bg-debug-tab);
+    border: 1px solid var(--border-debug);
+    color: var(--text-debug);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: none;
+  }
+
+  .logs-btn:hover {
+    border-color: var(--accent-dim);
+    color: var(--text-primary);
+  }
+
+  .logs-stream {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    padding-top: 0.25rem;
+  }
+
+  .log-line {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.1rem 0;
+    cursor: pointer;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    border-bottom: 1px solid transparent;
+  }
+
+  .log-line:hover {
+    background: var(--bg-debug-tab);
+  }
+
+  .log-ts {
+    color: var(--text-debug-dim);
+    flex-shrink: 0;
+    font-size: 0.65rem;
+  }
+
+  .log-level {
+    flex-shrink: 0;
+    font-weight: 600;
+    font-size: 0.65rem;
+    width: 3em;
+  }
+
+  .log-error { color: #d55; }
+  .log-warn { color: var(--debug-yellow); }
+  .log-info { color: var(--debug-green); }
+  .log-debug { color: var(--text-debug-dim); }
+  .log-trace { color: var(--debug-grey); }
+
+  .log-target {
+    color: var(--accent);
+    flex-shrink: 0;
+    max-width: 20em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.65rem;
+  }
+
+  .log-msg {
+    color: var(--text-debug);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .log-expanded {
+    padding: 0.25rem 0 0.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-debug);
+    font-size: 0.7rem;
   }
 </style>
