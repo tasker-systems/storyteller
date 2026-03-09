@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "Interactive workshop UI for the storyteller engine"
 authors = ["you"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+readme = "../../README.md"
+keywords = ["storytelling", "narrative", "ui"]
+categories = ["game-engines"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
