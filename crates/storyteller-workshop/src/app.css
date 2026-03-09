@@ -8,6 +8,16 @@
   --accent: #7c9cbf;
   --accent-dim: #555;
   --border: #333;
+  --bg-debug: #1a1a1a;
+  --bg-debug-tab: #222;
+  --bg-debug-active-tab: #2a2a2a;
+  --text-debug: #ccc;
+  --text-debug-dim: #777;
+  --border-debug: #2a2a2a;
+  --font-mono: "SF Mono", "Fira Code", "Cascadia Code", "Courier New", Courier, monospace;
+  --debug-green: #5a9;
+  --debug-yellow: #da5;
+  --debug-grey: #555;
 }
 
 *,
