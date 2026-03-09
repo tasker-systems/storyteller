@@ -86,28 +86,6 @@ pub struct ContextTokens {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// Diagnostic: test if we can reach Ollama from within the Tauri process.
-#[tauri::command]
-pub async fn test_ollama() -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Failed to build client: {e}"))?;
-
-    let resp = client
-        .get("http://localhost:11434/api/tags")
-        .send()
-        .await
-        .map_err(|e| format!("GET /api/tags failed: {e}"))?;
-
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read body: {e}"))?;
-
-    Ok(format!("Ollama reachable! Response length: {}", body.len()))
-}
-
 /// Load the workshop scene, create the LLM provider, and generate the opening.
 #[tauri::command]
 pub async fn start_scene(
