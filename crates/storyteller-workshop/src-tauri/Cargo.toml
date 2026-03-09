@@ -25,6 +25,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 storyteller-core = { path = "../../storyteller-core" }
 storyteller-engine = { path = "../../storyteller-engine" }
+tracing = { workspace = true }
 
 [lints]
 workspace = true
