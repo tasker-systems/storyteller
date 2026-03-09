@@ -8,6 +8,7 @@ members = [
     "crates/storyteller-api",
     "crates/storyteller-cli",
     "crates/storyteller-ml",
+    "crates/storyteller-workshop/src-tauri",
 ]
 
 # =============================================================================
