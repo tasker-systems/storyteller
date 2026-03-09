@@ -1,0 +1,36 @@
+[package]
+name = "storyteller-workshop"
+version = "0.1.0"
+description = "Interactive workshop UI for the storyteller engine"
+authors = ["you"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+readme = "../../README.md"
+keywords = ["storytelling", "narrative", "ui"]
+categories = ["game-engines"]
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "storyteller_workshop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+storyteller-core = { path = "../../storyteller-core" }
+storyteller-engine = { path = "../../storyteller-engine" }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

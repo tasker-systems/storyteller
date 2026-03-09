@@ -34,7 +34,8 @@ jobs:
           cache-prefix: test
 
       - name: Run unit tests
-        run: cargo test --workspace
+        # Exclude storyteller-workshop (Tauri desktop app requires system GTK/GLib libs)
+        run: cargo test --workspace --exclude storyteller-workshop
 
   ml-model-tests:
     name: ML Model Tests
@@ -55,7 +56,8 @@ jobs:
           cache-prefix: test
 
       - name: Run ML model tests
-        run: cargo test --workspace --features test-ml-model
+        # Exclude storyteller-workshop (Tauri desktop app requires system GTK/GLib libs)
+        run: cargo test --workspace --exclude storyteller-workshop --features test-ml-model
         env:
           # Model fixtures are in tests/fixtures/models/ (checked into repo)
           STORYTELLER_MODEL_PATH: ${{ github.workspace }}/tests/fixtures/models

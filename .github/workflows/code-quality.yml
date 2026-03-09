@@ -32,11 +32,12 @@ jobs:
 
       # NOTE: --all-features includes local-llm (candle). If candle fails to
       # build on CI, switch to explicit --features "test-ml-model".
+      # Exclude storyteller-workshop (Tauri desktop app requires system GTK/GLib libs)
       - name: Run Clippy lints
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --exclude storyteller-workshop -- -D warnings
 
       - name: Check documentation builds
-        run: cargo doc --no-deps --all-features --document-private-items
+        run: cargo doc --workspace --no-deps --all-features --exclude storyteller-workshop --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
 
