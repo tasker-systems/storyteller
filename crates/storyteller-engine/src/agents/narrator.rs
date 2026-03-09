@@ -52,6 +52,11 @@ impl NarratorAgent {
         self
     }
 
+    /// Access the system prompt (for debugging/inspection).
+    pub fn system_prompt(&self) -> &str {
+        &self.system_prompt
+    }
+
     /// Render a turn from assembled three-tier context.
     ///
     /// Each turn is a one-shot LLM call. The Narrator receives structured

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 use tokio::sync::Mutex;
 
 use storyteller_core::grammars::PlutchikWestern;
@@ -26,6 +26,7 @@ use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::workshop::the_flute_kept;
 
 use crate::engine_state::EngineState;
+use crate::events::{DebugEvent, TokenCounts, DEBUG_EVENT_CHANNEL};
 use crate::session_log::{ContextAssemblyLog, LogEntry, SessionLog, TimingLog};
 
 // ---------------------------------------------------------------------------
@@ -228,6 +229,7 @@ pub async fn start_scene(
 #[tauri::command]
 pub async fn submit_input(
     input: String,
+    app: tauri::AppHandle,
     state: State<'_, Mutex<Option<EngineState>>>,
 ) -> Result<TurnResult, String> {
     let mut guard = state.lock().await;
@@ -241,7 +243,15 @@ pub async fn submit_input(
     let characters_refs: Vec<&_> = engine.characters.iter().collect();
     let entity_ids: Vec<_> = engine.characters.iter().map(|c| c.entity_id).collect();
 
-    // ML predictions (if model available)
+    // --- Phase: ML Predictions ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "prediction".to_string(),
+        },
+    );
+
     let predict_start = Instant::now();
     let resolver_output = if let Some(ref predictor) = engine.predictor {
         let (predictions, _classification) = predict_character_behaviors(
@@ -269,7 +279,75 @@ pub async fn submit_input(
     };
     let prediction_ms = predict_start.elapsed().as_millis() as u64;
 
-    // Context assembly
+    emit_debug(
+        &app,
+        DebugEvent::PredictionComplete {
+            turn,
+            resolver_output: resolver_output.clone(),
+            timing_ms: prediction_ms,
+            model_loaded: engine.predictor.is_some(),
+        },
+    );
+
+    // --- Phase: Characters ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "characters".to_string(),
+        },
+    );
+
+    let emotional_markers = extract_emotional_markers(&input);
+    emit_debug(
+        &app,
+        DebugEvent::CharactersUpdated {
+            turn,
+            characters: engine.characters.clone(),
+            emotional_markers: emotional_markers.clone(),
+        },
+    );
+
+    // --- Phase: Event Classification ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "events".to_string(),
+        },
+    );
+
+    let classifications: Vec<String> = if let Some(ref classifier) = engine.event_classifier {
+        match classifier.classify_text(&input) {
+            Ok(output) => output
+                .event_kinds
+                .iter()
+                .map(|(label, score)| format!("{label}: {score:.2}"))
+                .collect(),
+            Err(e) => vec![format!("Classification error: {e}")],
+        }
+    } else {
+        vec![]
+    };
+
+    emit_debug(
+        &app,
+        DebugEvent::EventsClassified {
+            turn,
+            classifications,
+            classifier_loaded: engine.event_classifier.is_some(),
+        },
+    );
+
+    // --- Phase: Context Assembly ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "context".to_string(),
+        },
+    );
+
     let observer = CollectingObserver::new();
     let assembly_start = Instant::now();
     let context = assemble_narrator_context(
@@ -286,14 +364,98 @@ pub async fn submit_input(
 
     let token_counts = extract_token_counts(&observer);
 
-    // Narrator renders
+    // Render context tiers as text for the debug inspector
+    let preamble_text = format!(
+        "Narrator: {}\nSetting: {}\nCast: {}\nBoundaries: {}",
+        context.preamble.narrator_identity,
+        context.preamble.setting_description,
+        context
+            .preamble
+            .cast_descriptions
+            .iter()
+            .map(|c| format!("{} ({})", c.name, c.role))
+            .collect::<Vec<_>>()
+            .join(", "),
+        context.preamble.boundaries.join("; "),
+    );
+    let journal_text = context
+        .journal
+        .entries
+        .iter()
+        .map(|e| format!("[Turn {}] {}", e.turn_number, e.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let retrieved_text = context
+        .retrieved
+        .iter()
+        .map(|r| {
+            let mut s = format!("{}: {}", r.subject, r.content);
+            if let Some(ref emo) = r.emotional_context {
+                s.push_str(&format!(" ({})", emo));
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    emit_debug(
+        &app,
+        DebugEvent::ContextAssembled {
+            turn,
+            preamble_text,
+            journal_text,
+            retrieved_text,
+            token_counts: TokenCounts {
+                preamble: token_counts.0,
+                journal: token_counts.1,
+                retrieved: token_counts.2,
+                total: token_counts.3,
+            },
+            timing_ms: assembly_ms,
+        },
+    );
+
+    // --- Phase: Narrator Rendering ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "narrator".to_string(),
+        },
+    );
+
     let narrator = NarratorAgent::new(&context, Arc::clone(&engine.llm)).with_temperature(0.8);
     let llm_start = Instant::now();
-    let rendering = narrator
-        .render(&context, &observer)
-        .await
-        .map_err(|e| format!("Narrator render failed: {e}"))?;
+    let rendering = match narrator.render(&context, &observer).await {
+        Ok(r) => r,
+        Err(e) => {
+            emit_debug(
+                &app,
+                DebugEvent::Error {
+                    turn,
+                    phase: "narrator".to_string(),
+                    message: format!("{e}"),
+                },
+            );
+            return Err(format!("Narrator render failed: {e}"));
+        }
+    };
     let narrator_ms = llm_start.elapsed().as_millis() as u64;
+
+    emit_debug(
+        &app,
+        DebugEvent::NarratorComplete {
+            turn,
+            system_prompt: narrator.system_prompt().to_string(),
+            user_message: "See context assembly".to_string(),
+            raw_response: rendering.text.clone(),
+            model: "qwen2.5:14b".to_string(),
+            temperature: 0.8,
+            max_tokens: 400,
+            tokens_used: 0,
+            timing_ms: narrator_ms,
+        },
+    );
 
     // Update journal
     let noop = NoopObserver;
@@ -302,7 +464,7 @@ pub async fn submit_input(
         turn,
         &rendering.text,
         entity_ids,
-        extract_emotional_markers(&input),
+        emotional_markers,
         &noop,
     );
 
@@ -358,6 +520,12 @@ pub async fn get_session_log(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Emit a debug event to the inspector panel. Failures are silently ignored —
+/// debug events are best-effort observability, never blocking.
+fn emit_debug(app: &tauri::AppHandle, event: DebugEvent) {
+    let _ = app.emit(DEBUG_EVENT_CHANNEL, &event);
+}
 
 /// Extract rough emotional markers from player input.
 ///
