@@ -39,6 +39,41 @@
     error: null,
   });
 
+  let panelHeight = $state(0); // 0 means "use default 25%"
+  let resizing = $state(false);
+
+  function getDefaultHeight(): number {
+    return Math.round(window.innerHeight * 0.25);
+  }
+
+  function startResize(e: MouseEvent) {
+    e.preventDefault();
+    resizing = true;
+    if (panelHeight === 0) {
+      panelHeight = getDefaultHeight();
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newHeight = window.innerHeight - e.clientY;
+      const minHeight = 100;
+      const maxHeight = Math.round(window.innerHeight * 0.6);
+      panelHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+    };
+
+    const onMouseUp = () => {
+      resizing = false;
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
+  function resetHeight() {
+    panelHeight = 0;
+  }
+
   function resetForTurn(turn: number) {
     debugState = {
       turn,
@@ -186,7 +221,17 @@
 </script>
 
 {#if visible}
-  <div class="debug-panel">
+  <div
+    class="debug-panel"
+    style={panelHeight > 0 ? `height: ${panelHeight}px` : undefined}
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="resize-handle"
+      class:active={resizing}
+      onmousedown={startResize}
+      ondblclick={resetHeight}
+    ></div>
     <div class="debug-tab-bar">
       {#each TABS as tab}
         {@const status = phaseStatus(tab)}
@@ -385,6 +430,7 @@ Model:    {llmStatus.model}</pre>
 
 <style>
   .debug-panel {
+    position: relative;
     flex-shrink: 0;
     height: 25%;
     background: var(--bg-debug);
@@ -394,6 +440,22 @@ Model:    {llmStatus.model}</pre>
     font-family: var(--font-mono);
     font-size: 0.8rem;
     color: var(--text-debug);
+  }
+
+  .resize-handle {
+    position: absolute;
+    top: -4px;
+    left: 0;
+    right: 0;
+    height: 8px;
+    cursor: row-resize;
+    z-index: 10;
+  }
+
+  .resize-handle:hover,
+  .resize-handle.active {
+    background: var(--accent-dim);
+    opacity: 0.5;
   }
 
   .debug-tab-bar {
