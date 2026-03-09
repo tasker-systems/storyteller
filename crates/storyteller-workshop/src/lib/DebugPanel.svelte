@@ -234,7 +234,7 @@
 <style>
   .debug-panel {
     flex-shrink: 0;
-    height: 40%;
+    height: 25%;
     background: var(--bg-debug);
     border-top: 1px solid var(--border);
     display: flex;

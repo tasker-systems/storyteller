@@ -90,6 +90,7 @@ pub struct ContextTokens {
 /// Load the workshop scene, create the LLM provider, and generate the opening.
 #[tauri::command]
 pub async fn start_scene(
+    app: tauri::AppHandle,
     state: State<'_, Mutex<Option<EngineState>>>,
 ) -> Result<SceneInfo, String> {
     let scene = the_flute_kept::scene();
@@ -131,6 +132,53 @@ pub async fn start_scene(
     let sessions_dir = PathBuf::from("sessions");
     let session_log = SessionLog::new(&sessions_dir, &scene.title)?;
 
+    let turn: u32 = 0;
+
+    // --- Phase: ML Predictions (opening — no input to predict on) ---
+    emit_debug(
+        &app,
+        DebugEvent::PredictionComplete {
+            turn,
+            resolver_output: ResolverOutput {
+                sequenced_actions: vec![],
+                original_predictions: vec![],
+                scene_dynamics: "Opening turn — no player input yet".to_string(),
+                conflicts: vec![],
+            },
+            timing_ms: 0,
+            model_loaded: predictor.is_some(),
+        },
+    );
+
+    // --- Phase: Characters ---
+    emit_debug(
+        &app,
+        DebugEvent::CharactersUpdated {
+            turn,
+            characters: vec![bramblehoof_sheet.clone(), pyotir_sheet.clone()],
+            emotional_markers: vec![],
+        },
+    );
+
+    // --- Phase: Events (opening — no input to classify) ---
+    emit_debug(
+        &app,
+        DebugEvent::EventsClassified {
+            turn,
+            classifications: vec![],
+            classifier_loaded: event_classifier.is_some(),
+        },
+    );
+
+    // --- Phase: Context Assembly ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "context".to_string(),
+        },
+    );
+
     // Assemble opening context
     let opening_resolver = ResolverOutput {
         sequenced_actions: vec![],
@@ -157,14 +205,80 @@ pub async fn start_scene(
     // Extract token counts from observer
     let token_counts = extract_token_counts(&observer);
 
+    // Render context tiers as text for the debug inspector
+    let opening_preamble_text = format!(
+        "Narrator: {}\nSetting: {}\nCast: {}\nBoundaries: {}",
+        context.preamble.narrator_identity,
+        context.preamble.setting_description,
+        context
+            .preamble
+            .cast_descriptions
+            .iter()
+            .map(|c| format!("{} ({})", c.name, c.role))
+            .collect::<Vec<_>>()
+            .join(", "),
+        context.preamble.boundaries.join("; "),
+    );
+
+    emit_debug(
+        &app,
+        DebugEvent::ContextAssembled {
+            turn,
+            preamble_text: opening_preamble_text,
+            journal_text: String::new(),
+            retrieved_text: String::new(),
+            token_counts: TokenCounts {
+                preamble: token_counts.0,
+                journal: token_counts.1,
+                retrieved: token_counts.2,
+                total: token_counts.3,
+            },
+            timing_ms: assembly_ms,
+        },
+    );
+
+    // --- Phase: Narrator Rendering ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "narrator".to_string(),
+        },
+    );
+
     // Create narrator and generate opening
     let narrator = NarratorAgent::new(&context, Arc::clone(&llm)).with_temperature(0.8);
     let llm_start = Instant::now();
-    let opening = narrator
-        .render_opening(&observer)
-        .await
-        .map_err(|e| format!("Failed to render opening: {e}"))?;
+    let opening = match narrator.render_opening(&observer).await {
+        Ok(o) => o,
+        Err(e) => {
+            emit_debug(
+                &app,
+                DebugEvent::Error {
+                    turn,
+                    phase: "narrator".to_string(),
+                    message: format!("{e}"),
+                },
+            );
+            return Err(format!("Failed to render opening: {e}"));
+        }
+    };
     let narrator_ms = llm_start.elapsed().as_millis() as u64;
+
+    emit_debug(
+        &app,
+        DebugEvent::NarratorComplete {
+            turn,
+            system_prompt: narrator.system_prompt().to_string(),
+            user_message: "(opening — no player input)".to_string(),
+            raw_response: opening.text.clone(),
+            model: "qwen2.5:14b".to_string(),
+            temperature: 0.8,
+            max_tokens: 400,
+            tokens_used: 0,
+            timing_ms: narrator_ms,
+        },
+    );
 
     // Record opening in journal
     let mut journal = journal;
