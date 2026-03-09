@@ -1,5 +1,6 @@
 mod commands;
 mod engine_state;
+mod events;
 mod session_log;
 
 use tokio::sync::Mutex;
