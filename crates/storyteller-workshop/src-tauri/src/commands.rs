@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 use tokio::sync::Mutex;
 
 use storyteller_core::grammars::PlutchikWestern;
@@ -26,6 +26,7 @@ use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::workshop::the_flute_kept;
 
 use crate::engine_state::EngineState;
+use crate::events::{DebugEvent, TokenCounts, DEBUG_EVENT_CHANNEL};
 use crate::session_log::{ContextAssemblyLog, LogEntry, SessionLog, TimingLog};
 
 // ---------------------------------------------------------------------------
@@ -86,9 +87,97 @@ pub struct ContextTokens {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// Result of an LLM health check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmStatus {
+    /// Whether the server responded to a health probe.
+    pub reachable: bool,
+    /// Base URL of the configured server.
+    pub endpoint: String,
+    /// Model name configured.
+    pub model: String,
+    /// Provider type (e.g., "Ollama").
+    pub provider: String,
+    /// Available models on the server (if reachable).
+    pub available_models: Vec<String>,
+    /// Error message if unreachable.
+    pub error: Option<String>,
+    /// Probe latency in milliseconds.
+    pub latency_ms: u64,
+}
+
+/// Probe the configured LLM server for reachability before starting a scene.
+#[tauri::command]
+pub async fn check_llm() -> Result<LlmStatus, String> {
+    let config = ExternalServerConfig::default();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let start = Instant::now();
+    let tags_url = format!("{}/api/tags", config.base_url);
+
+    match client.get(&tags_url).send().await {
+        Ok(response) if response.status().is_success() => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            let available_models = match response.json::<serde_json::Value>().await {
+                Ok(json) => json
+                    .get("models")
+                    .and_then(|m| m.as_array())
+                    .map(|models| {
+                        models
+                            .iter()
+                            .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
+                            .map(String::from)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                Err(_) => vec![],
+            };
+
+            Ok(LlmStatus {
+                reachable: true,
+                endpoint: config.base_url,
+                model: config.model,
+                provider: "Ollama".to_string(),
+                available_models,
+                error: None,
+                latency_ms,
+            })
+        }
+        Ok(response) => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            let status = response.status();
+            Ok(LlmStatus {
+                reachable: false,
+                endpoint: config.base_url,
+                model: config.model,
+                provider: "Ollama".to_string(),
+                available_models: vec![],
+                error: Some(format!("Server returned HTTP {status}")),
+                latency_ms,
+            })
+        }
+        Err(e) => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            Ok(LlmStatus {
+                reachable: false,
+                endpoint: config.base_url,
+                model: config.model,
+                provider: "Ollama".to_string(),
+                available_models: vec![],
+                error: Some(format!("{e}")),
+                latency_ms,
+            })
+        }
+    }
+}
+
 /// Load the workshop scene, create the LLM provider, and generate the opening.
 #[tauri::command]
 pub async fn start_scene(
+    app: tauri::AppHandle,
     state: State<'_, Mutex<Option<EngineState>>>,
 ) -> Result<SceneInfo, String> {
     let scene = the_flute_kept::scene();
@@ -99,7 +188,7 @@ pub async fn start_scene(
 
     // Create Ollama LLM provider
     let config = ExternalServerConfig {
-        base_url: "http://localhost:11434".to_string(),
+        base_url: "http://127.0.0.1:11434".to_string(),
         model: "qwen2.5:14b".to_string(),
         ..Default::default()
     };
@@ -130,6 +219,53 @@ pub async fn start_scene(
     let sessions_dir = PathBuf::from("sessions");
     let session_log = SessionLog::new(&sessions_dir, &scene.title)?;
 
+    let turn: u32 = 0;
+
+    // --- Phase: ML Predictions (opening — no input to predict on) ---
+    emit_debug(
+        &app,
+        DebugEvent::PredictionComplete {
+            turn,
+            resolver_output: ResolverOutput {
+                sequenced_actions: vec![],
+                original_predictions: vec![],
+                scene_dynamics: "Opening turn — no player input yet".to_string(),
+                conflicts: vec![],
+            },
+            timing_ms: 0,
+            model_loaded: predictor.is_some(),
+        },
+    );
+
+    // --- Phase: Characters ---
+    emit_debug(
+        &app,
+        DebugEvent::CharactersUpdated {
+            turn,
+            characters: vec![bramblehoof_sheet.clone(), pyotir_sheet.clone()],
+            emotional_markers: vec![],
+        },
+    );
+
+    // --- Phase: Events (opening — no input to classify) ---
+    emit_debug(
+        &app,
+        DebugEvent::EventsClassified {
+            turn,
+            classifications: vec![],
+            classifier_loaded: event_classifier.is_some(),
+        },
+    );
+
+    // --- Phase: Context Assembly ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "context".to_string(),
+        },
+    );
+
     // Assemble opening context
     let opening_resolver = ResolverOutput {
         sequenced_actions: vec![],
@@ -156,14 +292,80 @@ pub async fn start_scene(
     // Extract token counts from observer
     let token_counts = extract_token_counts(&observer);
 
+    // Render context tiers as text for the debug inspector
+    let opening_preamble_text = format!(
+        "Narrator: {}\nSetting: {}\nCast: {}\nBoundaries: {}",
+        context.preamble.narrator_identity,
+        context.preamble.setting_description,
+        context
+            .preamble
+            .cast_descriptions
+            .iter()
+            .map(|c| format!("{} ({})", c.name, c.role))
+            .collect::<Vec<_>>()
+            .join(", "),
+        context.preamble.boundaries.join("; "),
+    );
+
+    emit_debug(
+        &app,
+        DebugEvent::ContextAssembled {
+            turn,
+            preamble_text: opening_preamble_text,
+            journal_text: String::new(),
+            retrieved_text: String::new(),
+            token_counts: TokenCounts {
+                preamble: token_counts.0,
+                journal: token_counts.1,
+                retrieved: token_counts.2,
+                total: token_counts.3,
+            },
+            timing_ms: assembly_ms,
+        },
+    );
+
+    // --- Phase: Narrator Rendering ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "narrator".to_string(),
+        },
+    );
+
     // Create narrator and generate opening
     let narrator = NarratorAgent::new(&context, Arc::clone(&llm)).with_temperature(0.8);
     let llm_start = Instant::now();
-    let opening = narrator
-        .render_opening(&observer)
-        .await
-        .map_err(|e| format!("Failed to render opening: {e}"))?;
+    let opening = match narrator.render_opening(&observer).await {
+        Ok(o) => o,
+        Err(e) => {
+            emit_debug(
+                &app,
+                DebugEvent::Error {
+                    turn,
+                    phase: "narrator".to_string(),
+                    message: format!("{e}"),
+                },
+            );
+            return Err(format!("Failed to render opening: {e}"));
+        }
+    };
     let narrator_ms = llm_start.elapsed().as_millis() as u64;
+
+    emit_debug(
+        &app,
+        DebugEvent::NarratorComplete {
+            turn,
+            system_prompt: narrator.system_prompt().to_string(),
+            user_message: "(opening — no player input)".to_string(),
+            raw_response: opening.text.clone(),
+            model: "qwen2.5:14b".to_string(),
+            temperature: 0.8,
+            max_tokens: 400,
+            tokens_used: 0,
+            timing_ms: narrator_ms,
+        },
+    );
 
     // Record opening in journal
     let mut journal = journal;
@@ -228,6 +430,7 @@ pub async fn start_scene(
 #[tauri::command]
 pub async fn submit_input(
     input: String,
+    app: tauri::AppHandle,
     state: State<'_, Mutex<Option<EngineState>>>,
 ) -> Result<TurnResult, String> {
     let mut guard = state.lock().await;
@@ -241,7 +444,15 @@ pub async fn submit_input(
     let characters_refs: Vec<&_> = engine.characters.iter().collect();
     let entity_ids: Vec<_> = engine.characters.iter().map(|c| c.entity_id).collect();
 
-    // ML predictions (if model available)
+    // --- Phase: ML Predictions ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "prediction".to_string(),
+        },
+    );
+
     let predict_start = Instant::now();
     let resolver_output = if let Some(ref predictor) = engine.predictor {
         let (predictions, _classification) = predict_character_behaviors(
@@ -269,7 +480,75 @@ pub async fn submit_input(
     };
     let prediction_ms = predict_start.elapsed().as_millis() as u64;
 
-    // Context assembly
+    emit_debug(
+        &app,
+        DebugEvent::PredictionComplete {
+            turn,
+            resolver_output: resolver_output.clone(),
+            timing_ms: prediction_ms,
+            model_loaded: engine.predictor.is_some(),
+        },
+    );
+
+    // --- Phase: Characters ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "characters".to_string(),
+        },
+    );
+
+    let emotional_markers = extract_emotional_markers(&input);
+    emit_debug(
+        &app,
+        DebugEvent::CharactersUpdated {
+            turn,
+            characters: engine.characters.clone(),
+            emotional_markers: emotional_markers.clone(),
+        },
+    );
+
+    // --- Phase: Event Classification ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "events".to_string(),
+        },
+    );
+
+    let classifications: Vec<String> = if let Some(ref classifier) = engine.event_classifier {
+        match classifier.classify_text(&input) {
+            Ok(output) => output
+                .event_kinds
+                .iter()
+                .map(|(label, score)| format!("{label}: {score:.2}"))
+                .collect(),
+            Err(e) => vec![format!("Classification error: {e}")],
+        }
+    } else {
+        vec![]
+    };
+
+    emit_debug(
+        &app,
+        DebugEvent::EventsClassified {
+            turn,
+            classifications,
+            classifier_loaded: engine.event_classifier.is_some(),
+        },
+    );
+
+    // --- Phase: Context Assembly ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "context".to_string(),
+        },
+    );
+
     let observer = CollectingObserver::new();
     let assembly_start = Instant::now();
     let context = assemble_narrator_context(
@@ -286,14 +565,98 @@ pub async fn submit_input(
 
     let token_counts = extract_token_counts(&observer);
 
-    // Narrator renders
+    // Render context tiers as text for the debug inspector
+    let preamble_text = format!(
+        "Narrator: {}\nSetting: {}\nCast: {}\nBoundaries: {}",
+        context.preamble.narrator_identity,
+        context.preamble.setting_description,
+        context
+            .preamble
+            .cast_descriptions
+            .iter()
+            .map(|c| format!("{} ({})", c.name, c.role))
+            .collect::<Vec<_>>()
+            .join(", "),
+        context.preamble.boundaries.join("; "),
+    );
+    let journal_text = context
+        .journal
+        .entries
+        .iter()
+        .map(|e| format!("[Turn {}] {}", e.turn_number, e.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let retrieved_text = context
+        .retrieved
+        .iter()
+        .map(|r| {
+            let mut s = format!("{}: {}", r.subject, r.content);
+            if let Some(ref emo) = r.emotional_context {
+                s.push_str(&format!(" ({})", emo));
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    emit_debug(
+        &app,
+        DebugEvent::ContextAssembled {
+            turn,
+            preamble_text,
+            journal_text,
+            retrieved_text,
+            token_counts: TokenCounts {
+                preamble: token_counts.0,
+                journal: token_counts.1,
+                retrieved: token_counts.2,
+                total: token_counts.3,
+            },
+            timing_ms: assembly_ms,
+        },
+    );
+
+    // --- Phase: Narrator Rendering ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "narrator".to_string(),
+        },
+    );
+
     let narrator = NarratorAgent::new(&context, Arc::clone(&engine.llm)).with_temperature(0.8);
     let llm_start = Instant::now();
-    let rendering = narrator
-        .render(&context, &observer)
-        .await
-        .map_err(|e| format!("Narrator render failed: {e}"))?;
+    let rendering = match narrator.render(&context, &observer).await {
+        Ok(r) => r,
+        Err(e) => {
+            emit_debug(
+                &app,
+                DebugEvent::Error {
+                    turn,
+                    phase: "narrator".to_string(),
+                    message: format!("{e}"),
+                },
+            );
+            return Err(format!("Narrator render failed: {e}"));
+        }
+    };
     let narrator_ms = llm_start.elapsed().as_millis() as u64;
+
+    emit_debug(
+        &app,
+        DebugEvent::NarratorComplete {
+            turn,
+            system_prompt: narrator.system_prompt().to_string(),
+            user_message: "See context assembly".to_string(),
+            raw_response: rendering.text.clone(),
+            model: "qwen2.5:14b".to_string(),
+            temperature: 0.8,
+            max_tokens: 400,
+            tokens_used: 0,
+            timing_ms: narrator_ms,
+        },
+    );
 
     // Update journal
     let noop = NoopObserver;
@@ -302,7 +665,7 @@ pub async fn submit_input(
         turn,
         &rendering.text,
         entity_ids,
-        extract_emotional_markers(&input),
+        emotional_markers,
         &noop,
     );
 
@@ -358,6 +721,12 @@ pub async fn get_session_log(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Emit a debug event to the inspector panel. Failures are silently ignored —
+/// debug events are best-effort observability, never blocking.
+fn emit_debug(app: &tauri::AppHandle, event: DebugEvent) {
+    let _ = app.emit(DEBUG_EVENT_CHANNEL, &event);
+}
 
 /// Extract rough emotional markers from player input.
 ///
@@ -450,4 +819,95 @@ fn resolve_event_classifier_path() -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_emotional_markers_finds_sadness() {
+        let markers = extract_emotional_markers("I begin to cry softly");
+        assert!(markers.contains(&"sadness".to_string()));
+    }
+
+    #[test]
+    fn extract_emotional_markers_finds_joy() {
+        let markers = extract_emotional_markers("She smiled and laughed");
+        assert!(markers.contains(&"joy".to_string()));
+    }
+
+    #[test]
+    fn extract_emotional_markers_finds_recognition() {
+        let markers = extract_emotional_markers("I play the flute and remember");
+        assert!(markers.contains(&"recognition".to_string()));
+        assert_eq!(markers.iter().filter(|m| *m == "recognition").count(), 2);
+    }
+
+    #[test]
+    fn extract_emotional_markers_returns_empty_for_neutral_input() {
+        let markers = extract_emotional_markers("I open the door and walk inside.");
+        assert!(markers.is_empty());
+    }
+
+    #[test]
+    fn extract_emotional_markers_is_case_insensitive() {
+        let markers = extract_emotional_markers("I am AFRAID and ANGRY");
+        assert!(markers.contains(&"fear".to_string()));
+        assert!(markers.contains(&"anger".to_string()));
+    }
+
+    #[test]
+    fn llm_status_serializes_to_expected_shape() {
+        let status = LlmStatus {
+            reachable: true,
+            endpoint: "http://127.0.0.1:11434".to_string(),
+            model: "qwen2.5:14b".to_string(),
+            provider: "Ollama".to_string(),
+            available_models: vec!["qwen2.5:14b".to_string(), "mistral".to_string()],
+            error: None,
+            latency_ms: 42,
+        };
+        let json = serde_json::to_value(&status).expect("serialize");
+        assert_eq!(json["reachable"], true);
+        assert_eq!(json["provider"], "Ollama");
+        assert!(json["error"].is_null());
+        assert_eq!(json["available_models"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn scene_info_serializes() {
+        let info = SceneInfo {
+            title: "The Fair and the Dead".to_string(),
+            setting_description: "A twilight meadow".to_string(),
+            cast: vec!["Bramblehoof".to_string(), "Pyotir".to_string()],
+            opening_prose: "The meadow stretches before you.".to_string(),
+        };
+        let json = serde_json::to_value(&info).expect("serialize");
+        assert_eq!(json["title"], "The Fair and the Dead");
+        assert_eq!(json["cast"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn turn_result_serializes_nested_structs() {
+        let result = TurnResult {
+            turn: 3,
+            narrator_prose: "The wind howls.".to_string(),
+            timing: TurnTiming {
+                prediction_ms: 50,
+                assembly_ms: 12,
+                narrator_ms: 2400,
+            },
+            context_tokens: ContextTokens {
+                preamble: 600,
+                journal: 800,
+                retrieved: 400,
+                total: 1800,
+            },
+        };
+        let json = serde_json::to_value(&result).expect("serialize");
+        assert_eq!(json["turn"], 3);
+        assert_eq!(json["timing"]["narrator_ms"], 2400);
+        assert_eq!(json["context_tokens"]["total"], 1800);
+    }
 }

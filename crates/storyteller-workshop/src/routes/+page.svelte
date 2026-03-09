@@ -1,26 +1,48 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { startScene, submitInput } from "$lib/api";
+  import { checkLlm, startScene, submitInput } from "$lib/api";
   import type { StoryBlock, SceneInfo } from "$lib/types";
   import StoryPane from "$lib/StoryPane.svelte";
   import InputBar from "$lib/InputBar.svelte";
+  import DebugPanel from "$lib/DebugPanel.svelte";
 
   let sceneInfo: SceneInfo | null = $state(null);
   let blocks: StoryBlock[] = $state([]);
   let loading = $state(true);
   let error: string | null = $state(null);
   let turnCount = $state(0);
+  let debugVisible = $state(true);
 
-  onMount(async () => {
-    try {
-      const info = await startScene();
-      sceneInfo = info;
-      blocks = [{ kind: "opening", text: info.opening_prose }];
-      loading = false;
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-      loading = false;
+  onMount(() => {
+    function handleKeydown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
+        e.preventDefault();
+        debugVisible = !debugVisible;
+      }
     }
+    window.addEventListener("keydown", handleKeydown);
+
+    (async () => {
+      try {
+        // Fail-fast: check LLM reachability before starting the scene
+        const llm = await checkLlm();
+        if (!llm.reachable) {
+          error = `LLM unreachable at ${llm.endpoint}: ${llm.error ?? "unknown error"}. Start Ollama and reload.`;
+          loading = false;
+          return;
+        }
+
+        const info = await startScene();
+        sceneInfo = info;
+        blocks = [{ kind: "opening", text: info.opening_prose }];
+        loading = false;
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+        loading = false;
+      }
+    })();
+
+    return () => window.removeEventListener("keydown", handleKeydown);
   });
 
   async function handleSubmit(text: string) {
@@ -45,6 +67,13 @@
 <div class="app-layout">
   <header class="app-header">
     <h1 class="scene-title">{sceneInfo?.title ?? "Loading..."}</h1>
+    <button
+      class="debug-toggle"
+      onclick={() => (debugVisible = !debugVisible)}
+      title={debugVisible ? "Hide inspector (\u2318D)" : "Show inspector (\u2318D)"}
+    >
+      {debugVisible ? "\u25BC" : "\u25B2"} Inspector
+    </button>
   </header>
 
   {#if error}
@@ -57,6 +86,8 @@
   <StoryPane {blocks} {loading} />
 
   <InputBar disabled={loading} onsubmit={handleSubmit} />
+
+  <DebugPanel visible={debugVisible} />
 </div>
 
 <style>
@@ -72,6 +103,10 @@
     border-bottom: 1px solid var(--border);
     padding: 0.6rem 1.5rem;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
   }
 
   .scene-title {
@@ -82,6 +117,25 @@
     color: var(--accent);
     text-align: center;
     letter-spacing: 0.02em;
+  }
+
+  .debug-toggle {
+    position: absolute;
+    right: 1rem;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: none;
+  }
+
+  .debug-toggle:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-dim);
   }
 
   .error-banner {
