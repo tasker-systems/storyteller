@@ -12,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(None::<EngineState>))
         .invoke_handler(tauri::generate_handler![
+            commands::test_ollama,
             commands::start_scene,
             commands::submit_input,
             commands::get_session_log,

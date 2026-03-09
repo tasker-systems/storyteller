@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { startScene, submitInput } from "$lib/api";
   import type { StoryBlock, SceneInfo } from "$lib/types";
   import StoryPane from "$lib/StoryPane.svelte";
@@ -10,8 +11,20 @@
   let loading = $state(true);
   let error: string | null = $state(null);
   let turnCount = $state(0);
+  let diagnosticMsg: string | null = $state(null);
 
   onMount(async () => {
+    // Diagnostic: test Ollama connectivity first
+    try {
+      const result = await invoke<string>("test_ollama");
+      diagnosticMsg = result;
+    } catch (e) {
+      diagnosticMsg = `Ollama test FAILED: ${e}`;
+      error = `Ollama connectivity failed: ${e}`;
+      loading = false;
+      return;
+    }
+
     try {
       const info = await startScene();
       sceneInfo = info;
@@ -46,6 +59,12 @@
   <header class="app-header">
     <h1 class="scene-title">{sceneInfo?.title ?? "Loading..."}</h1>
   </header>
+
+  {#if diagnosticMsg}
+    <div class="diagnostic-banner">
+      <span class="diagnostic-text">{diagnosticMsg}</span>
+    </div>
+  {/if}
 
   {#if error}
     <div class="error-banner">
@@ -82,6 +101,19 @@
     color: var(--accent);
     text-align: center;
     letter-spacing: 0.02em;
+  }
+
+  .diagnostic-banner {
+    background: #152a15;
+    border-bottom: 1px solid #204a20;
+    padding: 0.4rem 1.5rem;
+    flex-shrink: 0;
+  }
+
+  .diagnostic-text {
+    color: #8d8;
+    font-size: 0.8rem;
+    font-family: monospace;
   }
 
   .error-banner {
