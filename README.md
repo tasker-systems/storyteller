@@ -16,6 +16,8 @@ The system is built on several key ideas:
 
 **Pre-alpha, first playable scene achieved.** The multi-agent pipeline is functional: a human scene director types narrative inputs, character agents deliberate in parallel via local LLM (Ollama), and a narrator renders literary prose. Character tensors, emotional states with awareness levels, and information boundaries all feed into agent behavior. See [`docs/changelog/2026-02-07-first-playable-scene.md`](docs/changelog/2026-02-07-first-playable-scene.md) for what we proved and what we observed.
 
+A **workshop UI** (Tauri 2 + SvelteKit) provides a desktop playtesting environment with a Chrome DevTools-style debug inspector for observing the full narrative pipeline in real time. See [`crates/storyteller-workshop/`](crates/storyteller-workshop/) for setup.
+
 A Python `doc-tools` package for extracting creative content from Scrivener and DOCX is functional.
 
 **Related repositories**: [tasker-core](https://github.com/tasker-systems/tasker-core) (workflow orchestration), [tasker-contrib](https://github.com/tasker-systems/tasker-contrib) (framework integrations).
@@ -43,6 +45,7 @@ A Python `doc-tools` package for extracting creative content from Scrivener and 
 | **gRPC (tonic)** | Machine-to-machine communication. REST only for public-facing APIs. |
 | **ort (ONNX Runtime)** | Custom ML model inference — psychological frame computation, event classifiers. |
 | **candle** | Optional local LLM inference for development and testing. |
+| **Tauri 2 + SvelteKit** | Desktop workshop UI for playtesting with real-time debug inspector. |
 
 See [`docs/technical/technical-stack.md`](docs/technical/technical-stack.md) for detailed rationale and [`docs/technical/infrastructure-architecture.md`](docs/technical/infrastructure-architecture.md) for how it all fits together.
 
@@ -55,6 +58,7 @@ storyteller/
 │   ├── storyteller-engine/     # Runtime: Bevy ECS, agents, turn cycle, ML inference
 │   ├── storyteller-api/        # HTTP layer: axum routes, session management (deployment-agnostic)
 │   ├── storyteller-cli/        # Binary: self-hosted server entry point
+│   ├── storyteller-workshop/   # Tauri 2 + SvelteKit playtesting UI with debug inspector
 │   ├── storyteller-ml/         # ML feature pipeline and training data generation
 │   ├── storyteller-storykeeper/ # Persistence traits and database migrations
 │   └── storyteller/            # Integration test coordinator
@@ -92,16 +96,24 @@ cargo fmt --check
 Requires [Ollama](https://ollama.com/) running locally with a model pulled:
 
 ```bash
-brew bundle                     # Installs ollama (see Brewfile)
 ollama serve                    # Start the server (if not already running)
-ollama pull mistral             # Pull a model (~4GB)
+ollama pull qwen2.5:14b         # Pull a model
 
-cargo run --bin play-scene -- --model mistral
+# Option 1: Workshop UI (recommended for development)
+cp .env.example .env            # Configure environment variables
+cd crates/storyteller-workshop
+bun install
+bun tauri dev                   # Launches desktop app with debug inspector
+
+# Option 2: CLI scene runner
+cargo run --bin play-scene -- --model qwen2.5:14b
 # Or with debug logging:
-RUST_LOG=debug cargo run --bin play-scene -- --model mistral --temperature 0.7
+RUST_LOG=debug cargo run --bin play-scene -- --model qwen2.5:14b --temperature 0.7
 ```
 
-Type narrative directions as a scene director. Both character agents respond, the narrator renders. `/quit` to exit.
+The workshop UI provides a debug inspector panel (Cmd+D) with real-time visibility into context assembly, ML predictions, character state, event classification, narrator prompts, and structured logs. See [`crates/storyteller-workshop/README.md`](crates/storyteller-workshop/README.md) for details.
+
+The CLI scene runner is a simpler text-mode interface. Type narrative directions as a scene director. Both character agents respond, the narrator renders. `/quit` to exit.
 
 ### Python (doc-tools)
 
