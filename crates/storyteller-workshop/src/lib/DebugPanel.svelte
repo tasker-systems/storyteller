@@ -2,13 +2,13 @@
   import { onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import JSONTree from "svelte-json-tree";
-  import type { DebugState, DebugEvent, PhaseStatus, LlmStatus, TracingLogEntry } from "./types";
+  import type { DebugState, DebugEvent, PhaseStatus, LlmStatus, TracingLogEntry, EventDecomposedEvent, ActionArbitratedEvent } from "./types";
   import { DEBUG_EVENT_CHANNEL, LOG_EVENT_CHANNEL } from "./types";
   import { checkLlm } from "./api";
 
   let { visible }: { visible: boolean } = $props();
 
-  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Narrator", "Logs"] as const;
+  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Arbitration", "Narrator", "Logs"] as const;
   type TabName = (typeof TABS)[number];
   const TAB_PHASE_MAP: Record<TabName, string> = {
     LLM: "llm",
@@ -16,6 +16,7 @@
     "ML Predictions": "prediction",
     Characters: "characters",
     Events: "events",
+    Arbitration: "arbitration",
     Narrator: "narrator",
     Logs: "logs",
   };
@@ -35,6 +36,8 @@
     context: null,
     characters: null,
     events: null,
+    decomposition: null,
+    arbitration: null,
     narrator: null,
     error: null,
   });
@@ -82,6 +85,8 @@
       context: null,
       characters: null,
       events: null,
+      decomposition: null,
+      arbitration: null,
       narrator: null,
       error: null,
     };
@@ -92,6 +97,16 @@
       if (llmChecking) return "processing";
       if (!llmStatus) return "pending";
       return llmStatus.reachable ? "complete" : "error";
+    }
+    if (tab === "Events") {
+      // Events tab combines classification + decomposition phases
+      const evtStatus = debugState.phases["events"] ?? "pending";
+      const decStatus = debugState.phases["decomposition"] ?? "pending";
+      if (evtStatus === "error" || decStatus === "error") return "error";
+      if (evtStatus === "processing" || decStatus === "processing") return "processing";
+      if (evtStatus === "complete" && decStatus === "complete") return "complete";
+      if (evtStatus === "complete" || decStatus === "complete") return "processing";
+      return "pending";
     }
     const phase = TAB_PHASE_MAP[tab];
     return debugState.phases[phase] ?? "pending";
@@ -139,6 +154,14 @@
       case "events_classified":
         debugState.events = event;
         debugState.phases["events"] = "complete";
+        break;
+      case "event_decomposed":
+        debugState.decomposition = event as EventDecomposedEvent;
+        debugState.phases["decomposition"] = event.error ? "error" : "complete";
+        break;
+      case "action_arbitrated":
+        debugState.arbitration = event as ActionArbitratedEvent;
+        debugState.phases["arbitration"] = "complete";
         break;
       case "narrator_complete":
         debugState.narrator = event;
@@ -349,20 +372,114 @@ Model:    {llmStatus.model}</pre>
         </div>
       {:else if activeTab === "Events"}
         <div class="debug-tab-content">
-          {#if debugState.events}
-            {#if !debugState.events.classifier_loaded}
-              <p class="debug-notice">No event classifier loaded. Set STORYTELLER_MODEL_PATH or STORYTELLER_DATA_PATH.</p>
-            {/if}
-            {#if debugState.events.classifications.length > 0}
+          {#if debugState.events || debugState.decomposition}
+            <!-- DistilBERT fast classification -->
+            <div class="debug-section">
+              <h4>Classification <span class="events-source">DistilBERT</span></h4>
+              {#if debugState.events}
+                {#if !debugState.events.classifier_loaded}
+                  <p class="debug-notice">No event classifier loaded. Set STORYTELLER_MODEL_PATH or STORYTELLER_DATA_PATH.</p>
+                {:else if debugState.events.classifications.length > 0}
+                  <div class="classification-chips">
+                    {#each debugState.events.classifications as cls}
+                      <span class="classification-chip">{cls}</span>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="debug-empty">No classifications produced.</p>
+                {/if}
+              {:else}
+                <p class="debug-empty">Waiting...</p>
+              {/if}
+            </div>
+
+            <!-- LLM decomposition -->
+            <div class="events-divider"></div>
+            <div class="debug-section">
+              <h4>Decomposition <span class="events-source">qwen2.5:3b-instruct</span>{#if debugState.decomposition} <span class="token-count">{debugState.decomposition.timing_ms}ms</span>{/if}</h4>
+              {#if debugState.decomposition}
+                {#if debugState.decomposition.error}
+                  <pre class="llm-fail">{debugState.decomposition.error}</pre>
+                {/if}
+                {#if debugState.decomposition.raw_llm_json && !debugState.decomposition.decomposition}
+                  <div class="debug-section">
+                    <h4>Raw LLM Response</h4>
+                    <JSONTree value={debugState.decomposition.raw_llm_json} />
+                  </div>
+                {/if}
+                {#if debugState.decomposition.decomposition}
+                  {@const decomp = debugState.decomposition.decomposition}
+                  {#each decomp.events as event, i}
+                    <div class="decomp-event">
+                      <div class="decomp-kind">{event.kind} <span class="decomp-direction">{event.relational_direction}</span></div>
+                      <div class="decomp-triple">
+                        <span class="decomp-entity actor">{event.actor ? `${event.actor.mention} [${event.actor.category}]` : "(no actor)"}</span>
+                        <span class="decomp-arrow">&rarr;</span>
+                        <span class="decomp-action">{event.action}</span>
+                        <span class="decomp-arrow">&rarr;</span>
+                        <span class="decomp-entity target">{event.target ? `${event.target.mention} [${event.target.category}]` : "(no target)"}</span>
+                      </div>
+                      {#if event.confidence_note}
+                        <div class="decomp-note">{event.confidence_note}</div>
+                      {/if}
+                    </div>
+                  {/each}
+                  {#if decomp.entities.length > 0}
+                    <div class="decomp-entities-row">
+                      {#each decomp.entities as entity}
+                        <span class="entity-chip">{entity.mention} <span class="entity-cat">{entity.category}</span></span>
+                      {/each}
+                    </div>
+                  {/if}
+                {:else if !debugState.decomposition.error}
+                  <p class="debug-empty">No decomposition produced.</p>
+                {/if}
+              {:else}
+                <p class="debug-empty">Waiting for LLM...</p>
+              {/if}
+            </div>
+          {:else}
+            <p class="debug-empty">Waiting for turn data...</p>
+          {/if}
+        </div>
+      {:else if activeTab === "Arbitration"}
+        <div class="debug-tab-content">
+          {#if debugState.arbitration}
+            <div class="debug-section">
+              <h4>Verdict</h4>
+              <pre class={debugState.arbitration.result.verdict === "Permitted" ? "arb-permitted" : debugState.arbitration.result.verdict === "Impossible" ? "arb-impossible" : "arb-ambiguous"}>{debugState.arbitration.result.verdict}</pre>
+            </div>
+            {#if debugState.arbitration.result.verdict === "Impossible" && debugState.arbitration.result.reason}
               <div class="debug-section">
-                <h4>Classifications</h4>
-                {#each debugState.events.classifications as cls}
-                  <pre>{cls}</pre>
-                {/each}
+                <h4>Violation</h4>
+                <pre>{debugState.arbitration.result.reason.constraint_name}: {debugState.arbitration.result.reason.description}</pre>
               </div>
-            {:else}
-              <p class="debug-empty">No classifications produced.</p>
             {/if}
+            {#if debugState.arbitration.result.verdict === "Ambiguous" && debugState.arbitration.result.uncertainty}
+              <div class="debug-section">
+                <h4>Uncertainty</h4>
+                <pre>{debugState.arbitration.result.uncertainty}</pre>
+              </div>
+              {#if debugState.arbitration.result.known_constraints && debugState.arbitration.result.known_constraints.length > 0}
+                <div class="debug-section">
+                  <h4>Known Constraints</h4>
+                  <JSONTree value={debugState.arbitration.result.known_constraints} />
+                </div>
+              {/if}
+            {/if}
+            {#if debugState.arbitration.result.verdict === "Permitted" && debugState.arbitration.result.conditions && debugState.arbitration.result.conditions.length > 0}
+              <div class="debug-section">
+                <h4>Conditions</h4>
+                <JSONTree value={debugState.arbitration.result.conditions} />
+              </div>
+            {/if}
+            <div class="debug-section">
+              <h4>Input</h4>
+              <pre>{debugState.arbitration.player_input}</pre>
+            </div>
+            <div class="debug-section">
+              <h4>Arbitration: {debugState.arbitration.timing_ms}ms</h4>
+            </div>
           {:else}
             <p class="debug-empty">Waiting for turn data...</p>
           {/if}
@@ -723,5 +840,129 @@ Model:    {llmStatus.model}</pre>
     padding: 0.25rem 0 0.25rem 1.5rem;
     border-bottom: 1px solid var(--border-debug);
     font-size: 0.7rem;
+  }
+
+  .events-source {
+    font-weight: 400;
+    color: var(--text-debug-dim);
+    font-size: 0.65rem;
+    font-style: italic;
+  }
+
+  .events-divider {
+    border-top: 1px solid var(--border-debug);
+    margin: 0.25rem 0;
+  }
+
+  .classification-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .classification-chip {
+    background: var(--bg-debug-tab);
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    color: var(--text-debug);
+  }
+
+  .decomp-entities-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+  }
+
+  .entity-chip {
+    background: var(--bg-debug-tab);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    color: var(--text-debug);
+  }
+
+  .entity-cat {
+    color: var(--text-debug-dim);
+    font-size: 0.6rem;
+  }
+
+  .decomp-event {
+    background: var(--bg-debug-tab);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 0.4rem;
+  }
+
+  .decomp-kind {
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 0.2rem;
+    font-size: 0.75rem;
+  }
+
+  .decomp-direction {
+    font-weight: 400;
+    color: var(--text-debug-dim);
+    font-size: 0.7rem;
+  }
+
+  .decomp-triple {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .decomp-entity {
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+  }
+
+  .decomp-entity.actor {
+    background: #1a3a2a;
+    color: var(--debug-green);
+  }
+
+  .decomp-entity.target {
+    background: #2a2a3a;
+    color: #aac;
+  }
+
+  .decomp-arrow {
+    color: var(--text-debug-dim);
+    font-size: 0.7rem;
+  }
+
+  .decomp-action {
+    color: var(--text-primary);
+    font-style: italic;
+    font-size: 0.75rem;
+  }
+
+  .decomp-note {
+    color: var(--text-debug-dim);
+    font-size: 0.65rem;
+    font-style: italic;
+    margin-top: 0.2rem;
+  }
+
+  .arb-permitted {
+    color: var(--debug-green);
+    font-weight: 600;
+  }
+
+  .arb-impossible {
+    color: #d55;
+    font-weight: 600;
+  }
+
+  .arb-ambiguous {
+    color: var(--debug-yellow);
+    font-weight: 600;
   }
 </style>

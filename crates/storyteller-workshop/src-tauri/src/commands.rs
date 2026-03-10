@@ -11,18 +11,24 @@ use tokio::sync::Mutex;
 use storyteller_core::grammars::PlutchikWestern;
 use storyteller_core::traits::llm::LlmProvider;
 use storyteller_core::traits::phase_observer::{CollectingObserver, PhaseEventDetail};
+use storyteller_core::traits::structured_llm::StructuredLlmConfig;
 use storyteller_core::traits::NoopObserver;
+use storyteller_core::types::capability_lexicon::CapabilityLexicon;
 use storyteller_core::types::narrator_context::SceneJournal;
 use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::scene::SceneId;
-
 use storyteller_engine::agents::narrator::NarratorAgent;
 use storyteller_engine::context::journal::add_turn;
 use storyteller_engine::context::prediction::predict_character_behaviors;
 use storyteller_engine::context::{assemble_narrator_context, DEFAULT_TOTAL_TOKEN_BUDGET};
 use storyteller_engine::inference::event_classifier::EventClassifier;
+use storyteller_engine::inference::event_decomposition::{
+    event_decomposition_schema, event_decomposition_system_prompt, EventDecomposition,
+};
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
 use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_engine::inference::structured::OllamaStructuredProvider;
+use storyteller_engine::systems::arbitration::check_action_possibility;
 use storyteller_engine::workshop::the_flute_kept;
 
 use crate::engine_state::EngineState;
@@ -212,6 +218,16 @@ pub async fn start_scene(
             .inspect_err(|e| tracing::warn!("Event classifier failed to load: {e}"))
             .ok()
     });
+
+    // Create structured LLM provider for event decomposition (qwen2.5:3b-instruct)
+    let structured_llm: Option<
+        Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
+    > = {
+        let config = StructuredLlmConfig::default();
+        let provider = OllamaStructuredProvider::new(config);
+        tracing::info!("Structured LLM provider created (qwen2.5:3b-instruct)");
+        Some(Arc::new(provider))
+    };
 
     let grammar = PlutchikWestern::new();
 
@@ -415,6 +431,7 @@ pub async fn start_scene(
         llm,
         predictor,
         event_classifier,
+        structured_llm,
         grammar,
         session_log,
         turn_count: 0,
@@ -537,6 +554,109 @@ pub async fn submit_input(
             turn,
             classifications,
             classifier_loaded: engine.event_classifier.is_some(),
+        },
+    );
+
+    // --- Phase: Event Decomposition (LLM) ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "decomposition".to_string(),
+        },
+    );
+
+    let decomp_start = Instant::now();
+    if let Some(ref structured_llm) = engine.structured_llm {
+        // Call provider directly so we capture raw JSON for debugging
+        let request = storyteller_core::traits::structured_llm::StructuredRequest {
+            system: event_decomposition_system_prompt(),
+            input: input.clone(),
+            output_schema: event_decomposition_schema(),
+            temperature: 0.1,
+        };
+        match structured_llm.extract(request).await {
+            Ok(raw_json) => {
+                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                tracing::info!(
+                    raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
+                    "Event decomposition raw LLM response"
+                );
+                // Try to parse the raw JSON into our typed decomposition
+                let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
+                    Ok(d) => (Some(d), None),
+                    Err(e) => {
+                        tracing::warn!("Event decomposition parse failed: {e}");
+                        (None, Some(format!("{e}")))
+                    }
+                };
+                emit_debug(
+                    &app,
+                    DebugEvent::EventDecomposed {
+                        turn,
+                        decomposition,
+                        raw_llm_json: Some(raw_json),
+                        timing_ms: decomp_ms,
+                        model: "qwen2.5:3b-instruct".to_string(),
+                        error,
+                    },
+                );
+            }
+            Err(e) => {
+                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                tracing::warn!("Event decomposition LLM call failed: {e}");
+                emit_debug(
+                    &app,
+                    DebugEvent::EventDecomposed {
+                        turn,
+                        decomposition: None,
+                        raw_llm_json: None,
+                        timing_ms: decomp_ms,
+                        model: "qwen2.5:3b-instruct".to_string(),
+                        error: Some(format!("{e}")),
+                    },
+                );
+            }
+        }
+    } else {
+        emit_debug(
+            &app,
+            DebugEvent::EventDecomposed {
+                turn,
+                decomposition: None,
+                raw_llm_json: None,
+                timing_ms: 0,
+                model: "none".to_string(),
+                error: Some("No structured LLM provider configured".to_string()),
+            },
+        );
+    }
+
+    // --- Phase: Action Arbitration ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "arbitration".to_string(),
+        },
+    );
+
+    let arb_start = Instant::now();
+    let arbitration_result = check_action_possibility(
+        &input,
+        &[],                       // No genre constraints for workshop scene yet
+        &CapabilityLexicon::new(), // Empty lexicon for now
+        None,                      // No spatial zone tracking yet
+    );
+    let arb_ms = arb_start.elapsed().as_millis() as u64;
+
+    emit_debug(
+        &app,
+        DebugEvent::ActionArbitrated {
+            turn,
+            result: arbitration_result,
+            player_input: input.clone(),
+            timing_ms: arb_ms,
         },
     );
 

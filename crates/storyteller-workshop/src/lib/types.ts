@@ -126,6 +126,49 @@ export interface NarratorCompleteEvent {
   timing_ms: number;
 }
 
+export interface DecomposedEntity {
+  mention: string;
+  category: string;
+}
+
+export interface DecomposedEvent {
+  kind: string;
+  actor: DecomposedEntity | null;
+  action: string;
+  target: DecomposedEntity | null;
+  relational_direction: string;
+  confidence_note: string | null;
+}
+
+export interface EventDecomposition {
+  events: DecomposedEvent[];
+  entities: DecomposedEntity[];
+}
+
+export interface EventDecomposedEvent {
+  type: "event_decomposed";
+  turn: number;
+  decomposition: EventDecomposition | null;
+  raw_llm_json: unknown | null;
+  timing_ms: number;
+  model: string;
+  error: string | null;
+}
+
+export interface ActionArbitratedEvent {
+  type: "action_arbitrated";
+  turn: number;
+  result: {
+    verdict: "Permitted" | "Impossible" | "Ambiguous";
+    conditions?: unknown[];
+    reason?: { constraint_name: string; description: string };
+    known_constraints?: unknown[];
+    uncertainty?: string;
+  };
+  player_input: string;
+  timing_ms: number;
+}
+
 export interface ErrorEvent {
   type: "error";
   turn: number;
@@ -139,6 +182,8 @@ export type DebugEvent =
   | ContextAssembledEvent
   | CharactersUpdatedEvent
   | EventsClassifiedEvent
+  | EventDecomposedEvent
+  | ActionArbitratedEvent
   | NarratorCompleteEvent
   | ErrorEvent;
 
@@ -151,6 +196,8 @@ export interface DebugState {
   context: ContextAssembledEvent | null;
   characters: CharactersUpdatedEvent | null;
   events: EventsClassifiedEvent | null;
+  decomposition: EventDecomposedEvent | null;
+  arbitration: ActionArbitratedEvent | null;
   narrator: NarratorCompleteEvent | null;
   error: ErrorEvent | null;
 }

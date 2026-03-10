@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use storyteller_core::grammars::PlutchikWestern;
 use storyteller_core::traits::llm::LlmProvider;
+use storyteller_core::traits::structured_llm::StructuredLlmProvider;
 use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::narrator_context::SceneJournal;
 use storyteller_engine::inference::event_classifier::EventClassifier;
@@ -29,6 +30,8 @@ pub struct EngineState {
     pub predictor: Option<CharacterPredictor>,
     /// ML event classifier (optional — graceful fallback).
     pub event_classifier: Option<EventClassifier>,
+    /// Structured LLM provider for event decomposition (optional).
+    pub structured_llm: Option<Arc<dyn StructuredLlmProvider>>,
     /// Emotional grammar for ML predictions.
     pub grammar: PlutchikWestern,
     /// Session log for JSONL recording.

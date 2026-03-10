@@ -26,7 +26,7 @@
       bind:value={text}
       onkeydown={handleKeydown}
       {disabled}
-      rows="2"
+      rows="3"
     ></textarea>
     <button
       class="send-button"
@@ -50,7 +50,7 @@
   }
 
   .input-container {
-    max-width: 680px;
+    max-width: 816px;
     margin: 0 auto;
     display: flex;
     gap: 0.5rem;

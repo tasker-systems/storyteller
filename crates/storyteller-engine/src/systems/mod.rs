@@ -3,6 +3,7 @@
 //! Systems implement the turn cycle, scene lifecycle, event processing,
 //! entity promotion/demotion, and observability streaming.
 
+pub mod arbitration;
 pub mod entity_lifecycle;
 pub mod event_pipeline;
 pub mod observability;

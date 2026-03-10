@@ -23,7 +23,8 @@ use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::turn_cycle::TurnCycleStage;
 
 use crate::components::turn::{
-    ActiveTurnStage, CompletedTurn, JournalResource, PendingInput, TurnContext, TurnHistory,
+    ActiveTurnStage, CompletedTurn, JournalResource, PendingInput, StructuredLlmResource,
+    TokioRuntime, TurnContext, TurnHistory,
 };
 
 // ---------------------------------------------------------------------------
@@ -194,11 +195,33 @@ impl std::fmt::Debug for GrammarResource {
 // Systems — Stubs (advance stage only)
 // ---------------------------------------------------------------------------
 
-/// Resolve predictions via rules engine (pass-through for now).
+/// Resolve predictions via rules engine.
 ///
-/// Wraps ML predictions into a `ResolverOutput`. Real resolver logic
+/// Runs action arbitration against genre constraints and spatial zones,
+/// then wraps ML predictions into a `ResolverOutput`. Real resolver logic
 /// (RPG-like mechanics, conflict detection, graduated success) is future work.
 pub fn resolve_system(mut stage: ResMut<ActiveTurnStage>, mut turn_ctx: ResMut<TurnContext>) {
+    // Run arbitration if we have player input
+    if let Some(ref input) = turn_ctx.player_input {
+        // For now, run with empty constraints and lexicon
+        // Future: pull from scene/story resources
+        let result = crate::systems::arbitration::check_action_possibility(
+            input,
+            &[], // genre_constraints — will come from scene resource later
+            &storyteller_core::types::capability_lexicon::CapabilityLexicon::new(),
+            None, // actor_zone — will come from spatial tracking later
+        );
+
+        tracing::debug!(
+            permitted = result.is_permitted(),
+            impossible = result.is_impossible(),
+            ambiguous = result.is_ambiguous(),
+            "resolve_system: action arbitration check"
+        );
+
+        turn_ctx.arbitration = Some(result);
+    }
+
     let predictions = turn_ctx.predictions.clone().unwrap_or_default();
 
     let resolver_output = ResolverOutput {
@@ -303,6 +326,8 @@ pub fn commit_previous_system(
     mut history: ResMut<TurnHistory>,
     journal: Option<ResMut<JournalResource>>,
     classifier: Option<Res<ClassifierResource>>,
+    structured_llm: Option<Res<StructuredLlmResource>>,
+    runtime: Option<Res<TokioRuntime>>,
 ) {
     let has_previous_data = turn_ctx.rendering.is_some() || turn_ctx.classification.is_some();
 
@@ -329,22 +354,58 @@ pub fn commit_previous_system(
             turn_ctx.player_input.as_deref(),
         )
         .and_then(|combined_text| {
-            let event_classifier = classifier.as_ref().map(|c| &c.0);
-            let (_event_features, classification) =
-                crate::context::prediction::classify_and_extract(
-                    &combined_text,
-                    event_classifier,
-                    0,
+            // Prefer small LLM decomposition when available
+            if let (Some(ref slm), Some(ref rt)) = (&structured_llm, &runtime) {
+                match rt
+                    .0
+                    .block_on(crate::inference::event_decomposition::decompose_events(
+                        slm.0.as_ref(),
+                        &combined_text,
+                    )) {
+                    Ok(decomp) => {
+                        tracing::debug!(
+                            turn_number,
+                            event_count = decomp.events.len(),
+                            entity_count = decomp.entities.len(),
+                            "commit_previous_system: LLM event decomposition"
+                        );
+                        Some(decomp.to_classification_output())
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "commit_previous_system: LLM decomposition failed, \
+                             falling back to DistilBERT: {e}"
+                        );
+                        // Fall through to DistilBERT
+                        let event_classifier = classifier.as_ref().map(|c| &c.0);
+                        let (_event_features, classification) =
+                            crate::context::prediction::classify_and_extract(
+                                &combined_text,
+                                event_classifier,
+                                0,
+                            );
+                        classification
+                    }
+                }
+            } else {
+                // Fallback: DistilBERT classification
+                let event_classifier = classifier.as_ref().map(|c| &c.0);
+                let (_event_features, classification) =
+                    crate::context::prediction::classify_and_extract(
+                        &combined_text,
+                        event_classifier,
+                        0,
+                    );
+
+                tracing::debug!(
+                    turn_number,
+                    has_committed_classification = classification.is_some(),
+                    combined_text_len = combined_text.len(),
+                    "commit_previous_system: DistilBERT committed-turn classification"
                 );
 
-            tracing::debug!(
-                turn_number,
-                has_committed_classification = classification.is_some(),
-                combined_text_len = combined_text.len(),
-                "commit_previous_system: committed-turn classification"
-            );
-
-            classification
+                classification
+            }
         });
 
         // Phase E: Build event atoms and detect compositions
@@ -378,6 +439,7 @@ pub fn commit_previous_system(
             committed_atoms,
             committed_compounds,
             predictions: turn_ctx.predictions.clone(),
+            arbitration: turn_ctx.arbitration.clone(),
             committed_at: chrono::Utc::now(),
         };
 
@@ -833,6 +895,7 @@ mod tests {
             committed_atoms: vec![],
             committed_compounds: vec![],
             predictions: None,
+            arbitration: None,
             committed_at: chrono::Utc::now(),
         });
         assert_eq!(history.next_turn_number(), 2);
@@ -1029,6 +1092,47 @@ mod tests {
     }
 
     #[test]
+    fn commit_previous_works_without_structured_llm() {
+        // Verifies backward compatibility — the system works without
+        // StructuredLlmResource, falling back to DistilBERT/keyword.
+        let mut app = App::new();
+        app.init_resource::<ActiveTurnStage>();
+        app.init_resource::<TurnContext>();
+        app.init_resource::<PendingInput>();
+        app.init_resource::<TurnHistory>();
+
+        // Set up previous turn data
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.rendering = Some(NarratorRendering {
+                text: "The old man nods.".to_string(),
+                stage_directions: None,
+            });
+            ctx.player_input = Some("I nod back.".to_string());
+        }
+        {
+            let mut pending = app.world_mut().resource_mut::<PendingInput>();
+            pending.0 = Some("What next?".to_string());
+        }
+        {
+            let mut stage = app.world_mut().resource_mut::<ActiveTurnStage>();
+            stage.0 = TurnCycleStage::CommittingPrevious;
+        }
+
+        app.add_systems(
+            Update,
+            commit_previous_system.run_if(in_stage(TurnCycleStage::CommittingPrevious)),
+        );
+        app.update();
+
+        let stage = app.world().resource::<ActiveTurnStage>();
+        assert_eq!(stage.0, TurnCycleStage::Classifying);
+
+        let history = app.world().resource::<TurnHistory>();
+        assert_eq!(history.turns.len(), 1);
+    }
+
+    #[test]
     fn committed_classification_preserved_in_history() {
         let mut app = test_app();
         app.add_systems(Update, commit_previous_system);
@@ -1068,5 +1172,61 @@ mod tests {
         assert!(history.turns[1].committed_classification.is_none());
         assert_eq!(history.turns[0].turn_number, 1);
         assert_eq!(history.turns[1].turn_number, 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Action arbitration wiring
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn resolve_system_sets_arbitration() {
+        let mut app = App::new();
+        app.init_resource::<ActiveTurnStage>();
+        app.init_resource::<TurnContext>();
+
+        {
+            let mut stage = app.world_mut().resource_mut::<ActiveTurnStage>();
+            stage.0 = TurnCycleStage::Resolving;
+        }
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("I walk through the meadow".to_string());
+        }
+
+        app.add_systems(
+            Update,
+            resolve_system.run_if(in_stage(TurnCycleStage::Resolving)),
+        );
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.arbitration.is_some());
+        assert!(ctx.arbitration.as_ref().unwrap().is_permitted());
+        assert!(ctx.resolver_output.is_some());
+
+        let stage = app.world().resource::<ActiveTurnStage>();
+        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
+    }
+
+    #[test]
+    fn resolve_system_without_input_skips_arbitration() {
+        let mut app = App::new();
+        app.init_resource::<ActiveTurnStage>();
+        app.init_resource::<TurnContext>();
+
+        {
+            let mut stage = app.world_mut().resource_mut::<ActiveTurnStage>();
+            stage.0 = TurnCycleStage::Resolving;
+        }
+
+        app.add_systems(
+            Update,
+            resolve_system.run_if(in_stage(TurnCycleStage::Resolving)),
+        );
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.arbitration.is_none());
+        assert!(ctx.resolver_output.is_some());
     }
 }
