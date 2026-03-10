@@ -8,7 +8,7 @@
 
   let { visible }: { visible: boolean } = $props();
 
-  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Decomposition", "Arbitration", "Narrator", "Logs"] as const;
+  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Arbitration", "Narrator", "Logs"] as const;
   type TabName = (typeof TABS)[number];
   const TAB_PHASE_MAP: Record<TabName, string> = {
     LLM: "llm",
@@ -16,7 +16,6 @@
     "ML Predictions": "prediction",
     Characters: "characters",
     Events: "events",
-    Decomposition: "decomposition",
     Arbitration: "arbitration",
     Narrator: "narrator",
     Logs: "logs",
@@ -98,6 +97,16 @@
       if (llmChecking) return "processing";
       if (!llmStatus) return "pending";
       return llmStatus.reachable ? "complete" : "error";
+    }
+    if (tab === "Events") {
+      // Events tab combines classification + decomposition phases
+      const evtStatus = debugState.phases["events"] ?? "pending";
+      const decStatus = debugState.phases["decomposition"] ?? "pending";
+      if (evtStatus === "error" || decStatus === "error") return "error";
+      if (evtStatus === "processing" || decStatus === "processing") return "processing";
+      if (evtStatus === "complete" && decStatus === "complete") return "complete";
+      if (evtStatus === "complete" || decStatus === "complete") return "processing";
+      return "pending";
     }
     const phase = TAB_PHASE_MAP[tab];
     return debugState.phases[phase] ?? "pending";
@@ -363,70 +372,71 @@ Model:    {llmStatus.model}</pre>
         </div>
       {:else if activeTab === "Events"}
         <div class="debug-tab-content">
-          {#if debugState.events}
-            {#if !debugState.events.classifier_loaded}
-              <p class="debug-notice">No event classifier loaded. Set STORYTELLER_MODEL_PATH or STORYTELLER_DATA_PATH.</p>
-            {/if}
-            {#if debugState.events.classifications.length > 0}
-              <div class="debug-section">
-                <h4>Classifications</h4>
-                {#each debugState.events.classifications as cls}
-                  <pre>{cls}</pre>
-                {/each}
-              </div>
-            {:else}
-              <p class="debug-empty">No classifications produced.</p>
-            {/if}
-          {:else}
-            <p class="debug-empty">Waiting for turn data...</p>
-          {/if}
-        </div>
-      {:else if activeTab === "Decomposition"}
-        <div class="debug-tab-content">
-          {#if debugState.decomposition}
-            {#if debugState.decomposition.error}
-              <div class="debug-section">
-                <h4>Error</h4>
-                <pre class="llm-fail">{debugState.decomposition.error}</pre>
-              </div>
-            {/if}
-            {#if debugState.decomposition.raw_llm_json && !debugState.decomposition.decomposition}
-              <div class="debug-section">
-                <h4>Raw LLM Response</h4>
-                <JSONTree value={debugState.decomposition.raw_llm_json} />
-              </div>
-            {/if}
-            {#if debugState.decomposition.decomposition}
-              {@const decomp = debugState.decomposition.decomposition}
-              <div class="debug-section">
-                <h4>Events ({decomp.events.length})</h4>
-                {#each decomp.events as event, i}
-                  <div class="decomp-event">
-                    <div class="decomp-kind">{event.kind} <span class="decomp-direction">{event.relational_direction}</span></div>
-                    <div class="decomp-triple">
-                      <span class="decomp-entity actor">{event.actor ? `${event.actor.mention} [${event.actor.category}]` : "(no actor)"}</span>
-                      <span class="decomp-arrow">&rarr;</span>
-                      <span class="decomp-action">{event.action}</span>
-                      <span class="decomp-arrow">&rarr;</span>
-                      <span class="decomp-entity target">{event.target ? `${event.target.mention} [${event.target.category}]` : "(no target)"}</span>
-                    </div>
-                    {#if event.confidence_note}
-                      <div class="decomp-note">{event.confidence_note}</div>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-              <div class="debug-section">
-                <h4>All Entities ({decomp.entities.length})</h4>
-                {#each decomp.entities as entity}
-                  <pre>{entity.mention} [{entity.category}]</pre>
-                {/each}
-              </div>
-            {:else}
-              <p class="debug-empty">No decomposition produced.</p>
-            {/if}
+          {#if debugState.events || debugState.decomposition}
+            <!-- DistilBERT fast classification -->
             <div class="debug-section">
-              <h4>Model: {debugState.decomposition.model} | LLM: {debugState.decomposition.timing_ms}ms</h4>
+              <h4>Classification <span class="events-source">DistilBERT</span></h4>
+              {#if debugState.events}
+                {#if !debugState.events.classifier_loaded}
+                  <p class="debug-notice">No event classifier loaded. Set STORYTELLER_MODEL_PATH or STORYTELLER_DATA_PATH.</p>
+                {:else if debugState.events.classifications.length > 0}
+                  <div class="classification-chips">
+                    {#each debugState.events.classifications as cls}
+                      <span class="classification-chip">{cls}</span>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="debug-empty">No classifications produced.</p>
+                {/if}
+              {:else}
+                <p class="debug-empty">Waiting...</p>
+              {/if}
+            </div>
+
+            <!-- LLM decomposition -->
+            <div class="events-divider"></div>
+            <div class="debug-section">
+              <h4>Decomposition <span class="events-source">qwen2.5:3b-instruct</span>{#if debugState.decomposition} <span class="token-count">{debugState.decomposition.timing_ms}ms</span>{/if}</h4>
+              {#if debugState.decomposition}
+                {#if debugState.decomposition.error}
+                  <pre class="llm-fail">{debugState.decomposition.error}</pre>
+                {/if}
+                {#if debugState.decomposition.raw_llm_json && !debugState.decomposition.decomposition}
+                  <div class="debug-section">
+                    <h4>Raw LLM Response</h4>
+                    <JSONTree value={debugState.decomposition.raw_llm_json} />
+                  </div>
+                {/if}
+                {#if debugState.decomposition.decomposition}
+                  {@const decomp = debugState.decomposition.decomposition}
+                  {#each decomp.events as event, i}
+                    <div class="decomp-event">
+                      <div class="decomp-kind">{event.kind} <span class="decomp-direction">{event.relational_direction}</span></div>
+                      <div class="decomp-triple">
+                        <span class="decomp-entity actor">{event.actor ? `${event.actor.mention} [${event.actor.category}]` : "(no actor)"}</span>
+                        <span class="decomp-arrow">&rarr;</span>
+                        <span class="decomp-action">{event.action}</span>
+                        <span class="decomp-arrow">&rarr;</span>
+                        <span class="decomp-entity target">{event.target ? `${event.target.mention} [${event.target.category}]` : "(no target)"}</span>
+                      </div>
+                      {#if event.confidence_note}
+                        <div class="decomp-note">{event.confidence_note}</div>
+                      {/if}
+                    </div>
+                  {/each}
+                  {#if decomp.entities.length > 0}
+                    <div class="decomp-entities-row">
+                      {#each decomp.entities as entity}
+                        <span class="entity-chip">{entity.mention} <span class="entity-cat">{entity.category}</span></span>
+                      {/each}
+                    </div>
+                  {/if}
+                {:else if !debugState.decomposition.error}
+                  <p class="debug-empty">No decomposition produced.</p>
+                {/if}
+              {:else}
+                <p class="debug-empty">Waiting for LLM...</p>
+              {/if}
             </div>
           {:else}
             <p class="debug-empty">Waiting for turn data...</p>
@@ -830,6 +840,52 @@ Model:    {llmStatus.model}</pre>
     padding: 0.25rem 0 0.25rem 1.5rem;
     border-bottom: 1px solid var(--border-debug);
     font-size: 0.7rem;
+  }
+
+  .events-source {
+    font-weight: 400;
+    color: var(--text-debug-dim);
+    font-size: 0.65rem;
+    font-style: italic;
+  }
+
+  .events-divider {
+    border-top: 1px solid var(--border-debug);
+    margin: 0.25rem 0;
+  }
+
+  .classification-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .classification-chip {
+    background: var(--bg-debug-tab);
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    color: var(--text-debug);
+  }
+
+  .decomp-entities-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+  }
+
+  .entity-chip {
+    background: var(--bg-debug-tab);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    color: var(--text-debug);
+  }
+
+  .entity-cat {
+    color: var(--text-debug-dim);
+    font-size: 0.6rem;
   }
 
   .decomp-event {
