@@ -85,6 +85,78 @@ pub struct EnvironmentalConstraint {
 }
 
 // ---------------------------------------------------------------------------
+// Genre constraints — structured rules for the arbitration system
+// ---------------------------------------------------------------------------
+
+/// A typed genre constraint — replaces freeform genre_physics strings
+/// with structured rules the arbitration system can evaluate.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum GenreConstraint {
+    /// A capability that does not exist in this world.
+    Forbidden { capability: String, reason: String },
+    /// A capability that exists with conditions.
+    Conditional {
+        capability: String,
+        requires: Vec<String>,
+    },
+    /// A physical law override (e.g., low gravity, no sound in vacuum).
+    PhysicsOverride { property: String, value: String },
+}
+
+/// A constraint violation explaining why an action is impossible.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ConstraintViolation {
+    /// Which constraint was violated.
+    pub constraint_name: String,
+    /// Human-readable explanation for narrator context injection.
+    pub description: String,
+}
+
+/// A condition that modifies a permitted action.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ActionCondition {
+    /// What must happen for the action to succeed.
+    pub requirement: String,
+    /// How this affects the graduated outcome.
+    pub impact: String,
+}
+
+/// Result of an action possibility check.
+///
+/// The arbitration system returns this before action resolution.
+/// `Permitted` and `Impossible` come from deterministic rules.
+/// `Ambiguous` triggers the small LLM fallback.
+#[derive(Debug, Clone)]
+pub enum ActionPossibility {
+    /// Action is permitted, possibly with conditions.
+    Permitted { conditions: Vec<ActionCondition> },
+    /// Action is impossible due to a constraint violation.
+    Impossible { reason: ConstraintViolation },
+    /// Rules engine cannot determine — needs LLM analysis.
+    Ambiguous {
+        known_constraints: Vec<EnvironmentalConstraint>,
+        uncertainty: String,
+    },
+}
+
+impl ActionPossibility {
+    /// Returns true if the action is permitted.
+    pub fn is_permitted(&self) -> bool {
+        matches!(self, Self::Permitted { .. })
+    }
+
+    /// Returns true if the action is impossible.
+    pub fn is_impossible(&self) -> bool {
+        matches!(self, Self::Impossible { .. })
+    }
+
+    /// Returns true if the result is ambiguous.
+    pub fn is_ambiguous(&self) -> bool {
+        matches!(self, Self::Ambiguous { .. })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // World model — the scene's physical and social rules
 // ---------------------------------------------------------------------------
 
@@ -194,6 +266,79 @@ mod tests {
         };
         assert_eq!(model.genre_physics.len(), 2);
         assert_eq!(model.spatial_zones.len(), 1);
+    }
+
+    #[test]
+    fn genre_constraint_forbidden_variant() {
+        let constraint = GenreConstraint::Forbidden {
+            capability: "telekinesis".to_string(),
+            reason: "Magic does not exist in this world".to_string(),
+        };
+        assert!(matches!(constraint, GenreConstraint::Forbidden { .. }));
+    }
+
+    #[test]
+    fn genre_constraint_conditional_variant() {
+        let constraint = GenreConstraint::Conditional {
+            capability: "flight".to_string(),
+            requires: vec!["wings".to_string(), "open sky".to_string()],
+        };
+        if let GenreConstraint::Conditional { requires, .. } = &constraint {
+            assert_eq!(requires.len(), 2);
+        }
+    }
+
+    #[test]
+    fn genre_constraint_physics_override() {
+        let constraint = GenreConstraint::PhysicsOverride {
+            property: "gravity".to_string(),
+            value: "0.3g".to_string(),
+        };
+        assert!(matches!(
+            constraint,
+            GenreConstraint::PhysicsOverride { .. }
+        ));
+    }
+
+    #[test]
+    fn action_possibility_permitted() {
+        let result = ActionPossibility::Permitted { conditions: vec![] };
+        assert!(result.is_permitted());
+        assert!(!result.is_impossible());
+        assert!(!result.is_ambiguous());
+    }
+
+    #[test]
+    fn action_possibility_impossible() {
+        let result = ActionPossibility::Impossible {
+            reason: ConstraintViolation {
+                constraint_name: "genre_physics".to_string(),
+                description: "Magic does not exist".to_string(),
+            },
+        };
+        assert!(result.is_impossible());
+        assert!(!result.is_permitted());
+    }
+
+    #[test]
+    fn action_possibility_ambiguous() {
+        let result = ActionPossibility::Ambiguous {
+            known_constraints: vec![],
+            uncertainty: "Low gravity leap height unclear".to_string(),
+        };
+        assert!(result.is_ambiguous());
+        assert!(!result.is_permitted());
+    }
+
+    #[test]
+    fn genre_constraint_serializes() {
+        let constraint = GenreConstraint::Forbidden {
+            capability: "telekinesis".to_string(),
+            reason: "No magic".to_string(),
+        };
+        let json = serde_json::to_string(&constraint).unwrap();
+        let roundtrip: GenreConstraint = serde_json::from_str(&json).unwrap();
+        assert!(matches!(roundtrip, GenreConstraint::Forbidden { .. }));
     }
 
     #[test]
