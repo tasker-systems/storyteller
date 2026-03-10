@@ -927,6 +927,9 @@ impl SceneComposer {
 
             let entity_id = EntityId::new();
             let sheet = compose_character(archetype, &cs.name, entity_id, &mut *rng);
+            // NOTE: DynamicSelection edge weights are not yet wired into
+            // character sheets (knows/does_not_know, relational edges).
+            // The find_dynamic() helper exists for a follow-up pass.
             cast_entries.push(CastEntry {
                 entity_id,
                 name: cs.name.clone(),
