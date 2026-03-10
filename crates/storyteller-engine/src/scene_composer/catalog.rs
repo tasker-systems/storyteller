@@ -36,8 +36,8 @@ pub struct ProfileSummary {
     pub scene_type: String,
     pub tension_min: f64,
     pub tension_max: f64,
-    pub cast_size_min: f64,
-    pub cast_size_max: f64,
+    pub cast_size_min: usize,
+    pub cast_size_max: usize,
 }
 
 /// Lightweight archetype summary for catalog listing.
@@ -114,8 +114,8 @@ impl SceneComposer {
                 scene_type: p.scene_type.clone(),
                 tension_min: p.tension.min,
                 tension_max: p.tension.max,
-                cast_size_min: p.cast_size.min,
-                cast_size_max: p.cast_size.max,
+                cast_size_min: p.cast_size.min as usize,
+                cast_size_max: p.cast_size.max as usize,
             })
             .collect()
     }
@@ -328,6 +328,52 @@ mod tests {
                 "  genre '{}' — {} dynamics returned",
                 genre.id,
                 dynamics.len()
+            );
+        }
+    }
+
+    #[test]
+    fn excluded_combinations_filter_dynamics() {
+        let Some(composer) = load_composer() else {
+            eprintln!("STORYTELLER_DATA_PATH not set — skipping");
+            return;
+        };
+
+        // Get dynamics with no archetype selection (no exclusions apply)
+        let all_dynamics = composer.dynamics_for_genre("low_fantasy_folklore", &[]);
+
+        // Check if the genre has any excluded_combinations with archetype+dynamic
+        let genre = composer.find_genre("low_fantasy_folklore").unwrap();
+        let has_exclusions = genre
+            .excluded_combinations
+            .iter()
+            .any(|ec| ec.archetype.is_some() && ec.dynamic.is_some());
+
+        if has_exclusions {
+            // Find an archetype that triggers an exclusion
+            let ec = genre
+                .excluded_combinations
+                .iter()
+                .find(|ec| ec.archetype.is_some() && ec.dynamic.is_some())
+                .unwrap();
+            let arch_id = ec.archetype.as_ref().unwrap();
+            let excluded_dyn = ec.dynamic.as_ref().unwrap();
+
+            let selected = [arch_id.clone()];
+            let filtered = composer.dynamics_for_genre("low_fantasy_folklore", &selected);
+
+            // Should have fewer dynamics when archetype triggers exclusion
+            assert!(
+                filtered.len() < all_dynamics.len(),
+                "selecting archetype '{}' should exclude at least one dynamic",
+                arch_id
+            );
+            // The specifically excluded dynamic should be absent
+            assert!(
+                !filtered.iter().any(|d| &d.id == excluded_dyn),
+                "dynamic '{}' should be excluded when archetype '{}' is selected",
+                excluded_dyn,
+                arch_id
             );
         }
     }
