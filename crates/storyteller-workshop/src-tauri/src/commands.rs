@@ -381,7 +381,7 @@ pub async fn submit_input(
         &app,
         DebugEvent::EventsClassified {
             turn,
-            classifications,
+            classifications: classifications.clone(),
             classifier_loaded: engine.event_classifier.is_some(),
         },
     );
@@ -396,6 +396,7 @@ pub async fn submit_input(
     );
 
     let decomp_start = Instant::now();
+    let mut persisted_decomposition: Option<serde_json::Value> = None;
     if let Some(ref structured_llm) = engine.structured_llm {
         // Call provider directly so we capture raw JSON for debugging
         let request = storyteller_core::traits::structured_llm::StructuredRequest {
@@ -411,6 +412,7 @@ pub async fn submit_input(
                     raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
                     "Event decomposition raw LLM response"
                 );
+                persisted_decomposition = Some(raw_json.clone());
                 // Try to parse the raw JSON into our typed decomposition
                 let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
                     Ok(d) => (Some(d), None),
@@ -478,6 +480,9 @@ pub async fn submit_input(
         None,                      // No spatial zone tracking yet
     );
     let arb_ms = arb_start.elapsed().as_millis() as u64;
+
+    let arbitration_json =
+        serde_json::to_value(&arbitration_result).unwrap_or(serde_json::Value::Null);
 
     emit_debug(
         &app,
@@ -646,6 +651,20 @@ pub async fn submit_input(
             "timestamp": log_entry.timestamp.to_rfc3339(),
             "player_input": log_entry.player_input,
             "narrator_output": log_entry.narrator_output,
+            "classifications": classifications,
+            "decomposition": persisted_decomposition,
+            "arbitration": arbitration_json,
+            "timing": {
+                "prediction_ms": prediction_ms,
+                "assembly_ms": assembly_ms,
+                "narrator_ms": narrator_ms,
+            },
+            "context_tokens": {
+                "preamble": token_counts.0,
+                "journal": token_counts.1,
+                "retrieved": token_counts.2,
+                "total": token_counts.3,
+            },
         });
         let mut line =
             serde_json::to_string(&event_line).map_err(|e| format!("serialize event: {e}"))?;
