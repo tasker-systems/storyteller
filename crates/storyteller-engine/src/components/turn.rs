@@ -16,6 +16,7 @@ use storyteller_core::types::narrator_context::{NarratorContextInput, SceneJourn
 use storyteller_core::types::prediction::CharacterPrediction;
 use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::turn_cycle::TurnCycleStage;
+use storyteller_core::types::world_model::ActionPossibility;
 use storyteller_core::StorytellerResult;
 
 use storyteller_core::traits::structured_llm::StructuredLlmProvider;
@@ -49,6 +50,8 @@ pub struct TurnContext {
     pub narrator_context: Option<NarratorContextInput>,
     /// Narrator rendering output.
     pub rendering: Option<NarratorRendering>,
+    /// Action arbitration result (if arbitration was run).
+    pub arbitration: Option<ActionPossibility>,
 }
 
 impl TurnContext {
@@ -85,6 +88,8 @@ pub struct CompletedTurn {
     pub committed_compounds: Vec<CompoundEvent>,
     /// ML character predictions (if predictor was available).
     pub predictions: Option<Vec<CharacterPrediction>>,
+    /// Action arbitration result for this turn.
+    pub arbitration: Option<ActionPossibility>,
     /// When this turn was committed.
     pub committed_at: DateTime<Utc>,
 }
@@ -227,6 +232,7 @@ mod tests {
         assert!(ctx.resolver_output.is_none());
         assert!(ctx.narrator_context.is_none());
         assert!(ctx.rendering.is_none());
+        assert!(ctx.arbitration.is_none());
     }
 
     #[test]
@@ -279,6 +285,7 @@ mod tests {
             committed_atoms: vec![],
             committed_compounds: vec![],
             predictions: None,
+            arbitration: None,
             committed_at: chrono::Utc::now(),
         };
         assert_eq!(turn.turn_number, 3);

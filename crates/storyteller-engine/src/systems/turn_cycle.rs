@@ -195,11 +195,33 @@ impl std::fmt::Debug for GrammarResource {
 // Systems — Stubs (advance stage only)
 // ---------------------------------------------------------------------------
 
-/// Resolve predictions via rules engine (pass-through for now).
+/// Resolve predictions via rules engine.
 ///
-/// Wraps ML predictions into a `ResolverOutput`. Real resolver logic
+/// Runs action arbitration against genre constraints and spatial zones,
+/// then wraps ML predictions into a `ResolverOutput`. Real resolver logic
 /// (RPG-like mechanics, conflict detection, graduated success) is future work.
 pub fn resolve_system(mut stage: ResMut<ActiveTurnStage>, mut turn_ctx: ResMut<TurnContext>) {
+    // Run arbitration if we have player input
+    if let Some(ref input) = turn_ctx.player_input {
+        // For now, run with empty constraints and lexicon
+        // Future: pull from scene/story resources
+        let result = crate::systems::arbitration::check_action_possibility(
+            input,
+            &[], // genre_constraints — will come from scene resource later
+            &storyteller_core::types::capability_lexicon::CapabilityLexicon::new(),
+            None, // actor_zone — will come from spatial tracking later
+        );
+
+        tracing::debug!(
+            permitted = result.is_permitted(),
+            impossible = result.is_impossible(),
+            ambiguous = result.is_ambiguous(),
+            "resolve_system: action arbitration check"
+        );
+
+        turn_ctx.arbitration = Some(result);
+    }
+
     let predictions = turn_ctx.predictions.clone().unwrap_or_default();
 
     let resolver_output = ResolverOutput {
@@ -417,6 +439,7 @@ pub fn commit_previous_system(
             committed_atoms,
             committed_compounds,
             predictions: turn_ctx.predictions.clone(),
+            arbitration: turn_ctx.arbitration.clone(),
             committed_at: chrono::Utc::now(),
         };
 
@@ -872,6 +895,7 @@ mod tests {
             committed_atoms: vec![],
             committed_compounds: vec![],
             predictions: None,
+            arbitration: None,
             committed_at: chrono::Utc::now(),
         });
         assert_eq!(history.next_turn_number(), 2);
@@ -1148,5 +1172,61 @@ mod tests {
         assert!(history.turns[1].committed_classification.is_none());
         assert_eq!(history.turns[0].turn_number, 1);
         assert_eq!(history.turns[1].turn_number, 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Action arbitration wiring
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn resolve_system_sets_arbitration() {
+        let mut app = App::new();
+        app.init_resource::<ActiveTurnStage>();
+        app.init_resource::<TurnContext>();
+
+        {
+            let mut stage = app.world_mut().resource_mut::<ActiveTurnStage>();
+            stage.0 = TurnCycleStage::Resolving;
+        }
+        {
+            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
+            ctx.player_input = Some("I walk through the meadow".to_string());
+        }
+
+        app.add_systems(
+            Update,
+            resolve_system.run_if(in_stage(TurnCycleStage::Resolving)),
+        );
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.arbitration.is_some());
+        assert!(ctx.arbitration.as_ref().unwrap().is_permitted());
+        assert!(ctx.resolver_output.is_some());
+
+        let stage = app.world().resource::<ActiveTurnStage>();
+        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
+    }
+
+    #[test]
+    fn resolve_system_without_input_skips_arbitration() {
+        let mut app = App::new();
+        app.init_resource::<ActiveTurnStage>();
+        app.init_resource::<TurnContext>();
+
+        {
+            let mut stage = app.world_mut().resource_mut::<ActiveTurnStage>();
+            stage.0 = TurnCycleStage::Resolving;
+        }
+
+        app.add_systems(
+            Update,
+            resolve_system.run_if(in_stage(TurnCycleStage::Resolving)),
+        );
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.arbitration.is_none());
+        assert!(ctx.resolver_output.is_some());
     }
 }
