@@ -38,4 +38,6 @@ pub struct EngineState {
     pub session_log: SessionLog,
     /// Current turn number.
     pub turn_count: u32,
+    /// Session ID for persisted sessions (None for classic/non-persisted scenes).
+    pub session_id: Option<String>,
 }

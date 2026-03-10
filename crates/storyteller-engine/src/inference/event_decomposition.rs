@@ -320,19 +320,30 @@ pub fn event_decomposition_schema() -> serde_json::Value {
 /// separately via `StructuredRequest::output_schema` — the provider
 /// injects it into the prompt so the model sees it exactly once.
 pub fn event_decomposition_system_prompt() -> String {
-    "You are an event extractor for interactive fiction. Given narrative text, \
-identify discrete events as entity→action→entity triples.
+    "You are an event extractor for interactive fiction. You receive input in two sections:
+
+[Narrator] — the previous narrator prose establishing scene context, characters, and state.
+[Player] — the player's action or dialogue in response.
+
+Your job: extract discrete events as entity→action→entity triples from the PLAYER section. \
+Use the Narrator section to resolve pronouns, identify characters by name, and ground actions \
+against established objects, locations, and relationships. Do NOT extract events from the \
+Narrator section itself — it is context only.
+
+If only a single section is provided (no [Narrator]/[Player] markers), treat the entire input \
+as player text.
 
 Rules:
 - Every event needs at minimum an actor and an action
 - A target is required for directed actions, optional for self/diffuse actions
+- Resolve pronouns (he, she, his, her, it, they) to named entities using Narrator context
 - Use entity categories: CHARACTER, OBJECT, LOCATION, GESTURE, SENSORY, ABSTRACT, COLLECTIVE
 - Use event kinds: StateAssertion, ActionOccurrence, SpatialChange, EmotionalExpression, \
 InformationTransfer, SpeechAct, RelationalShift, EnvironmentalChange
 - relational_direction must be one of: \"directed\", \"mutual\", \"self\", \"diffuse\"
 - When a character acts without a clear target, set relational_direction to \"self\"
 - When an action affects the general situation, set relational_direction to \"diffuse\"
-- Extract ALL entities mentioned, even those not in events"
+- Extract ALL entities mentioned in the Player section, even those not in events"
         .to_string()
 }
 

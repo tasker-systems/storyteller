@@ -22,6 +22,7 @@ pub mod context;
 pub mod inference;
 pub mod messaging;
 pub mod plugin;
+pub mod scene_composer;
 pub mod systems;
 pub mod workshop;
 

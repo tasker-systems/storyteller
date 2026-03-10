@@ -1,15 +1,22 @@
 mod commands;
 mod engine_state;
 mod events;
+mod session;
 mod session_log;
 mod tracing_layer;
+
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use tokio::sync::Mutex;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
+use storyteller_engine::scene_composer::SceneComposer;
+
 use crate::engine_state::EngineState;
+use crate::session::SessionStore;
 use crate::tracing_layer::TauriTracingLayer;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -19,6 +26,23 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage({
+            let data_path = std::env::var("STORYTELLER_DATA_PATH")
+                .map(PathBuf::from)
+                .expect("STORYTELLER_DATA_PATH must be set");
+            let composer =
+                SceneComposer::load(&data_path).expect("Failed to load scene descriptors");
+            Arc::new(composer)
+        })
+        .manage({
+            let workshop_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("workshop root")
+                .to_path_buf();
+            let store =
+                SessionStore::new(&workshop_root).expect("Failed to initialize session store");
+            Arc::new(store)
+        })
         .manage(Mutex::new(None::<EngineState>))
         .setup(|app| {
             // Set up tracing with both a console layer and our Tauri layer.
@@ -49,6 +73,11 @@ pub fn run() {
             commands::start_scene,
             commands::submit_input,
             commands::get_session_log,
+            commands::load_catalog,
+            commands::get_genre_options,
+            commands::compose_scene,
+            commands::list_sessions,
+            commands::resume_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
