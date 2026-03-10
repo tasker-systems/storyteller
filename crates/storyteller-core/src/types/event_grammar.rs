@@ -130,6 +130,27 @@ pub enum EntityLifecycleType {
 }
 
 // ===========================================================================
+// Relational direction — event flow directionality
+// ===========================================================================
+
+/// Directionality of an event's relational vector.
+///
+/// Captures whether an event flows from actor→target, is mutual,
+/// is self-directed (internal/reflexive), or is diffuse (directed
+/// at the situation rather than a specific entity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum RelationalDirection {
+    /// Actor acts upon target: "laughs at", "strikes", "tells"
+    Directed,
+    /// Both parties involved mutually: "embrace", "argue", "negotiate"
+    Mutual,
+    /// Action directed at self: laughing alone, sighing, internal realization
+    SelfDirected,
+    /// Action directed at situation/world, not a specific entity
+    Diffuse,
+}
+
+// ===========================================================================
 // Participants — who or what is involved in an event
 // ===========================================================================
 
@@ -944,5 +965,28 @@ mod tests {
                 assert_ne!(types[i], types[j]);
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // RelationalDirection
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn relational_direction_variants_exist() {
+        let directed = RelationalDirection::Directed;
+        let mutual = RelationalDirection::Mutual;
+        let self_directed = RelationalDirection::SelfDirected;
+        let diffuse = RelationalDirection::Diffuse;
+        assert_ne!(format!("{directed:?}"), format!("{mutual:?}"));
+        assert_ne!(format!("{self_directed:?}"), format!("{diffuse:?}"));
+    }
+
+    #[test]
+    fn relational_direction_serializes() {
+        let directed = RelationalDirection::Directed;
+        let json = serde_json::to_string(&directed).unwrap();
+        assert_eq!(json, "\"Directed\"");
+        let roundtrip: RelationalDirection = serde_json::from_str(&json).unwrap();
+        assert_eq!(roundtrip, directed);
     }
 }
