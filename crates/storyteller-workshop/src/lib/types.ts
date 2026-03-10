@@ -53,6 +53,81 @@ export interface LlmStatus {
   latency_ms: number;
 }
 
+// ---------------------------------------------------------------------------
+// Scene Template Types
+// ---------------------------------------------------------------------------
+
+export interface GenreSummary {
+  id: string;
+  display_name: string;
+  description: string;
+  archetype_count: number;
+  profile_count: number;
+  dynamic_count: number;
+}
+
+export interface ProfileSummary {
+  id: string;
+  display_name: string;
+  description: string;
+  scene_type: string;
+  tension_min: number;
+  tension_max: number;
+  cast_size_min: number;
+  cast_size_max: number;
+}
+
+export interface ArchetypeSummary {
+  id: string;
+  display_name: string;
+  description: string;
+}
+
+export interface DynamicSummary {
+  id: string;
+  display_name: string;
+  description: string;
+  role_a: string;
+  role_b: string;
+}
+
+export interface GenreOptions {
+  profiles: ProfileSummary[];
+  archetypes: ArchetypeSummary[];
+  dynamics: DynamicSummary[];
+  names: string[];
+}
+
+export interface CastSelection {
+  archetype: string;
+  name: string;
+  is_player_perspective: boolean;
+}
+
+export interface DynamicSelection {
+  character_a_index: number;
+  character_b_index: number;
+  dynamic: string;
+}
+
+export interface SceneSelections {
+  genre: string;
+  profile: string;
+  cast: CastSelection[];
+  dynamics: DynamicSelection[];
+  setting_override: string | null;
+  seed: number | null;
+}
+
+export interface SessionSummary {
+  session_id: string;
+  genre: string;
+  profile: string;
+  title: string;
+  cast_names: string[];
+  turn_count: number;
+}
+
 export type StoryBlock =
   | { kind: "narrator"; turn: number; text: string }
   | { kind: "player"; turn: number; text: string }
