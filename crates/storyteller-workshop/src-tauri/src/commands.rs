@@ -194,7 +194,7 @@ pub async fn start_scene(
     let pyotir = the_flute_kept::pyotir();
     let characters = vec![bramblehoof, pyotir];
 
-    setup_and_render_opening(&app, scene, characters, &state).await
+    setup_and_render_opening(&app, scene, characters, &state, None).await
 }
 
 /// Return the genre catalog from the scene composer.
@@ -238,10 +238,17 @@ pub async fn compose_scene(
     let composed: ComposedScene = composer.compose(&selections)?;
 
     // Persist the session before rendering (crash-safe: data is on disk first).
-    let _session_id =
+    let session_id =
         session_store.create_session(&selections, &composed.scene, &composed.characters)?;
 
-    setup_and_render_opening(&app, composed.scene, composed.characters, &state).await
+    setup_and_render_opening(
+        &app,
+        composed.scene,
+        composed.characters,
+        &state,
+        Some(session_id),
+    )
+    .await
 }
 
 /// List all persisted sessions.
@@ -261,7 +268,7 @@ pub async fn resume_session(
     session_store: State<'_, Arc<SessionStore>>,
 ) -> Result<SceneInfo, String> {
     let (_selections, scene, characters) = session_store.load_session(&session_id)?;
-    setup_and_render_opening(&app, scene, characters, &state).await
+    setup_and_render_opening(&app, scene, characters, &state, Some(session_id)).await
 }
 
 /// Process player input through the engine pipeline and return the narrator's response.
@@ -270,6 +277,7 @@ pub async fn submit_input(
     input: String,
     app: tauri::AppHandle,
     state: State<'_, Mutex<Option<EngineState>>>,
+    session_store: State<'_, Arc<SessionStore>>,
 ) -> Result<TurnResult, String> {
     let mut guard = state.lock().await;
     let engine = guard
@@ -630,6 +638,26 @@ pub async fn submit_input(
     };
     engine.session_log.append(&log_entry)?;
 
+    // Append to persisted session events.jsonl if this is a persisted session.
+    if let Some(ref sid) = engine.session_id {
+        let events_path = session_store.events_path(sid);
+        let event_line = serde_json::json!({
+            "turn": turn,
+            "timestamp": log_entry.timestamp.to_rfc3339(),
+            "player_input": log_entry.player_input,
+            "narrator_output": log_entry.narrator_output,
+        });
+        let mut line =
+            serde_json::to_string(&event_line).map_err(|e| format!("serialize event: {e}"))?;
+        line.push('\n');
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&events_path)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()))
+            .map_err(|e| format!("append events.jsonl: {e}"))?;
+    }
+
     Ok(TurnResult {
         turn,
         narrator_prose: rendering.text,
@@ -672,6 +700,7 @@ async fn setup_and_render_opening(
     scene: SceneData,
     characters: Vec<CharacterSheet>,
     state: &State<'_, Mutex<Option<EngineState>>>,
+    session_id: Option<String>,
 ) -> Result<SceneInfo, String> {
     let characters_refs: Vec<&_> = characters.iter().collect();
     let entity_ids: Vec<_> = characters.iter().map(|c| c.entity_id).collect();
@@ -918,6 +947,7 @@ async fn setup_and_render_opening(
         grammar,
         session_log,
         turn_count: 0,
+        session_id,
     };
 
     let mut guard = state.lock().await;
