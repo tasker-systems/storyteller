@@ -12,6 +12,7 @@ pub mod cloud;
 pub mod event_classifier;
 pub mod external;
 pub mod frame;
+pub mod structured;
 
 #[cfg(feature = "local-llm")]
 pub mod local;
