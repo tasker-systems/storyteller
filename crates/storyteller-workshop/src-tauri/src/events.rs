@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 use storyteller_core::types::character::CharacterSheet;
 use storyteller_core::types::resolver::ResolverOutput;
+use storyteller_core::types::world_model::ActionPossibility;
+use storyteller_engine::inference::event_decomposition::EventDecomposition;
 
 /// The single event channel name used for all debug inspector events.
 pub const DEBUG_EVENT_CHANNEL: &str = "workshop:debug";
@@ -68,6 +70,26 @@ pub enum DebugEvent {
         temperature: f32,
         max_tokens: u32,
         tokens_used: u32,
+        timing_ms: u64,
+    },
+
+    /// LLM-based event decomposition completed — entity→action→entity triples.
+    #[serde(rename = "event_decomposed")]
+    EventDecomposed {
+        turn: u32,
+        decomposition: Option<EventDecomposition>,
+        raw_llm_json: Option<serde_json::Value>,
+        timing_ms: u64,
+        model: String,
+        error: Option<String>,
+    },
+
+    /// Action arbitration completed — possibility check result.
+    #[serde(rename = "action_arbitrated")]
+    ActionArbitrated {
+        turn: u32,
+        result: ActionPossibility,
+        player_input: String,
         timing_ms: u64,
     },
 

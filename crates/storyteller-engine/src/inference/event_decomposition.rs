@@ -7,7 +7,7 @@
 //! The output converts to [`super::event_classifier::ClassificationOutput`]
 //! for compatibility with the existing ML classification pipeline.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use storyteller_core::errors::StorytellerResult;
 use storyteller_core::traits::structured_llm::{StructuredLlmProvider, StructuredRequest};
@@ -29,7 +29,7 @@ const LLM_DEFAULT_CONFIDENCE: f32 = 0.85;
 // ===========================================================================
 
 /// An entity mention extracted by the LLM.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecomposedEntity {
     /// The text mention as it appears in the narrative.
     pub mention: String,
@@ -38,7 +38,7 @@ pub struct DecomposedEntity {
 }
 
 /// A single decomposed event from the LLM.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecomposedEvent {
     /// Event kind label (e.g., "SpeechAct", "ActionOccurrence").
     pub kind: String,
@@ -49,14 +49,17 @@ pub struct DecomposedEvent {
     /// The entity receiving the action, if applicable.
     pub target: Option<DecomposedEntity>,
     /// How the event's relational vector flows.
-    #[serde(deserialize_with = "deserialize_relational_direction")]
+    #[serde(
+        deserialize_with = "deserialize_relational_direction",
+        serialize_with = "serialize_relational_direction"
+    )]
     pub relational_direction: RelationalDirection,
     /// Optional note from the LLM explaining its confidence reasoning.
     pub confidence_note: Option<String>,
 }
 
 /// The full decomposition result from the LLM.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventDecomposition {
     /// Discrete events extracted from the text.
     pub events: Vec<DecomposedEvent>,
@@ -67,6 +70,23 @@ pub struct EventDecomposition {
 // ===========================================================================
 // Custom deserialization for RelationalDirection
 // ===========================================================================
+
+/// Serialize `RelationalDirection` to lowercase strings matching the LLM schema.
+fn serialize_relational_direction<S>(
+    value: &RelationalDirection,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let s = match value {
+        RelationalDirection::Directed => "directed",
+        RelationalDirection::Mutual => "mutual",
+        RelationalDirection::SelfDirected => "self",
+        RelationalDirection::Diffuse => "diffuse",
+    };
+    serializer.serialize_str(s)
+}
 
 /// Deserialize `RelationalDirection` from lowercase LLM output strings.
 ///

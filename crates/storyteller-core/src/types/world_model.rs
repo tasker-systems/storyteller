@@ -126,7 +126,8 @@ pub struct ActionCondition {
 /// The arbitration system returns this before action resolution.
 /// `Permitted` and `Impossible` come from deterministic rules.
 /// `Ambiguous` triggers the small LLM fallback.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "verdict")]
 pub enum ActionPossibility {
     /// Action is permitted, possibly with conditions.
     Permitted { conditions: Vec<ActionCondition> },
