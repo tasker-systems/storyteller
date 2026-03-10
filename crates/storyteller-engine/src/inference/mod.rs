@@ -10,6 +10,7 @@
 
 pub mod cloud;
 pub mod event_classifier;
+pub mod event_decomposition;
 pub mod external;
 pub mod frame;
 pub mod structured;
