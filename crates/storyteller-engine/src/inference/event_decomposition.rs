@@ -117,11 +117,29 @@ fn parse_ner_category(s: &str) -> Option<NerCategory> {
 impl EventDecomposition {
     /// Parse an `EventDecomposition` from a JSON value produced by the LLM.
     ///
+    /// Small models sometimes nest their output inside the schema structure
+    /// (e.g., under a `"properties"` key). This method detects that pattern
+    /// and unwraps the actual data before parsing.
+    ///
     /// # Errors
     ///
     /// Returns `StorytellerError::Inference` if the JSON does not match
     /// the expected schema.
     pub fn from_json(value: &serde_json::Value) -> StorytellerResult<Self> {
+        // Try direct parse first.
+        if let Ok(decomp) = serde_json::from_value::<Self>(value.clone()) {
+            return Ok(decomp);
+        }
+
+        // Small models sometimes wrap the response in the schema structure,
+        // nesting actual data under the "properties" key.
+        if let Some(props) = value.get("properties") {
+            if let Ok(decomp) = serde_json::from_value::<Self>(props.clone()) {
+                return Ok(decomp);
+            }
+        }
+
+        // Neither attempt succeeded — report the direct-parse error.
         serde_json::from_value(value.clone()).map_err(|e| {
             storyteller_core::StorytellerError::Inference(format!(
                 "failed to parse event decomposition: {e}"
@@ -236,14 +254,11 @@ pub fn event_decomposition_schema() -> serde_json::Value {
 
 /// Returns the system prompt for event decomposition.
 ///
-/// Includes the JSON schema inline so the LLM knows the expected output
-/// format.
+/// Describes the extraction task and rules. The output schema is passed
+/// separately via `StructuredRequest::output_schema` — the provider
+/// injects it into the prompt so the model sees it exactly once.
 pub fn event_decomposition_system_prompt() -> String {
-    let schema = serde_json::to_string_pretty(&event_decomposition_schema())
-        .expect("schema serialization cannot fail");
-
-    format!(
-        "You are an event extractor for interactive fiction. Given narrative text, \
+    "You are an event extractor for interactive fiction. Given narrative text, \
 identify discrete events as entity→action→entity triples.
 
 Rules:
@@ -255,10 +270,8 @@ InformationTransfer, SpeechAct, RelationalShift, EnvironmentalChange
 - relational_direction must be one of: \"directed\", \"mutual\", \"self\", \"diffuse\"
 - When a character acts without a clear target, set relational_direction to \"self\"
 - When an action affects the general situation, set relational_direction to \"diffuse\"
-- Extract ALL entities mentioned, even those not in events
-
-Respond with JSON matching this schema: {schema}"
-    )
+- Extract ALL entities mentioned, even those not in events"
+        .to_string()
 }
 
 // ===========================================================================
@@ -442,6 +455,37 @@ mod tests {
     }
 
     #[test]
+    fn parse_schema_wrapped_response() {
+        // Small models sometimes nest data inside the schema structure.
+        let json = serde_json::json!({
+            "type": "object",
+            "required": ["events", "entities"],
+            "properties": {
+                "events": [{
+                    "kind": "SpeechAct",
+                    "actor": { "mention": "I", "category": "CHARACTER" },
+                    "action": "say hello",
+                    "target": { "mention": "Pyotir", "category": "CHARACTER" },
+                    "relational_direction": "directed"
+                }],
+                "entities": [
+                    { "mention": "I", "category": "CHARACTER" },
+                    { "mention": "Pyotir", "category": "CHARACTER" }
+                ]
+            }
+        });
+        let result = EventDecomposition::from_json(&json);
+        assert!(
+            result.is_ok(),
+            "Should unwrap schema-nested response: {result:?}"
+        );
+        let decomp = result.unwrap();
+        assert_eq!(decomp.events.len(), 1);
+        assert_eq!(decomp.events[0].kind, "SpeechAct");
+        assert_eq!(decomp.entities.len(), 2);
+    }
+
+    #[test]
     fn invalid_relational_direction_fails() {
         let json = serde_json::json!({
             "events": [{
@@ -453,5 +497,106 @@ mod tests {
         });
         let result = EventDecomposition::from_json(&json);
         assert!(result.is_err());
+    }
+
+    #[cfg(feature = "test-llm")]
+    mod integration {
+        use super::super::*;
+        use crate::inference::structured::OllamaStructuredProvider;
+        use storyteller_core::traits::structured_llm::StructuredLlmConfig;
+
+        fn provider() -> OllamaStructuredProvider {
+            OllamaStructuredProvider::new(StructuredLlmConfig::default())
+        }
+
+        #[tokio::test]
+        async fn decompose_speech_act() {
+            let result = decompose_events(
+                &provider(),
+                "I say to Pyotir, 'Do you remember this melody?'",
+            )
+            .await;
+            assert!(result.is_ok(), "Decomposition failed: {result:?}");
+            let decomp = result.unwrap();
+            assert!(!decomp.events.is_empty(), "No events extracted");
+            assert!(
+                decomp
+                    .events
+                    .iter()
+                    .any(|e| e.kind == "SpeechAct" || e.kind == "InformationTransfer"),
+                "Expected SpeechAct or InformationTransfer, got: {:?}",
+                decomp.events.iter().map(|e| &e.kind).collect::<Vec<_>>()
+            );
+        }
+
+        #[tokio::test]
+        async fn decompose_directed_emotional_expression() {
+            let result = decompose_events(
+                &provider(),
+                "The child laughs at the small sprite in the corner.",
+            )
+            .await;
+            assert!(result.is_ok(), "Decomposition failed: {result:?}");
+            let decomp = result.unwrap();
+            assert!(!decomp.events.is_empty(), "No events extracted");
+            let event = &decomp.events[0];
+            assert!(event.actor.is_some(), "Expected actor, got none");
+            // The LLM should identify this as directed (at the sprite)
+            assert!(
+                event.target.is_some()
+                    || matches!(event.relational_direction, RelationalDirection::Directed),
+                "Expected directed action with target"
+            );
+        }
+
+        #[tokio::test]
+        async fn decompose_self_directed_action() {
+            let result = decompose_events(
+                &provider(),
+                "Walking through the sunlit meadow, she laughs aloud with pure joy.",
+            )
+            .await;
+            assert!(result.is_ok(), "Decomposition failed: {result:?}");
+            let decomp = result.unwrap();
+            assert!(!decomp.events.is_empty(), "No events extracted");
+            // Should be self-directed or diffuse — no specific target
+        }
+
+        #[tokio::test]
+        async fn decompose_multi_entity_action() {
+            let result = decompose_events(
+                &provider(),
+                "I dive for the rapier, roll across the floor, and slash the weapon from his hand.",
+            )
+            .await;
+            assert!(result.is_ok(), "Decomposition failed: {result:?}");
+            let decomp = result.unwrap();
+            assert!(
+                decomp.entities.len() >= 2,
+                "Expected at least 2 entities, got {}: {:?}",
+                decomp.entities.len(),
+                decomp.entities
+            );
+            assert!(!decomp.events.is_empty(), "No events extracted");
+        }
+
+        #[tokio::test]
+        async fn decompose_produces_valid_classification_output() {
+            let result = decompose_events(
+                &provider(),
+                "I pick up the ancient stone from the riverbed.",
+            )
+            .await;
+            assert!(result.is_ok(), "Decomposition failed: {result:?}");
+            let decomp = result.unwrap();
+            let output = decomp.to_classification_output();
+            // Should produce at least one event kind
+            assert!(
+                !output.event_kinds.is_empty(),
+                "No event kinds in classification output"
+            );
+            // Confidence should be 0.85 (default)
+            assert!((output.event_kinds[0].1 - 0.85).abs() < 0.01);
+        }
     }
 }
