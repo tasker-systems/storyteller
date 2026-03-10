@@ -1,6 +1,7 @@
 mod commands;
 mod engine_state;
 mod events;
+mod session;
 mod session_log;
 mod tracing_layer;
 
