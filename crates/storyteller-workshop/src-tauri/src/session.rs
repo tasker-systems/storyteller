@@ -1,9 +1,4 @@
 //! Session persistence — flat-file JSON storage in `.story/sessions/`.
-//
-// allow(dead_code): These types and methods are consumed by commands.rs in Task 5.
-// Using `allow` rather than `expect` because the test target sees them as used,
-// which would trigger unfulfilled-lint-expectations on `--all-targets`.
-#![allow(dead_code)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -191,6 +186,10 @@ impl SessionStore {
     }
 
     /// Returns the path to `events.jsonl` for a session, for appending events.
+    // allow(dead_code): Used in tests and will be consumed by event append in a later task.
+    // Using `allow` rather than `expect` because the test target sees it as used,
+    // which would trigger unfulfilled-lint-expectations on `--all-targets`.
+    #[allow(dead_code)]
     pub fn events_path(&self, session_id: &str) -> PathBuf {
         self.base_dir.join(session_id).join("events.jsonl")
     }
