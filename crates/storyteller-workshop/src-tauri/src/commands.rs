@@ -398,10 +398,18 @@ pub async fn submit_input(
     let decomp_start = Instant::now();
     let mut persisted_decomposition: Option<serde_json::Value> = None;
     if let Some(ref structured_llm) = engine.structured_llm {
+        // Include the last narrator prose so the 3b model can resolve pronouns
+        // and ground the player's actions against established scene context.
+        let decomp_input = if let Some(last_entry) = engine.journal.entries.last() {
+            format!("[Narrator]\n{}\n\n[Player]\n{}", last_entry.content, input)
+        } else {
+            input.clone()
+        };
+
         // Call provider directly so we capture raw JSON for debugging
         let request = storyteller_core::traits::structured_llm::StructuredRequest {
             system: event_decomposition_system_prompt(),
-            input: input.clone(),
+            input: decomp_input,
             output_schema: event_decomposition_schema(),
             temperature: 0.1,
         };
