@@ -159,12 +159,54 @@ impl EventDecomposition {
             }
         }
 
-        // Neither attempt succeeded — report the direct-parse error.
+        // Try to find events/entities arrays anywhere in the JSON structure.
+        // Small models may nest data under arbitrary keys like "result",
+        // "event_decomposition", "output", "data", etc.
+        if let Some(obj) = value.as_object() {
+            for (_key, nested) in obj {
+                if nested.is_object() {
+                    if let Ok(decomp) = serde_json::from_value::<Self>(nested.clone()) {
+                        return Ok(decomp);
+                    }
+                }
+            }
+        }
+
+        // Last resort: manually extract events and entities arrays from
+        // wherever they appear in the tree.
+        let events = Self::find_array(value, "events");
+        let entities = Self::find_array(value, "entities");
+        if events.is_some() || entities.is_some() {
+            let synthetic = serde_json::json!({
+                "events": events.unwrap_or_default(),
+                "entities": entities.unwrap_or_default(),
+            });
+            if let Ok(decomp) = serde_json::from_value::<Self>(synthetic) {
+                return Ok(decomp);
+            }
+        }
+
+        // Nothing worked — report the direct-parse error.
         serde_json::from_value(value.clone()).map_err(|e| {
             storyteller_core::StorytellerError::Inference(format!(
                 "failed to parse event decomposition: {e}"
             ))
         })
+    }
+
+    /// Recursively search a JSON value for an array under the given key name.
+    fn find_array(value: &serde_json::Value, key: &str) -> Option<Vec<serde_json::Value>> {
+        if let Some(arr) = value.get(key).and_then(|v| v.as_array()) {
+            return Some(arr.clone());
+        }
+        if let Some(obj) = value.as_object() {
+            for (_k, v) in obj {
+                if let Some(found) = Self::find_array(v, key) {
+                    return Some(found);
+                }
+            }
+        }
+        None
     }
 
     /// Convert to the existing classification output contract.

@@ -578,6 +578,10 @@ pub async fn submit_input(
         match structured_llm.extract(request).await {
             Ok(raw_json) => {
                 let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                tracing::info!(
+                    raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
+                    "Event decomposition raw LLM response"
+                );
                 // Try to parse the raw JSON into our typed decomposition
                 let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
                     Ok(d) => (Some(d), None),
