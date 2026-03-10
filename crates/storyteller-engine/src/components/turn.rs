@@ -18,6 +18,8 @@ use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::turn_cycle::TurnCycleStage;
 use storyteller_core::StorytellerResult;
 
+use storyteller_core::traits::structured_llm::StructuredLlmProvider;
+
 use crate::agents::narrator::NarratorAgent;
 use crate::inference::event_classifier::ClassificationOutput;
 
@@ -156,6 +158,19 @@ pub struct TokioRuntime(pub tokio::runtime::Handle);
 impl std::fmt::Debug for TokioRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TokioRuntime").finish()
+    }
+}
+
+/// Bevy Resource: structured LLM provider for event decomposition and action arbitration.
+///
+/// Optional — when absent, event decomposition falls back to DistilBERT
+/// and action arbitration skips the LLM fallback for ambiguous cases.
+#[derive(Resource, Clone)]
+pub struct StructuredLlmResource(pub Arc<dyn StructuredLlmProvider>);
+
+impl std::fmt::Debug for StructuredLlmResource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StructuredLlmResource").finish()
     }
 }
 
