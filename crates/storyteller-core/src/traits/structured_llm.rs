@@ -44,7 +44,7 @@ impl Default for StructuredLlmConfig {
             base_url: "http://127.0.0.1:11434".to_string(),
             model: "qwen2.5:3b-instruct".to_string(),
             temperature: 0.1,
-            timeout: Duration::from_secs(10),
+            timeout: Duration::from_secs(60),
         }
     }
 }
@@ -81,6 +81,6 @@ mod tests {
         assert_eq!(config.base_url, "http://127.0.0.1:11434");
         assert_eq!(config.model, "qwen2.5:3b-instruct");
         assert_eq!(config.temperature, 0.1);
-        assert_eq!(config.timeout, std::time::Duration::from_secs(10));
+        assert_eq!(config.timeout, std::time::Duration::from_secs(60));
     }
 }
