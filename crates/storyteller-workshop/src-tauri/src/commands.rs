@@ -22,7 +22,9 @@ use storyteller_engine::context::journal::add_turn;
 use storyteller_engine::context::prediction::predict_character_behaviors;
 use storyteller_engine::context::{assemble_narrator_context, DEFAULT_TOTAL_TOKEN_BUDGET};
 use storyteller_engine::inference::event_classifier::EventClassifier;
-use storyteller_engine::inference::event_decomposition::decompose_events;
+use storyteller_engine::inference::event_decomposition::{
+    event_decomposition_schema, event_decomposition_system_prompt, EventDecomposition,
+};
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
 use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::inference::structured::OllamaStructuredProvider;
@@ -566,24 +568,39 @@ pub async fn submit_input(
 
     let decomp_start = Instant::now();
     if let Some(ref structured_llm) = engine.structured_llm {
-        match decompose_events(structured_llm.as_ref(), &input).await {
-            Ok(decomposition) => {
+        // Call provider directly so we capture raw JSON for debugging
+        let request = storyteller_core::traits::structured_llm::StructuredRequest {
+            system: event_decomposition_system_prompt(),
+            input: input.clone(),
+            output_schema: event_decomposition_schema(),
+            temperature: 0.1,
+        };
+        match structured_llm.extract(request).await {
+            Ok(raw_json) => {
                 let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                // Try to parse the raw JSON into our typed decomposition
+                let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
+                    Ok(d) => (Some(d), None),
+                    Err(e) => {
+                        tracing::warn!("Event decomposition parse failed: {e}");
+                        (None, Some(format!("{e}")))
+                    }
+                };
                 emit_debug(
                     &app,
                     DebugEvent::EventDecomposed {
                         turn,
-                        decomposition: Some(decomposition),
-                        raw_llm_json: None,
+                        decomposition,
+                        raw_llm_json: Some(raw_json),
                         timing_ms: decomp_ms,
                         model: "qwen2.5:3b-instruct".to_string(),
-                        error: None,
+                        error,
                     },
                 );
             }
             Err(e) => {
                 let decomp_ms = decomp_start.elapsed().as_millis() as u64;
-                tracing::warn!("Event decomposition failed: {e}");
+                tracing::warn!("Event decomposition LLM call failed: {e}");
                 emit_debug(
                     &app,
                     DebugEvent::EventDecomposed {

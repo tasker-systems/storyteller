@@ -385,7 +385,16 @@ Model:    {llmStatus.model}</pre>
         <div class="debug-tab-content">
           {#if debugState.decomposition}
             {#if debugState.decomposition.error}
-              <p class="debug-notice">{debugState.decomposition.error}</p>
+              <div class="debug-section">
+                <h4>Error</h4>
+                <pre class="llm-fail">{debugState.decomposition.error}</pre>
+              </div>
+            {/if}
+            {#if debugState.decomposition.raw_llm_json && !debugState.decomposition.decomposition}
+              <div class="debug-section">
+                <h4>Raw LLM Response</h4>
+                <JSONTree value={debugState.decomposition.raw_llm_json} />
+              </div>
             {/if}
             {#if debugState.decomposition.decomposition}
               {@const decomp = debugState.decomposition.decomposition}
