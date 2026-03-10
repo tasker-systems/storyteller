@@ -99,20 +99,20 @@ export interface GenreOptions {
 }
 
 export interface CastSelection {
-  archetype: string;
-  name: string;
-  is_player_perspective: boolean;
+  archetype_id: string;
+  name: string | null;
+  role: string;
 }
 
 export interface DynamicSelection {
-  character_a_index: number;
-  character_b_index: number;
-  dynamic: string;
+  dynamic_id: string;
+  cast_index_a: number;
+  cast_index_b: number;
 }
 
 export interface SceneSelections {
-  genre: string;
-  profile: string;
+  genre_id: string;
+  profile_id: string;
   cast: CastSelection[];
   dynamics: DynamicSelection[];
   setting_override: string | null;

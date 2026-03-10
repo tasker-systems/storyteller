@@ -59,7 +59,7 @@
   let availableDynamics = $derived(genreOptions?.dynamics ?? []);
   let namePool = $derived(genreOptions?.names ?? []);
 
-  let selectedArchetypeIds = $derived(cast.map((c) => c.archetype).filter((a) => a !== ""));
+  let selectedArchetypeIds = $derived(cast.map((c) => c.archetype_id).filter((a) => a !== ""));
 
   // Build pairs for dynamics step
   let castPairs = $derived.by(() => {
@@ -69,8 +69,8 @@
         pairs.push({
           a: i,
           b: j,
-          labelA: cast[i].name || `Character ${i + 1}`,
-          labelB: cast[j].name || `Character ${j + 1}`,
+          labelA: cast[i].name ?? `Character ${i + 1}`,
+          labelB: cast[j].name ?? `Character ${j + 1}`,
         });
       }
     }
@@ -86,8 +86,8 @@
       case 2:
         return (
           cast.length >= (selectedProfile?.cast_size_min ?? 1) &&
-          cast.every((c) => c.archetype !== "" && c.name.trim() !== "") &&
-          cast.filter((c) => c.is_player_perspective).length === 1
+          cast.every((c) => c.archetype_id !== "" && (c.name ?? "").trim() !== "") &&
+          cast.filter((c) => c.role === "protagonist").length === 1
         );
       case 3:
         return true; // dynamics are optional
@@ -152,7 +152,7 @@
   // ---------------------------------------------------------------------------
 
   function usedNames(): Set<string> {
-    return new Set(cast.map((c) => c.name));
+    return new Set(cast.map((c) => c.name ?? "").filter((n) => n !== ""));
   }
 
   function nextUnusedName(): string {
@@ -177,11 +177,11 @@
           break;
         }
       }
-      return { archetype: "", name, is_player_perspective: false };
+      return { archetype_id: "", name, role: "cast" } as CastSelection;
     });
     // Default first character as player perspective
     if (cast.length > 0) {
-      cast[0].is_player_perspective = true;
+      cast[0].role = "protagonist";
     }
     // Reset dynamics when cast changes
     dynamics = [];
@@ -190,7 +190,7 @@
   function addCastMember() {
     if (!selectedProfile) return;
     if (cast.length >= selectedProfile.cast_size_max) return;
-    cast = [...cast, { archetype: "", name: nextUnusedName(), is_player_perspective: false }];
+    cast = [...cast, { archetype_id: "", name: nextUnusedName(), role: "cast" }];
     castSize = cast.length;
     // Reset dynamics when cast changes
     dynamics = [];
@@ -199,12 +199,12 @@
   function removeCastMember(index: number) {
     if (!selectedProfile) return;
     if (cast.length <= selectedProfile.cast_size_min) return;
-    const wasPerspective = cast[index].is_player_perspective;
+    const wasPerspective = cast[index].role === "protagonist";
     cast = cast.filter((_, i) => i !== index);
     castSize = cast.length;
     // If we removed the player perspective, assign to first
     if (wasPerspective && cast.length > 0) {
-      cast[0].is_player_perspective = true;
+      cast[0].role = "protagonist";
       cast = [...cast]; // trigger reactivity
     }
     // Reset dynamics when cast changes
@@ -212,16 +212,16 @@
   }
 
   function setPlayerPerspective(index: number) {
-    cast = cast.map((c, i) => ({ ...c, is_player_perspective: i === index }));
+    cast = cast.map((c, i) => ({ ...c, role: i === index ? "protagonist" : "cast" }));
   }
 
   function initDynamics() {
     // Pre-populate one dynamic entry per pair if not already set
     if (dynamics.length === 0 && castPairs.length > 0) {
       dynamics = castPairs.map((pair) => ({
-        character_a_index: pair.a,
-        character_b_index: pair.b,
-        dynamic: "",
+        cast_index_a: pair.a,
+        cast_index_b: pair.b,
+        dynamic_id: "",
       }));
     }
   }
@@ -275,10 +275,10 @@
     launchError = null;
     try {
       const selections: SceneSelections = {
-        genre: selectedGenreId!,
-        profile: selectedProfileId!,
+        genre_id: selectedGenreId!,
+        profile_id: selectedProfileId!,
         cast,
-        dynamics: dynamics.filter((d) => d.dynamic !== ""),
+        dynamics: dynamics.filter((d) => d.dynamic_id !== ""),
         setting_override: settingOverride.trim() || null,
         seed: null,
       };
@@ -402,7 +402,7 @@
 
                 <select
                   class="cast-select"
-                  bind:value={cast[i].archetype}
+                  bind:value={cast[i].archetype_id}
                 >
                   <option value="">-- archetype --</option>
                   {#each archetypes as arch}
@@ -421,7 +421,7 @@
                   <input
                     type="radio"
                     name="player-perspective"
-                    checked={member.is_player_perspective}
+                    checked={member.role === "protagonist"}
                     onchange={() => setPlayerPerspective(i)}
                   />
                   <span class="perspective-text">Player</span>
@@ -442,7 +442,7 @@
             <button class="add-btn" onclick={addCastMember}>+ Add character</button>
           {/if}
 
-          {#if cast.length > 0 && cast.filter((c) => c.is_player_perspective).length === 0}
+          {#if cast.length > 0 && cast.filter((c) => c.role === "protagonist").length === 0}
             <div class="validation-hint">Select one character as the player perspective.</div>
           {/if}
         {/if}
@@ -465,7 +465,7 @@
                 <span class="dynamic-pair">
                   {pair.labelA} &harr; {pair.labelB}
                 </span>
-                <select class="dynamic-select" bind:value={dynamics[i].dynamic}>
+                <select class="dynamic-select" bind:value={dynamics[i].dynamic_id}>
                   <option value="">-- none --</option>
                   {#each availableDynamics as dyn}
                     <option value={dyn.id} title={dyn.description}>
@@ -513,23 +513,23 @@
             <span class="summary-label">Cast</span>
             <span class="summary-value">
               {cast.map((c) => {
-                const arch = archetypes.find((a) => a.id === c.archetype);
-                const suffix = c.is_player_perspective ? " (player)" : "";
-                return `${c.name} [${arch?.display_name ?? c.archetype}]${suffix}`;
+                const arch = archetypes.find((a) => a.id === c.archetype_id);
+                const suffix = c.role === "protagonist" ? " (player)" : "";
+                return `${c.name ?? "?"} [${arch?.display_name ?? c.archetype_id}]${suffix}`;
               }).join(", ")}
             </span>
           </div>
-          {#if dynamics.filter((d) => d.dynamic !== "").length > 0}
+          {#if dynamics.filter((d) => d.dynamic_id !== "").length > 0}
             <div class="summary-row">
               <span class="summary-label">Dynamics</span>
               <span class="summary-value">
                 {dynamics
-                  .filter((d) => d.dynamic !== "")
+                  .filter((d) => d.dynamic_id !== "")
                   .map((d) => {
-                    const dyn = availableDynamics.find((x) => x.id === d.dynamic);
-                    const nameA = cast[d.character_a_index]?.name ?? "?";
-                    const nameB = cast[d.character_b_index]?.name ?? "?";
-                    return `${nameA}/${nameB}: ${dyn?.display_name ?? d.dynamic}`;
+                    const dyn = availableDynamics.find((x) => x.id === d.dynamic_id);
+                    const nameA = cast[d.cast_index_a]?.name ?? "?";
+                    const nameB = cast[d.cast_index_b]?.name ?? "?";
+                    return `${nameA}/${nameB}: ${dyn?.display_name ?? d.dynamic_id}`;
                   })
                   .join("; ")}
               </span>
