@@ -478,7 +478,7 @@ pub async fn submit_input(
             &input,
             &engine.grammar,
             engine.event_classifier.as_ref(),
-            &std::collections::HashMap::new(),
+            engine.prediction_history.as_map(),
         );
         ResolverOutput {
             sequenced_actions: vec![],
@@ -498,6 +498,11 @@ pub async fn submit_input(
         }
     };
     let prediction_ms = predict_start.elapsed().as_millis() as u64;
+
+    // Accumulate prediction history for next turn's Region 7 features.
+    for pred in &resolver_output.original_predictions {
+        engine.prediction_history.push_from_prediction(pred);
+    }
 
     emit_debug(
         &app,
