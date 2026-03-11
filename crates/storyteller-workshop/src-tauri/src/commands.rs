@@ -701,7 +701,7 @@ pub async fn submit_input(
             &journal_tail,
             &input,
             &engine.scene,
-            None, // player_entity_id — not tracked yet, None means include all
+            engine.player_entity_id,
         )
         .await
     } else {
