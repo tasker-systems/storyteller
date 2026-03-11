@@ -55,6 +55,26 @@ pub struct SceneInfo {
     pub opening_prose: String,
 }
 
+/// Result of resuming a session, returned by `resume_session`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResumeResult {
+    /// Scene metadata (title, setting, cast, opening prose).
+    pub scene_info: SceneInfo,
+    /// All turns played so far (for frontend chat hydration).
+    pub turns: Vec<TurnSummary>,
+}
+
+/// Minimal turn data for frontend chat hydration.
+#[derive(Debug, Clone, Serialize)]
+pub struct TurnSummary {
+    /// Turn number (0 = opening narration).
+    pub turn: u32,
+    /// Player input text (None for turn 0).
+    pub player_input: Option<String>,
+    /// Narrator's rendered prose.
+    pub narrator_output: String,
+}
+
 /// Result of a single player turn, returned by `submit_input`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnResult {
@@ -260,24 +280,161 @@ pub async fn list_sessions(
     session_store.list_sessions()
 }
 
-/// Load a persisted session and render its opening.
+/// Load a persisted session and return its turn history for chat hydration.
+///
+/// If the session has saved turns (turns.jsonl), reconstructs engine state from
+/// them without re-rendering the opening. Falls back to a fresh opening render
+/// for legacy sessions without turn data.
 #[tauri::command]
 pub async fn resume_session(
     session_id: String,
     app: tauri::AppHandle,
     state: State<'_, Mutex<Option<EngineState>>>,
     session_store: State<'_, Arc<SessionStore>>,
-) -> Result<SceneInfo, String> {
+) -> Result<ResumeResult, String> {
     let (_selections, scene, characters) = session_store.load_session(&session_id)?;
-    setup_and_render_opening(
-        &app,
+
+    // Try to load saved turns
+    let turns = session_store.load_turns(&session_id)?;
+
+    if turns.is_empty() {
+        // Legacy session or no turns.jsonl — fall back to fresh opening render
+        let scene_info = setup_and_render_opening(
+            &app,
+            scene,
+            characters,
+            &state,
+            Some(session_id),
+            Some(&session_store),
+        )
+        .await?;
+
+        return Ok(ResumeResult {
+            scene_info,
+            turns: vec![],
+        });
+    }
+
+    // --- Build SceneInfo from scene data + turn 0's narrator output ---
+    let opening_prose = turns
+        .first()
+        .map(|t| t.narrator_output.clone())
+        .unwrap_or_default();
+
+    let scene_info = SceneInfo {
+        title: scene.title.clone(),
+        setting_description: scene.setting.description.clone(),
+        cast: scene.cast.iter().map(|c| c.name.clone()).collect(),
+        opening_prose,
+    };
+
+    // --- Convert to TurnSummary for frontend ---
+    let turn_summaries: Vec<TurnSummary> = turns
+        .iter()
+        .map(|t| TurnSummary {
+            turn: t.turn,
+            player_input: t.player_input.clone(),
+            narrator_output: t.narrator_output.clone(),
+        })
+        .collect();
+
+    // --- Initialize engine state (same as setup_and_render_opening, minus rendering) ---
+    let entity_ids: Vec<_> = characters.iter().map(|c| c.entity_id).collect();
+
+    // Create Ollama LLM provider
+    let config = ExternalServerConfig {
+        base_url: "http://127.0.0.1:11434".to_string(),
+        model: "qwen2.5:14b".to_string(),
+        ..Default::default()
+    };
+    let llm: Arc<dyn LlmProvider> = Arc::new(ExternalServerProvider::new(config));
+
+    // Reconstruct journal from turn narrator outputs
+    let mut journal = SceneJournal::new(SceneId::new(), 1200);
+    let noop = NoopObserver;
+    for turn_record in &turns {
+        add_turn(
+            &mut journal,
+            turn_record.turn,
+            &turn_record.narrator_output,
+            entity_ids.clone(),
+            vec![],
+            &noop,
+        );
+    }
+
+    // Load ML predictor (optional)
+    let predictor = resolve_model_path().and_then(|path| {
+        CharacterPredictor::load(&path)
+            .inspect(|_| tracing::info!("ML model loaded: {}", path.display()))
+            .inspect_err(|e| tracing::warn!("ML model failed to load: {e}"))
+            .ok()
+    });
+
+    // Load event classifier (optional)
+    let event_classifier = resolve_event_classifier_path().and_then(|path| {
+        EventClassifier::load(&path)
+            .inspect(|_| tracing::info!("Event classifier loaded: {}", path.display()))
+            .inspect_err(|e| tracing::warn!("Event classifier failed to load: {e}"))
+            .ok()
+    });
+
+    // Create structured LLM provider for event decomposition
+    let structured_llm: Option<
+        Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
+    > = {
+        let config = StructuredLlmConfig::default();
+        let provider = OllamaStructuredProvider::new(config);
+        tracing::info!("Structured LLM provider created (qwen2.5:3b-instruct)");
+        Some(Arc::new(provider))
+    };
+
+    // Intent synthesis LLM
+    let intent_llm: Option<Arc<dyn LlmProvider>> = {
+        let ollama_url =
+            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let model = std::env::var("STORYTELLER_INTENT_MODEL")
+            .unwrap_or_else(|_| "qwen2.5:3b-instruct".to_string());
+        let config = ExternalServerConfig {
+            base_url: ollama_url,
+            model: model.clone(),
+            timeout: std::time::Duration::from_secs(60),
+        };
+        tracing::info!("Intent synthesis LLM provider created ({model})");
+        Some(Arc::new(ExternalServerProvider::new(config)))
+    };
+
+    let grammar = PlutchikWestern::new();
+
+    // Create session log
+    let sessions_dir = PathBuf::from("sessions");
+    let session_log = SessionLog::new(&sessions_dir, &scene.title)?;
+
+    // Set turn count to last turn + 1
+    let last_turn = turns.last().map(|t| t.turn).unwrap_or(0);
+
+    let engine_state = EngineState {
         scene,
         characters,
-        &state,
-        Some(session_id),
-        Some(&session_store),
-    )
-    .await
+        journal,
+        llm,
+        predictor,
+        event_classifier,
+        structured_llm,
+        intent_llm,
+        grammar,
+        session_log,
+        turn_count: last_turn,
+        session_id: Some(session_id),
+    };
+
+    let mut guard = state.lock().await;
+    *guard = Some(engine_state);
+
+    Ok(ResumeResult {
+        scene_info,
+        turns: turn_summaries,
+    })
 }
 
 /// Process player input through the engine pipeline and return the narrator's response.
