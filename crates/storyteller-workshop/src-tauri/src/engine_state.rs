@@ -32,6 +32,8 @@ pub struct EngineState {
     pub event_classifier: Option<EventClassifier>,
     /// Structured LLM provider for event decomposition (optional).
     pub structured_llm: Option<Arc<dyn StructuredLlmProvider>>,
+    /// Intent synthesis LLM provider — plain completion, same 3b model (optional).
+    pub intent_llm: Option<Arc<dyn LlmProvider>>,
     /// Emotional grammar for ML predictions.
     pub grammar: PlutchikWestern,
     /// Session log for JSONL recording.

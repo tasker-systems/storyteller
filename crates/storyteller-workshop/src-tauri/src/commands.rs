@@ -309,7 +309,7 @@ pub async fn submit_input(
     );
 
     let predict_start = Instant::now();
-    let resolver_output = if let Some(ref predictor) = engine.predictor {
+    let mut resolver_output = if let Some(ref predictor) = engine.predictor {
         let (predictions, _classification) = predict_character_behaviors(
             predictor,
             &characters_refs,
@@ -513,6 +513,56 @@ pub async fn submit_input(
         },
     );
 
+    // --- Phase: Intent Synthesis ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "intent_synthesis".to_string(),
+        },
+    );
+
+    let intent_start = Instant::now();
+    let journal_tail = engine
+        .journal
+        .entries
+        .iter()
+        .rev()
+        .take(2)
+        .rev()
+        .map(|e| e.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let intent_statements = if let Some(ref intent_llm) = engine.intent_llm {
+        storyteller_engine::inference::intent_synthesis::synthesize_intents(
+            intent_llm.as_ref(),
+            &characters_refs,
+            &resolver_output.original_predictions,
+            &journal_tail,
+            &input,
+            &engine.scene,
+            None, // player_entity_id — not tracked yet, None means include all
+        )
+        .await
+    } else {
+        None
+    };
+    let intent_ms = intent_start.elapsed().as_millis() as u64;
+
+    resolver_output.intent_statements = intent_statements;
+
+    if let Some(ref intents) = resolver_output.intent_statements {
+        emit_debug(
+            &app,
+            DebugEvent::IntentSynthesized {
+                turn,
+                intent_statements: intents.clone(),
+                timing_ms: intent_ms,
+            },
+        );
+    }
+
     // --- Phase: Context Assembly ---
     emit_debug(
         &app,
@@ -681,6 +731,7 @@ pub async fn submit_input(
             })),
             timing: Some(serde_json::json!({
                 "prediction_ms": prediction_ms,
+                "intent_ms": intent_ms,
                 "assembly_ms": assembly_ms,
                 "narrator_ms": narrator_ms,
             })),
@@ -774,6 +825,21 @@ async fn setup_and_render_opening(
         let provider = OllamaStructuredProvider::new(config);
         tracing::info!("Structured LLM provider created (qwen2.5:3b-instruct)");
         Some(Arc::new(provider))
+    };
+
+    // Intent synthesis LLM — same 3b model, plain completion (not structured)
+    let intent_llm: Option<Arc<dyn LlmProvider>> = {
+        let ollama_url =
+            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let model = std::env::var("STORYTELLER_INTENT_MODEL")
+            .unwrap_or_else(|_| "qwen2.5:3b-instruct".to_string());
+        let config = ExternalServerConfig {
+            base_url: ollama_url,
+            model: model.clone(),
+            timeout: std::time::Duration::from_secs(60),
+        };
+        tracing::info!("Intent synthesis LLM provider created ({model})");
+        Some(Arc::new(ExternalServerProvider::new(config)))
     };
 
     let grammar = PlutchikWestern::new();
@@ -1008,6 +1074,7 @@ async fn setup_and_render_opening(
         predictor,
         event_classifier,
         structured_llm,
+        intent_llm,
         grammar,
         session_log,
         turn_count: 0,
