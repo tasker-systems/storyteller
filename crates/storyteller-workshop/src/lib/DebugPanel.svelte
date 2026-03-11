@@ -38,6 +38,7 @@
     events: null,
     decomposition: null,
     arbitration: null,
+    intent_synthesis: null,
     narrator: null,
     error: null,
   });
@@ -87,6 +88,7 @@
       events: null,
       decomposition: null,
       arbitration: null,
+      intent_synthesis: null,
       narrator: null,
       error: null,
     };
@@ -162,6 +164,10 @@
       case "action_arbitrated":
         debugState.arbitration = event as ActionArbitratedEvent;
         debugState.phases["arbitration"] = "complete";
+        break;
+      case "intent_synthesized":
+        debugState.intent_synthesis = event;
+        debugState.phases["intent_synthesis"] = "complete";
         break;
       case "narrator_complete":
         debugState.narrator = event;
