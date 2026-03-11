@@ -146,7 +146,11 @@ pub fn render_preamble(preamble: &PersistentPreamble) -> String {
 
     output.push_str("## Cast\n");
     for cast in &preamble.cast_descriptions {
-        output.push_str(&format!("### {} — {}\n", cast.name, cast.role));
+        if cast.is_player {
+            output.push_str(&format!("### {} — {} (player)\n", cast.name, cast.role));
+        } else {
+            output.push_str(&format!("### {} — {}\n", cast.name, cast.role));
+        }
         if !cast.voice_note.is_empty() {
             output.push_str(&format!("Voice: {}\n", cast.voice_note));
         }
@@ -234,6 +238,63 @@ mod tests {
         assert!(
             (200..=1200).contains(&tokens),
             "Expected 200-1200 tokens, got {tokens}"
+        );
+    }
+
+    #[test]
+    fn rendered_preamble_marks_player_character() {
+        let scene = crate::workshop::the_flute_kept::scene();
+        let mut bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let mut pyotir = crate::workshop::the_flute_kept::pyotir();
+        // Align character entity IDs with the scene's cast entries
+        bramblehoof.entity_id = scene.cast[0].entity_id;
+        pyotir.entity_id = scene.cast[1].entity_id;
+        let player_id = bramblehoof.entity_id;
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+
+        let observer = storyteller_core::traits::NoopObserver;
+        let preamble = build_preamble(&scene, &characters, &observer, Some(player_id));
+        let rendered = render_preamble(&preamble);
+
+        // Player character should have "(player)" marker
+        assert!(
+            rendered.contains("(player)"),
+            "Should mark player character: {rendered}"
+        );
+        // Specifically on Bramblehoof's line
+        let bramblehoof_line = rendered
+            .lines()
+            .find(|l| l.contains("Bramblehoof"))
+            .expect("Bramblehoof should be in rendered preamble");
+        assert!(
+            bramblehoof_line.contains("(player)"),
+            "Bramblehoof's line should have (player) marker: {bramblehoof_line}"
+        );
+        // Pyotir should NOT have the marker
+        let pyotir_line = rendered
+            .lines()
+            .find(|l| l.contains("Pyotir"))
+            .expect("Pyotir should be in rendered preamble");
+        assert!(
+            !pyotir_line.contains("(player)"),
+            "NPC should not have (player) marker: {pyotir_line}"
+        );
+    }
+
+    #[test]
+    fn rendered_preamble_no_player_marker_when_no_player_id() {
+        let scene = crate::workshop::the_flute_kept::scene();
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let pyotir = crate::workshop::the_flute_kept::pyotir();
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+
+        let observer = storyteller_core::traits::NoopObserver;
+        let preamble = build_preamble(&scene, &characters, &observer, None);
+        let rendered = render_preamble(&preamble);
+
+        assert!(
+            !rendered.contains("(player)"),
+            "Should not have player marker when player_entity_id is None: {rendered}"
         );
     }
 
