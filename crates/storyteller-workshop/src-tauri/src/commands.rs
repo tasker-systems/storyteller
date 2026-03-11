@@ -31,6 +31,7 @@ use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::inference::structured::OllamaStructuredProvider;
 use storyteller_engine::scene_composer::{ComposedScene, SceneComposer, SceneSelections};
 use storyteller_engine::systems::arbitration::check_action_possibility;
+use storyteller_ml::prediction_history::PredictionHistory;
 
 use crate::engine_state::EngineState;
 use crate::events::{DebugEvent, TokenCounts, DEBUG_EVENT_CHANNEL};
@@ -428,6 +429,7 @@ pub async fn resume_session(
         turn_count: last_turn,
         session_id: Some(session_id),
         player_entity_id,
+        prediction_history: PredictionHistory::default(),
     };
 
     let mut guard = state.lock().await;
@@ -1249,6 +1251,7 @@ async fn setup_and_render_opening(
         turn_count: 0,
         session_id,
         player_entity_id,
+        prediction_history: PredictionHistory::default(),
     };
 
     let mut guard = state.lock().await;

@@ -10,6 +10,7 @@ use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::SceneJournal;
 use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_ml::prediction_history::PredictionHistory;
 
 use crate::session_log::SessionLog;
 
@@ -45,4 +46,6 @@ pub struct EngineState {
     pub session_id: Option<String>,
     /// Entity ID of the player-controlled character (None if not identified).
     pub player_entity_id: Option<EntityId>,
+    /// Accumulated prediction history for turn-over-turn ML context.
+    pub prediction_history: PredictionHistory,
 }
