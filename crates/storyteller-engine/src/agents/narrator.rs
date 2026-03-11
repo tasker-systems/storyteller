@@ -199,8 +199,11 @@ fn build_system_prompt(context: &NarratorContextInput) -> String {
 {preamble}
 
 ## Your Task
-You receive structured facts about what characters did, said, and felt.
-You render only what is observable — physical actions, speech, gestures.
+You receive intent statements describing what each character wants to do
+this turn. Honor these intents — render them with each character's full
+agency. Characters act, speak, and drive the scene. They are not scenery.
+
+Render only what is observable — physical actions, speech, gestures.
 Never state what a character thinks, feels, or realizes. Show it through
 the body. Trust the reader to infer.
 
@@ -250,8 +253,13 @@ fn build_turn_message(context: &NarratorContextInput) -> String {
         message.push('\n');
     }
 
-    // Character predictions from ML pipeline
-    if !context.resolver_output.original_predictions.is_empty() {
+    // Character behavioral directives — prefer synthesized intents over raw predictions
+    if let Some(intents) = &context.resolver_output.intent_statements {
+        message.push_str("## Character Intents\n");
+        message.push_str(intents);
+        message.push_str("\n\n");
+    } else if !context.resolver_output.original_predictions.is_empty() {
+        // Fallback: raw ML prediction rendering
         let predictions_md = crate::context::prediction::render_predictions(
             &context.resolver_output.original_predictions,
         );
@@ -353,6 +361,7 @@ mod tests {
         assert!(prompt.contains("Bramblehoof"));
         assert!(prompt.contains("Pyotir"));
         assert!(prompt.contains("present tense"));
+        assert!(prompt.contains("intent statements"));
     }
 
     #[test]
@@ -491,5 +500,51 @@ mod tests {
             events[1].detail,
             PhaseEventDetail::NarratorRenderingComplete { .. }
         ));
+    }
+
+    #[test]
+    fn turn_message_prefers_intent_statements_over_predictions() {
+        let mut context = mock_context();
+        context.resolver_output.intent_statements =
+            Some("**Pyotir** should greet Bramblehoof warmly.".to_string());
+
+        let message = build_turn_message(&context);
+
+        assert!(message.contains("## Character Intents"));
+        assert!(message.contains("should greet Bramblehoof warmly"));
+        assert!(!message.contains("## Character Predictions"));
+    }
+
+    #[test]
+    fn turn_message_falls_back_to_predictions_when_no_intents() {
+        use storyteller_core::types::prediction::{
+            ActivatedTensorFrame, CharacterPrediction, ThoughtPrediction,
+        };
+        use storyteller_core::types::tensor::AwarenessLevel;
+
+        let mut context = mock_context();
+        context.resolver_output.intent_statements = None;
+        context.resolver_output.original_predictions = vec![CharacterPrediction {
+            character_id: EntityId::new(),
+            character_name: "Pyotir".to_string(),
+            frame: ActivatedTensorFrame {
+                activated_axes: vec!["stoicism".to_string()],
+                activation_reason: "Active in context".to_string(),
+                confidence: 0.8,
+            },
+            actions: vec![],
+            speech: None,
+            thought: ThoughtPrediction {
+                emotional_subtext: "Pyotir senses calm".to_string(),
+                awareness_level: AwarenessLevel::Recognizable,
+                internal_conflict: None,
+            },
+            emotional_deltas: vec![],
+        }];
+
+        let message = build_turn_message(&context);
+
+        assert!(message.contains("Pyotir"));
+        assert!(!message.contains("## Character Intents"));
     }
 }
