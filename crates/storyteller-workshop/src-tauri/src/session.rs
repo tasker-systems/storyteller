@@ -431,4 +431,291 @@ mod tests {
         // Cleanup
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn turn_record_optional_fields_skipped_in_json() {
+        // Turn 0 has all optional fields as None — they should be absent from JSON.
+        let turn0 = TurnRecord {
+            turn: 0,
+            player_input: None,
+            narrator_output: "Opening narration.".to_string(),
+            predictions: None,
+            intent_statements: None,
+            classifications: None,
+            decomposition: None,
+            arbitration: None,
+            context_assembly: None,
+            timing: None,
+            timestamp: "2026-03-10T21:00:00Z".to_string(),
+        };
+
+        let json = serde_json::to_string(&turn0).expect("serialize");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        let obj = v.as_object().expect("is object");
+
+        // Required fields present
+        assert!(obj.contains_key("turn"));
+        assert!(obj.contains_key("narrator_output"));
+        assert!(obj.contains_key("timestamp"));
+
+        // Optional fields with None should be absent (skip_serializing_if)
+        assert!(
+            !obj.contains_key("predictions"),
+            "predictions should be skipped when None"
+        );
+        assert!(
+            !obj.contains_key("intent_statements"),
+            "intent_statements should be skipped when None"
+        );
+        assert!(
+            !obj.contains_key("classifications"),
+            "classifications should be skipped when None"
+        );
+        assert!(
+            !obj.contains_key("decomposition"),
+            "decomposition should be skipped when None"
+        );
+        assert!(
+            !obj.contains_key("arbitration"),
+            "arbitration should be skipped when None"
+        );
+        assert!(
+            !obj.contains_key("context_assembly"),
+            "context_assembly should be skipped when None"
+        );
+        assert!(
+            !obj.contains_key("timing"),
+            "timing should be skipped when None"
+        );
+
+        // Turn 1 with all fields populated — they should all be present
+        let turn1 = TurnRecord {
+            turn: 1,
+            player_input: Some("I look around.".to_string()),
+            narrator_output: "You see a room.".to_string(),
+            predictions: Some(serde_json::json!([{"character": "Arthur"}])),
+            intent_statements: Some("**Arthur** watches carefully.".to_string()),
+            classifications: Some(vec!["Observation: 0.85".to_string()]),
+            decomposition: Some(serde_json::json!({"events": []})),
+            arbitration: Some(serde_json::json!({"verdict": "Permitted"})),
+            context_assembly: Some(serde_json::json!({"total_tokens": 500})),
+            timing: Some(serde_json::json!({"narrator_ms": 3000})),
+            timestamp: "2026-03-10T21:01:00Z".to_string(),
+        };
+
+        let json1 = serde_json::to_string(&turn1).expect("serialize");
+        let v1: serde_json::Value = serde_json::from_str(&json1).expect("parse");
+        let obj1 = v1.as_object().expect("is object");
+
+        assert!(obj1.contains_key("predictions"));
+        assert!(obj1.contains_key("intent_statements"));
+        assert!(obj1.contains_key("classifications"));
+        assert!(obj1.contains_key("decomposition"));
+        assert!(obj1.contains_key("arbitration"));
+        assert!(obj1.contains_key("context_assembly"));
+        assert!(obj1.contains_key("timing"));
+    }
+
+    #[test]
+    fn multi_turn_append_preserves_order() {
+        let dir = std::env::temp_dir().join(format!("storyteller-test-{}", uuid::Uuid::now_v7()));
+        let store = SessionStore::new(&dir).expect("create store");
+
+        let session_id = "test-ordering";
+        fs::create_dir_all(dir.join(".story/sessions").join(session_id))
+            .expect("create session dir");
+
+        for i in 0..5 {
+            let record = TurnRecord {
+                turn: i,
+                player_input: if i == 0 {
+                    None
+                } else {
+                    Some(format!("Input {i}"))
+                },
+                narrator_output: format!("Output {i}"),
+                predictions: None,
+                intent_statements: None,
+                classifications: None,
+                decomposition: None,
+                arbitration: None,
+                context_assembly: None,
+                timing: None,
+                timestamp: format!("2026-03-10T21:0{i}:00Z"),
+            };
+            store.append_turn(session_id, &record).expect("append");
+        }
+
+        let loaded = store.load_turns(session_id).expect("load");
+        assert_eq!(loaded.len(), 5);
+        for (i, turn) in loaded.iter().enumerate() {
+            assert_eq!(turn.turn, i as u32, "turn {i} should have correct number");
+            assert_eq!(turn.narrator_output, format!("Output {i}"));
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_turns_returns_empty_for_missing_file() {
+        let dir = std::env::temp_dir().join(format!("storyteller-test-{}", uuid::Uuid::now_v7()));
+        let store = SessionStore::new(&dir).expect("create store");
+
+        let session_id = "no-turns-session";
+        fs::create_dir_all(dir.join(".story/sessions").join(session_id))
+            .expect("create session dir");
+
+        // No turns.jsonl file exists
+        let turns = store.load_turns(session_id).expect("load turns");
+        assert!(turns.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_sessions_counts_from_turns_jsonl() {
+        let tmp =
+            std::env::temp_dir().join(format!("storyteller-session-test-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&tmp).expect("create temp dir");
+
+        let store = SessionStore::new(&tmp).expect("create store");
+
+        let selections = SceneSelections {
+            genre_id: "fantasy".to_string(),
+            profile_id: "exploration".to_string(),
+            cast: vec![CastSelection {
+                archetype_id: "hero".to_string(),
+                name: Some("Aldric".to_string()),
+                role: "protagonist".to_string(),
+            }],
+            dynamics: Vec::new(),
+            title_override: Some("Test".to_string()),
+            setting_override: None,
+            seed: None,
+        };
+
+        let scene = SceneData {
+            scene_id: SceneId::new(),
+            title: "Test".to_string(),
+            scene_type: SceneType::Gravitational,
+            setting: SceneSetting {
+                description: "A room".to_string(),
+                affordances: vec![],
+                sensory_details: vec![],
+                aesthetic_detail: String::new(),
+            },
+            cast: vec![],
+            stakes: vec![],
+            constraints: SceneConstraints {
+                hard: vec![],
+                soft: vec![],
+                perceptual: vec![],
+            },
+            emotional_arc: vec![],
+            evaluation_criteria: vec![],
+        };
+
+        let session_id = store
+            .create_session(&selections, &scene, &[])
+            .expect("create session");
+
+        // Before any turns: count should be 0
+        let summaries = store.list_sessions().expect("list");
+        assert_eq!(summaries[0].turn_count, 0);
+
+        // Append 3 turns to turns.jsonl
+        for i in 0..3 {
+            let record = TurnRecord {
+                turn: i,
+                player_input: if i == 0 {
+                    None
+                } else {
+                    Some(format!("Input {i}"))
+                },
+                narrator_output: format!("Output {i}"),
+                predictions: None,
+                intent_statements: None,
+                classifications: None,
+                decomposition: None,
+                arbitration: None,
+                context_assembly: None,
+                timing: None,
+                timestamp: format!("2026-03-10T21:0{i}:00Z"),
+            };
+            store.append_turn(&session_id, &record).expect("append");
+        }
+
+        // Now list_sessions should count 3 turns from turns.jsonl
+        let summaries = store.list_sessions().expect("list after turns");
+        assert_eq!(summaries[0].turn_count, 3);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn multi_session_ordering() {
+        let tmp =
+            std::env::temp_dir().join(format!("storyteller-session-test-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&tmp).expect("create temp dir");
+
+        let store = SessionStore::new(&tmp).expect("create store");
+
+        let make_selections = |genre: &str| SceneSelections {
+            genre_id: genre.to_string(),
+            profile_id: "test".to_string(),
+            cast: vec![CastSelection {
+                archetype_id: "hero".to_string(),
+                name: Some("Hero".to_string()),
+                role: "protagonist".to_string(),
+            }],
+            dynamics: Vec::new(),
+            title_override: None,
+            setting_override: None,
+            seed: None,
+        };
+
+        let scene = SceneData {
+            scene_id: SceneId::new(),
+            title: "Test".to_string(),
+            scene_type: SceneType::Gravitational,
+            setting: SceneSetting {
+                description: "A room".to_string(),
+                affordances: vec![],
+                sensory_details: vec![],
+                aesthetic_detail: String::new(),
+            },
+            cast: vec![],
+            stakes: vec![],
+            constraints: SceneConstraints {
+                hard: vec![],
+                soft: vec![],
+                perceptual: vec![],
+            },
+            emotional_arc: vec![],
+            evaluation_criteria: vec![],
+        };
+
+        // Create 3 sessions with different genres
+        let id1 = store
+            .create_session(&make_selections("fantasy"), &scene, &[])
+            .expect("create 1");
+        // UUIDv7 ensures chronological ordering — tiny sleep not needed
+        // since UUIDv7 includes sub-millisecond random bits for uniqueness
+        let id2 = store
+            .create_session(&make_selections("horror"), &scene, &[])
+            .expect("create 2");
+        let id3 = store
+            .create_session(&make_selections("scifi"), &scene, &[])
+            .expect("create 3");
+
+        let summaries = store.list_sessions().expect("list");
+        assert_eq!(summaries.len(), 3);
+
+        // Should be newest-first (descending UUIDv7)
+        assert_eq!(summaries[0].session_id, id3);
+        assert_eq!(summaries[1].session_id, id2);
+        assert_eq!(summaries[2].session_id, id1);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }

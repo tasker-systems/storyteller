@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { checkLlm, startScene, submitInput, resumeSession } from "$lib/api";
   import type { StoryBlock, SceneInfo, ResumeResult } from "$lib/types";
+  import { hydrateBlocks } from "$lib/logic";
   import StoryPane from "$lib/StoryPane.svelte";
   import InputBar from "$lib/InputBar.svelte";
   import DebugPanel from "$lib/DebugPanel.svelte";
@@ -61,28 +62,9 @@
 
   function hydrateFromResumeResult(result: ResumeResult) {
     sceneInfo = result.scene_info;
-    const hydrated: StoryBlock[] = [];
-
-    if (result.turns.length === 0) {
-      // No turns yet — show opening prose
-      hydrated.push({ kind: "opening", text: result.scene_info.opening_prose });
-      turnCount = 0;
-    } else {
-      for (const turn of result.turns) {
-        if (turn.turn === 0) {
-          // Turn 0 is the opening
-          hydrated.push({ kind: "opening", text: turn.narrator_output });
-        } else {
-          if (turn.player_input != null) {
-            hydrated.push({ kind: "player", turn: turn.turn, text: turn.player_input });
-          }
-          hydrated.push({ kind: "narrator", turn: turn.turn, text: turn.narrator_output });
-        }
-      }
-      turnCount = result.turns[result.turns.length - 1].turn;
-    }
-
-    blocks = hydrated;
+    const hydrated = hydrateBlocks(result);
+    blocks = hydrated.blocks;
+    turnCount = hydrated.turnCount;
     error = null;
     loading = false;
     view = "playing";
