@@ -31,7 +31,6 @@ use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::inference::structured::OllamaStructuredProvider;
 use storyteller_engine::scene_composer::{ComposedScene, SceneComposer, SceneSelections};
 use storyteller_engine::systems::arbitration::check_action_possibility;
-use storyteller_engine::workshop::the_flute_kept;
 
 use crate::engine_state::EngineState;
 use crate::events::{DebugEvent, TokenCounts, DEBUG_EVENT_CHANNEL};
@@ -203,18 +202,13 @@ pub async fn check_llm() -> Result<LlmStatus, String> {
     }
 }
 
-/// Load the workshop scene, create the LLM provider, and generate the opening.
+/// Load the workshop scene — DEPRECATED, use compose_scene instead.
 #[tauri::command]
 pub async fn start_scene(
-    app: tauri::AppHandle,
-    state: State<'_, Mutex<Option<EngineState>>>,
+    _app: tauri::AppHandle,
+    _state: State<'_, Mutex<Option<EngineState>>>,
 ) -> Result<SceneInfo, String> {
-    let scene = the_flute_kept::scene();
-    let bramblehoof = the_flute_kept::bramblehoof();
-    let pyotir = the_flute_kept::pyotir();
-    let characters = vec![bramblehoof, pyotir];
-
-    setup_and_render_opening(&app, scene, characters, &state, None, None).await
+    Err("Classic scene mode has been removed. Use the scene wizard to compose a scene.".to_string())
 }
 
 /// Return the genre catalog from the scene composer.

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { checkLlm, startScene, submitInput, resumeSession } from "$lib/api";
+  import { checkLlm, submitInput, resumeSession } from "$lib/api";
   import type { StoryBlock, SceneInfo, ResumeResult } from "$lib/types";
   import { hydrateBlocks } from "$lib/logic";
   import StoryPane from "$lib/StoryPane.svelte";
@@ -86,22 +86,6 @@
     }
   }
 
-  async function handleClassicStart() {
-    loading = true;
-    error = null;
-    try {
-      if (!(await checkLlmReachable())) {
-        loading = false;
-        return;
-      }
-      const info = await startScene();
-      transitionToPlaying(info);
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-      loading = false;
-    }
-  }
-
   function handleNewScene() {
     view = "setup";
     sceneInfo = null;
@@ -180,16 +164,6 @@
       {#if view === "setup"}
         <div class="setup-container">
           <SceneSetup onlaunch={handleSceneLaunched} />
-          <div class="classic-fallback">
-            <span class="fallback-divider">or</span>
-            <button
-              class="classic-btn"
-              onclick={handleClassicStart}
-              disabled={loading}
-            >
-              {loading ? "Starting..." : "Classic: The Flute Kept"}
-            </button>
-          </div>
         </div>
       {:else}
         <StoryPane {blocks} {loading} />
@@ -344,39 +318,4 @@
     padding: 2rem 1rem;
   }
 
-  .classic-fallback {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.6rem;
-    margin-top: 1.5rem;
-  }
-
-  .fallback-divider {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    font-style: italic;
-  }
-
-  .classic-btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    padding: 0.4rem 1rem;
-    border-radius: 4px;
-    cursor: pointer;
-    box-shadow: none;
-  }
-
-  .classic-btn:hover:not(:disabled) {
-    color: var(--text-primary);
-    border-color: var(--accent-dim);
-  }
-
-  .classic-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 </style>
