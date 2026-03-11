@@ -6,6 +6,7 @@ use storyteller_core::grammars::PlutchikWestern;
 use storyteller_core::traits::llm::LlmProvider;
 use storyteller_core::traits::structured_llm::StructuredLlmProvider;
 use storyteller_core::types::character::{CharacterSheet, SceneData};
+use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::SceneJournal;
 use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::frame::CharacterPredictor;
@@ -42,4 +43,6 @@ pub struct EngineState {
     pub turn_count: u32,
     /// Session ID for persisted sessions (None for classic/non-persisted scenes).
     pub session_id: Option<String>,
+    /// Entity ID of the player-controlled character (None if not identified).
+    pub player_entity_id: Option<EntityId>,
 }

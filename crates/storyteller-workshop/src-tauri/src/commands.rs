@@ -407,6 +407,13 @@ pub async fn resume_session(
     // Set turn count to last turn + 1
     let last_turn = turns.last().map(|t| t.turn).unwrap_or(0);
 
+    // Find player character: first cast member whose role contains "protagonist"
+    let player_entity_id = scene
+        .cast
+        .iter()
+        .find(|c| c.role.to_lowercase().contains("protagonist"))
+        .map(|c| c.entity_id);
+
     let engine_state = EngineState {
         scene,
         characters,
@@ -420,6 +427,7 @@ pub async fn resume_session(
         session_log,
         turn_count: last_turn,
         session_id: Some(session_id),
+        player_entity_id,
     };
 
     let mut guard = state.lock().await;
@@ -1216,6 +1224,13 @@ async fn setup_and_render_opening(
         opening_prose: opening.text,
     };
 
+    // Find player character: first cast member whose role contains "protagonist"
+    let player_entity_id = scene
+        .cast
+        .iter()
+        .find(|c| c.role.to_lowercase().contains("protagonist"))
+        .map(|c| c.entity_id);
+
     // Store engine state
     let engine_state = EngineState {
         scene,
@@ -1230,6 +1245,7 @@ async fn setup_and_render_opening(
         session_log,
         turn_count: 0,
         session_id,
+        player_entity_id,
     };
 
     let mut guard = state.lock().await;
