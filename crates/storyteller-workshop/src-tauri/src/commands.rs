@@ -476,6 +476,7 @@ pub async fn submit_input(
             &input,
             &engine.grammar,
             engine.event_classifier.as_ref(),
+            &std::collections::HashMap::new(),
         );
         ResolverOutput {
             sequenced_actions: vec![],

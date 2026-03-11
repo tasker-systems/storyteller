@@ -149,6 +149,7 @@ pub fn predict_system(
         input,
         grammar_res.0.as_ref(),
         classifier_ref,
+        &std::collections::HashMap::new(),
     );
 
     turn_ctx.predictions = Some(predictions);
