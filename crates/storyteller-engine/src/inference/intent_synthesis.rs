@@ -66,6 +66,41 @@ pub fn build_intent_user_prompt(
     )
 }
 
+/// Formats the top `count` tensor axes by central_tendency magnitude as
+/// readable English trait names with values.
+///
+/// Output: `"empathetic 0.78, protective 0.72, grief-stricken 0.65"`
+///
+/// Axis IDs are converted to readable form: underscores become hyphens.
+pub fn format_dominant_axes(sheet: &CharacterSheet, count: usize) -> String {
+    let mut axes: Vec<(&String, f32)> = sheet
+        .tensor
+        .axes
+        .iter()
+        .map(|(name, entry)| (name, entry.value.central_tendency))
+        .collect();
+
+    axes.sort_by(|a, b| {
+        b.1.abs()
+            .partial_cmp(&a.1.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    axes.iter()
+        .take(count)
+        .map(|(name, val)| {
+            let readable = axis_id_to_readable(name);
+            format!("{readable} {val:.2}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Converts an axis ID to a readable English name. Underscores become hyphens.
+fn axis_id_to_readable(id: &str) -> String {
+    id.replace('_', "-")
+}
+
 /// Produces a compact summary of a character sheet for the intent synthesizer.
 ///
 /// Format: `name | top 4 axes (by central_tendency magnitude) | voice | performance notes`
@@ -377,5 +412,41 @@ mod tests {
         assert!(context.contains("Stakes:"));
         // Scene has constraints, so at least one constraint section should appear
         assert!(context.contains("Hard constraints:") || context.contains("Soft constraints:"));
+    }
+
+    #[test]
+    fn format_dominant_axes_sorts_by_magnitude_and_formats_readable() {
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let result = format_dominant_axes(&bramblehoof, 3);
+        assert!(!result.is_empty());
+        let parts: Vec<&str> = result.split(", ").collect();
+        assert_eq!(parts.len(), 3, "Expected 3 axes, got: {result}");
+        for part in &parts {
+            let tokens: Vec<&str> = part.split_whitespace().collect();
+            assert_eq!(tokens.len(), 2, "Expected 'name value', got: {part}");
+            tokens[1].parse::<f32>().expect("Value should be a float");
+        }
+    }
+
+    #[test]
+    fn format_dominant_axes_uses_readable_names() {
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let result = format_dominant_axes(&bramblehoof, 5);
+        assert!(
+            !result.contains('_'),
+            "Should use readable names without underscores: {result}"
+        );
+    }
+
+    #[test]
+    fn format_dominant_axes_respects_count_limit() {
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let result_2 = format_dominant_axes(&bramblehoof, 2);
+        let result_5 = format_dominant_axes(&bramblehoof, 5);
+        let count_2 = result_2.split(", ").count();
+        let count_5 = result_5.split(", ").count();
+        assert_eq!(count_2, 2);
+        assert!(count_5 <= 5);
+        assert!(count_5 > count_2);
     }
 }
