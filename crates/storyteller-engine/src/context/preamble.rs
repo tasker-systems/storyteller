@@ -48,6 +48,7 @@ pub fn build_preamble(
         "Re-rendering or summarizing what the player has already read".to_string(),
         "Inventing goodbyes, departures, or scene resolutions not in the facts".to_string(),
         "Breaking the fourth wall".to_string(),
+        "Ending on a note of resolution, summary, or poetic reflection — each passage is a mid-scene cut, not a conclusion".to_string(),
     ];
 
     // Setting from scene data.
@@ -295,6 +296,27 @@ mod tests {
         assert!(
             !rendered.contains("(player)"),
             "Should not have player marker when player_entity_id is None: {rendered}"
+        );
+    }
+
+    #[test]
+    fn anti_patterns_include_closure_guidance() {
+        let scene = crate::workshop::the_flute_kept::scene();
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let pyotir = crate::workshop::the_flute_kept::pyotir();
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+
+        let observer = storyteller_core::traits::NoopObserver;
+        let preamble = build_preamble(&scene, &characters, &observer, None);
+
+        let has_closure_pattern = preamble
+            .anti_patterns
+            .iter()
+            .any(|ap| ap.contains("resolution") && ap.contains("mid-scene"));
+        assert!(
+            has_closure_pattern,
+            "Anti-patterns should include closure guidance: {:?}",
+            preamble.anti_patterns
         );
     }
 
