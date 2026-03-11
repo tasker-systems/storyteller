@@ -199,8 +199,19 @@ fn build_system_prompt(context: &NarratorContextInput) -> String {
 {preamble}
 
 ## Your Task
-You receive structured facts about what characters did, said, and felt.
-You render only what is observable — physical actions, speech, gestures.
+You receive intent statements describing what each character wants to do
+this turn. Honor these intents — render them with each character's full
+agency. Characters act, speak, and drive the scene. They are not scenery.
+
+When the player character's paragraph appears in the intent statements,
+it describes how the character's nature relates to the player's directed
+action. The player's action is what happens — but render it through who
+the character is. If friction is noted, let the character's body,
+hesitation, or instinct show through the action. Do not block or
+subvert the player's intent. Do not explain the tension to the reader.
+Show it physically.
+
+Render only what is observable — physical actions, speech, gestures.
 Never state what a character thinks, feels, or realizes. Show it through
 the body. Trust the reader to infer.
 
@@ -217,7 +228,12 @@ or awareness, never by restating it. Assume the reader remembers.
 ## Scope
 Render ONLY the actions and events described in "This Turn." Do not
 invent departures, goodbyes, or scene resolutions. Do not write beyond
-the moment. The scene continues after your passage ends.
+the moment.
+
+End mid-moment. Your last sentence should feel like the next thing is
+already happening — a gesture half-completed, a word hanging in the air,
+a gaze that hasn't yet been returned. The camera holds; it does not fade.
+The scene continues after your passage ends.
 
 Write in present tense, third person. HARD LIMIT: under 200 words."#
     )
@@ -250,8 +266,13 @@ fn build_turn_message(context: &NarratorContextInput) -> String {
         message.push('\n');
     }
 
-    // Character predictions from ML pipeline
-    if !context.resolver_output.original_predictions.is_empty() {
+    // Character behavioral directives — prefer synthesized intents over raw predictions
+    if let Some(intents) = &context.resolver_output.intent_statements {
+        message.push_str("## Character Intents\n");
+        message.push_str(intents);
+        message.push_str("\n\n");
+    } else if !context.resolver_output.original_predictions.is_empty() {
+        // Fallback: raw ML prediction rendering
         let predictions_md = crate::context::prediction::render_predictions(
             &context.resolver_output.original_predictions,
         );
@@ -313,12 +334,14 @@ mod tests {
                         name: "Bramblehoof".to_string(),
                         role: "Visitor, catalyst".to_string(),
                         voice_note: "Warm, reaches for metaphor".to_string(),
+                        is_player: false,
                     },
                     CastDescription {
                         entity_id: EntityId::new(),
                         name: "Pyotir".to_string(),
                         role: "Resident, ground truth".to_string(),
                         voice_note: "Measured, practical".to_string(),
+                        is_player: false,
                     },
                 ],
                 boundaries: vec!["Pyotir cannot leave".to_string()],
@@ -336,6 +359,7 @@ mod tests {
                 original_predictions: vec![],
                 scene_dynamics: "Quiet tension between recognition and distance".to_string(),
                 conflicts: vec![],
+                intent_statements: None,
             },
             player_input_summary: "I approach the fence slowly.".to_string(),
             estimated_tokens: 1500,
@@ -352,6 +376,11 @@ mod tests {
         assert!(prompt.contains("Bramblehoof"));
         assert!(prompt.contains("Pyotir"));
         assert!(prompt.contains("present tense"));
+        assert!(prompt.contains("intent statements"));
+        assert!(
+            prompt.contains("End mid-moment"),
+            "Should have mid-moment ending instruction"
+        );
     }
 
     #[test]
@@ -490,5 +519,87 @@ mod tests {
             events[1].detail,
             PhaseEventDetail::NarratorRenderingComplete { .. }
         ));
+    }
+
+    #[test]
+    fn system_prompt_has_mid_moment_ending_instruction() {
+        let context = mock_context();
+        let prompt = build_system_prompt(&context);
+        assert!(
+            prompt.contains("End mid-moment"),
+            "Should instruct mid-moment endings: {prompt}"
+        );
+        assert!(
+            prompt.contains("camera holds"),
+            "Should use camera metaphor: {prompt}"
+        );
+        assert!(
+            prompt.contains("gesture half-completed"),
+            "Should give positive examples of how to end: {prompt}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_includes_tension_rendering_instruction() {
+        let context = mock_context();
+        let prompt = build_system_prompt(&context);
+        assert!(
+            prompt.contains("player character's paragraph"),
+            "Should mention player character intents: {prompt}"
+        );
+        assert!(
+            prompt.contains("Do not block or"),
+            "Should instruct not to block player intent"
+        );
+        assert!(
+            prompt.contains("Show it physically"),
+            "Should instruct physical rendering"
+        );
+    }
+
+    #[test]
+    fn turn_message_prefers_intent_statements_over_predictions() {
+        let mut context = mock_context();
+        context.resolver_output.intent_statements =
+            Some("**Pyotir** should greet Bramblehoof warmly.".to_string());
+
+        let message = build_turn_message(&context);
+
+        assert!(message.contains("## Character Intents"));
+        assert!(message.contains("should greet Bramblehoof warmly"));
+        assert!(!message.contains("## Character Predictions"));
+    }
+
+    #[test]
+    fn turn_message_falls_back_to_predictions_when_no_intents() {
+        use storyteller_core::types::prediction::{
+            ActivatedTensorFrame, CharacterPrediction, ThoughtPrediction,
+        };
+        use storyteller_core::types::tensor::AwarenessLevel;
+
+        let mut context = mock_context();
+        context.resolver_output.intent_statements = None;
+        context.resolver_output.original_predictions = vec![CharacterPrediction {
+            character_id: EntityId::new(),
+            character_name: "Pyotir".to_string(),
+            frame: ActivatedTensorFrame {
+                activated_axes: vec!["stoicism".to_string()],
+                activation_reason: "Active in context".to_string(),
+                confidence: 0.8,
+            },
+            actions: vec![],
+            speech: None,
+            thought: ThoughtPrediction {
+                emotional_subtext: "Pyotir senses calm".to_string(),
+                awareness_level: AwarenessLevel::Recognizable,
+                internal_conflict: None,
+            },
+            emotional_deltas: vec![],
+        }];
+
+        let message = build_turn_message(&context);
+
+        assert!(message.contains("Pyotir"));
+        assert!(!message.contains("## Character Intents"));
     }
 }

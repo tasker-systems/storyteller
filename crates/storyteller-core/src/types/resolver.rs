@@ -114,6 +114,10 @@ pub struct ResolverOutput {
     pub scene_dynamics: String,
     /// Any conflicts that were resolved this turn.
     pub conflicts: Vec<ConflictResolution>,
+    /// Natural language intent statements from the intent synthesizer.
+    /// When `Some`, the narrator uses these instead of raw predictions.
+    /// When `None`, falls back to `render_predictions()` on `original_predictions`.
+    pub intent_statements: Option<String>,
 }
 
 #[cfg(test)]
@@ -143,6 +147,7 @@ mod tests {
             scene_dynamics: "A quiet arrival — the space between them is physical and temporal"
                 .to_string(),
             conflicts: vec![],
+            intent_statements: None,
         };
         assert_eq!(output.sequenced_actions.len(), 1);
         assert_eq!(

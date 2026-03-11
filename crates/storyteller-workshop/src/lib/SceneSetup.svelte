@@ -9,6 +9,14 @@
     SceneSelections,
     ProfileSummary,
   } from "$lib/types";
+  import {
+    canAdvance as checkCanAdvance,
+    nextStep,
+    prevStep,
+    usedNames as getUsedNames,
+    nextUnusedName as findNextUnusedName,
+    castPairs as computeCastPairs,
+  } from "$lib/logic";
 
   let { onlaunch }: { onlaunch: (info: SceneInfo) => void } = $props();
 
@@ -62,43 +70,11 @@
   let selectedArchetypeIds = $derived(cast.map((c) => c.archetype_id).filter((a) => a !== ""));
 
   // Build pairs for dynamics step
-  let castPairs = $derived.by(() => {
-    const pairs: { a: number; b: number; labelA: string; labelB: string }[] = [];
-    for (let i = 0; i < cast.length; i++) {
-      for (let j = i + 1; j < cast.length; j++) {
-        pairs.push({
-          a: i,
-          b: j,
-          labelA: cast[i].name ?? `Character ${i + 1}`,
-          labelB: cast[j].name ?? `Character ${j + 1}`,
-        });
-      }
-    }
-    return pairs;
-  });
+  let castPairs = $derived(computeCastPairs(cast));
 
-  let canAdvance = $derived.by(() => {
-    switch (step) {
-      case 0:
-        return selectedGenreId !== null;
-      case 1:
-        return selectedProfileId !== null;
-      case 2:
-        return (
-          cast.length >= (selectedProfile?.cast_size_min ?? 1) &&
-          cast.every((c) => c.archetype_id !== "" && (c.name ?? "").trim() !== "") &&
-          cast.filter((c) => c.role === "protagonist").length === 1
-        );
-      case 3:
-        return true; // dynamics are optional
-      case 4:
-        return true; // setting override is optional
-      case 5:
-        return !launching;
-      default:
-        return false;
-    }
-  });
+  let canAdvance = $derived(
+    checkCanAdvance(step, { selectedGenreId, selectedProfileId, cast, launching }, selectedProfile),
+  );
 
   // ---------------------------------------------------------------------------
   // Load genres on mount
@@ -152,15 +128,11 @@
   // ---------------------------------------------------------------------------
 
   function usedNames(): Set<string> {
-    return new Set(cast.map((c) => c.name ?? "").filter((n) => n !== ""));
+    return getUsedNames(cast);
   }
 
   function nextUnusedName(): string {
-    const used = usedNames();
-    for (const name of namePool) {
-      if (!used.has(name)) return name;
-    }
-    return "";
+    return findNextUnusedName(cast, namePool);
   }
 
   function initCast() {
@@ -253,21 +225,11 @@
     if (step === 2 && cast.length >= 2) {
       initDynamics();
     }
-    // Skip dynamics step if fewer than 2 cast members
-    if (step === 2 && cast.length < 2) {
-      step = 4; // skip to setting
-      return;
-    }
-    step = Math.min(step + 1, 5);
+    step = nextStep(step, cast.length);
   }
 
   function goBack() {
-    // If we skipped dynamics, go back to cast
-    if (step === 4 && cast.length < 2) {
-      step = 2;
-      return;
-    }
-    step = Math.max(step - 1, 0);
+    step = prevStep(step, cast.length);
   }
 
   async function launch() {

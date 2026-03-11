@@ -53,6 +53,9 @@ pub struct CastDescription {
     pub role: String,
     /// Brief voice/manner description for the Narrator.
     pub voice_note: String,
+    /// Whether this cast member is controlled by the player.
+    #[serde(default)]
+    pub is_player: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +187,7 @@ mod tests {
                 name: "Bramblehoof".to_string(),
                 role: "Visitor, catalyst".to_string(),
                 voice_note: "Warm, reaches for metaphor".to_string(),
+                is_player: false,
             }],
             boundaries: vec!["Pyotir cannot leave".to_string()],
         };
@@ -211,6 +215,18 @@ mod tests {
     fn compression_levels_are_ordered() {
         assert!(CompressionLevel::Full < CompressionLevel::Summary);
         assert!(CompressionLevel::Summary < CompressionLevel::Skeleton);
+    }
+
+    #[test]
+    fn cast_description_has_is_player_field() {
+        let cast = CastDescription {
+            entity_id: EntityId::new(),
+            name: "Arthur".to_string(),
+            role: "protagonist".to_string(),
+            voice_note: "Measured, clipped".to_string(),
+            is_player: true,
+        };
+        assert!(cast.is_player);
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub mod event_classifier;
 pub mod event_decomposition;
 pub mod external;
 pub mod frame;
+pub mod intent_synthesis;
 pub mod structured;
 
 #[cfg(feature = "local-llm")]

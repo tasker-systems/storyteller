@@ -6,9 +6,11 @@ use storyteller_core::grammars::PlutchikWestern;
 use storyteller_core::traits::llm::LlmProvider;
 use storyteller_core::traits::structured_llm::StructuredLlmProvider;
 use storyteller_core::types::character::{CharacterSheet, SceneData};
+use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::SceneJournal;
 use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_ml::prediction_history::PredictionHistory;
 
 use crate::session_log::SessionLog;
 
@@ -32,6 +34,8 @@ pub struct EngineState {
     pub event_classifier: Option<EventClassifier>,
     /// Structured LLM provider for event decomposition (optional).
     pub structured_llm: Option<Arc<dyn StructuredLlmProvider>>,
+    /// Intent synthesis LLM provider — plain completion, same 3b model (optional).
+    pub intent_llm: Option<Arc<dyn LlmProvider>>,
     /// Emotional grammar for ML predictions.
     pub grammar: PlutchikWestern,
     /// Session log for JSONL recording.
@@ -40,4 +44,8 @@ pub struct EngineState {
     pub turn_count: u32,
     /// Session ID for persisted sessions (None for classic/non-persisted scenes).
     pub session_id: Option<String>,
+    /// Entity ID of the player-controlled character (None if not identified).
+    pub player_entity_id: Option<EntityId>,
+    /// Accumulated prediction history for turn-over-turn ML context.
+    pub prediction_history: PredictionHistory,
 }

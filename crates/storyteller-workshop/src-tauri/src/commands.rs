@@ -31,11 +31,11 @@ use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::inference::structured::OllamaStructuredProvider;
 use storyteller_engine::scene_composer::{ComposedScene, SceneComposer, SceneSelections};
 use storyteller_engine::systems::arbitration::check_action_possibility;
-use storyteller_engine::workshop::the_flute_kept;
+use storyteller_ml::prediction_history::PredictionHistory;
 
 use crate::engine_state::EngineState;
 use crate::events::{DebugEvent, TokenCounts, DEBUG_EVENT_CHANNEL};
-use crate::session::{SessionStore, SessionSummary};
+use crate::session::{SessionStore, SessionSummary, TurnRecord};
 use crate::session_log::{ContextAssemblyLog, LogEntry, SessionLog, TimingLog};
 
 // ---------------------------------------------------------------------------
@@ -53,6 +53,26 @@ pub struct SceneInfo {
     pub cast: Vec<String>,
     /// The narrator's opening prose.
     pub opening_prose: String,
+}
+
+/// Result of resuming a session, returned by `resume_session`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResumeResult {
+    /// Scene metadata (title, setting, cast, opening prose).
+    pub scene_info: SceneInfo,
+    /// All turns played so far (for frontend chat hydration).
+    pub turns: Vec<TurnSummary>,
+}
+
+/// Minimal turn data for frontend chat hydration.
+#[derive(Debug, Clone, Serialize)]
+pub struct TurnSummary {
+    /// Turn number (0 = opening narration).
+    pub turn: u32,
+    /// Player input text (None for turn 0).
+    pub player_input: Option<String>,
+    /// Narrator's rendered prose.
+    pub narrator_output: String,
 }
 
 /// Result of a single player turn, returned by `submit_input`.
@@ -183,18 +203,13 @@ pub async fn check_llm() -> Result<LlmStatus, String> {
     }
 }
 
-/// Load the workshop scene, create the LLM provider, and generate the opening.
+/// Load the workshop scene — DEPRECATED, use compose_scene instead.
 #[tauri::command]
 pub async fn start_scene(
-    app: tauri::AppHandle,
-    state: State<'_, Mutex<Option<EngineState>>>,
+    _app: tauri::AppHandle,
+    _state: State<'_, Mutex<Option<EngineState>>>,
 ) -> Result<SceneInfo, String> {
-    let scene = the_flute_kept::scene();
-    let bramblehoof = the_flute_kept::bramblehoof();
-    let pyotir = the_flute_kept::pyotir();
-    let characters = vec![bramblehoof, pyotir];
-
-    setup_and_render_opening(&app, scene, characters, &state, None).await
+    Err("Classic scene mode has been removed. Use the scene wizard to compose a scene.".to_string())
 }
 
 /// Return the genre catalog from the scene composer.
@@ -247,6 +262,7 @@ pub async fn compose_scene(
         composed.characters,
         &state,
         Some(session_id),
+        Some(&session_store),
     )
     .await
 }
@@ -259,16 +275,170 @@ pub async fn list_sessions(
     session_store.list_sessions()
 }
 
-/// Load a persisted session and render its opening.
+/// Load a persisted session and return its turn history for chat hydration.
+///
+/// If the session has saved turns (turns.jsonl), reconstructs engine state from
+/// them without re-rendering the opening. Falls back to a fresh opening render
+/// for legacy sessions without turn data.
 #[tauri::command]
 pub async fn resume_session(
     session_id: String,
     app: tauri::AppHandle,
     state: State<'_, Mutex<Option<EngineState>>>,
     session_store: State<'_, Arc<SessionStore>>,
-) -> Result<SceneInfo, String> {
+) -> Result<ResumeResult, String> {
     let (_selections, scene, characters) = session_store.load_session(&session_id)?;
-    setup_and_render_opening(&app, scene, characters, &state, Some(session_id)).await
+
+    // Try to load saved turns
+    let turns = session_store.load_turns(&session_id)?;
+
+    if turns.is_empty() {
+        // Legacy session or no turns.jsonl — fall back to fresh opening render
+        let scene_info = setup_and_render_opening(
+            &app,
+            scene,
+            characters,
+            &state,
+            Some(session_id),
+            Some(&session_store),
+        )
+        .await?;
+
+        return Ok(ResumeResult {
+            scene_info,
+            turns: vec![],
+        });
+    }
+
+    // --- Build SceneInfo from scene data + turn 0's narrator output ---
+    let opening_prose = turns
+        .first()
+        .map(|t| t.narrator_output.clone())
+        .unwrap_or_default();
+
+    let scene_info = SceneInfo {
+        title: scene.title.clone(),
+        setting_description: scene.setting.description.clone(),
+        cast: scene.cast.iter().map(|c| c.name.clone()).collect(),
+        opening_prose,
+    };
+
+    // --- Convert to TurnSummary for frontend ---
+    let turn_summaries: Vec<TurnSummary> = turns
+        .iter()
+        .map(|t| TurnSummary {
+            turn: t.turn,
+            player_input: t.player_input.clone(),
+            narrator_output: t.narrator_output.clone(),
+        })
+        .collect();
+
+    // --- Initialize engine state (same as setup_and_render_opening, minus rendering) ---
+    let entity_ids: Vec<_> = characters.iter().map(|c| c.entity_id).collect();
+
+    // Create Ollama LLM provider
+    let config = ExternalServerConfig {
+        base_url: "http://127.0.0.1:11434".to_string(),
+        model: "qwen2.5:14b".to_string(),
+        ..Default::default()
+    };
+    let llm: Arc<dyn LlmProvider> = Arc::new(ExternalServerProvider::new(config));
+
+    // Reconstruct journal from turn narrator outputs
+    let mut journal = SceneJournal::new(SceneId::new(), 1200);
+    let noop = NoopObserver;
+    for turn_record in &turns {
+        add_turn(
+            &mut journal,
+            turn_record.turn,
+            &turn_record.narrator_output,
+            entity_ids.clone(),
+            vec![],
+            &noop,
+        );
+    }
+
+    // Load ML predictor (optional)
+    let predictor = resolve_model_path().and_then(|path| {
+        CharacterPredictor::load(&path)
+            .inspect(|_| tracing::info!("ML model loaded: {}", path.display()))
+            .inspect_err(|e| tracing::warn!("ML model failed to load: {e}"))
+            .ok()
+    });
+
+    // Load event classifier (optional)
+    let event_classifier = resolve_event_classifier_path().and_then(|path| {
+        EventClassifier::load(&path)
+            .inspect(|_| tracing::info!("Event classifier loaded: {}", path.display()))
+            .inspect_err(|e| tracing::warn!("Event classifier failed to load: {e}"))
+            .ok()
+    });
+
+    // Create structured LLM provider for event decomposition
+    let structured_llm: Option<
+        Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
+    > = {
+        let config = StructuredLlmConfig::default();
+        let provider = OllamaStructuredProvider::new(config);
+        tracing::info!("Structured LLM provider created (qwen2.5:3b-instruct)");
+        Some(Arc::new(provider))
+    };
+
+    // Intent synthesis LLM
+    let intent_llm: Option<Arc<dyn LlmProvider>> = {
+        let ollama_url =
+            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let model = std::env::var("STORYTELLER_INTENT_MODEL")
+            .unwrap_or_else(|_| "qwen2.5:3b-instruct".to_string());
+        let config = ExternalServerConfig {
+            base_url: ollama_url,
+            model: model.clone(),
+            timeout: std::time::Duration::from_secs(60),
+        };
+        tracing::info!("Intent synthesis LLM provider created ({model})");
+        Some(Arc::new(ExternalServerProvider::new(config)))
+    };
+
+    let grammar = PlutchikWestern::new();
+
+    // Create session log
+    let sessions_dir = PathBuf::from("sessions");
+    let session_log = SessionLog::new(&sessions_dir, &scene.title)?;
+
+    // Set turn count to last turn + 1
+    let last_turn = turns.last().map(|t| t.turn).unwrap_or(0);
+
+    // Find player character: first cast member whose role contains "protagonist"
+    let player_entity_id = scene
+        .cast
+        .iter()
+        .find(|c| c.role.to_lowercase().contains("protagonist"))
+        .map(|c| c.entity_id);
+
+    let engine_state = EngineState {
+        scene,
+        characters,
+        journal,
+        llm,
+        predictor,
+        event_classifier,
+        structured_llm,
+        intent_llm,
+        grammar,
+        session_log,
+        turn_count: last_turn,
+        session_id: Some(session_id),
+        player_entity_id,
+        prediction_history: PredictionHistory::default(),
+    };
+
+    let mut guard = state.lock().await;
+    *guard = Some(engine_state);
+
+    Ok(ResumeResult {
+        scene_info,
+        turns: turn_summaries,
+    })
 }
 
 /// Process player input through the engine pipeline and return the narrator's response.
@@ -300,7 +470,7 @@ pub async fn submit_input(
     );
 
     let predict_start = Instant::now();
-    let resolver_output = if let Some(ref predictor) = engine.predictor {
+    let mut resolver_output = if let Some(ref predictor) = engine.predictor {
         let (predictions, _classification) = predict_character_behaviors(
             predictor,
             &characters_refs,
@@ -308,12 +478,14 @@ pub async fn submit_input(
             &input,
             &engine.grammar,
             engine.event_classifier.as_ref(),
+            engine.prediction_history.as_map(),
         );
         ResolverOutput {
             sequenced_actions: vec![],
             original_predictions: predictions,
             scene_dynamics: "ML-predicted character behavior".to_string(),
             conflicts: vec![],
+            intent_statements: None,
         }
     } else {
         ResolverOutput {
@@ -322,9 +494,15 @@ pub async fn submit_input(
             scene_dynamics: "A quiet arrival — the distance between them is physical and temporal"
                 .to_string(),
             conflicts: vec![],
+            intent_statements: None,
         }
     };
     let prediction_ms = predict_start.elapsed().as_millis() as u64;
+
+    // Accumulate prediction history for next turn's Region 7 features.
+    for pred in &resolver_output.original_predictions {
+        engine.prediction_history.push_from_prediction(pred);
+    }
 
     emit_debug(
         &app,
@@ -502,6 +680,56 @@ pub async fn submit_input(
         },
     );
 
+    // --- Phase: Intent Synthesis ---
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "intent_synthesis".to_string(),
+        },
+    );
+
+    let intent_start = Instant::now();
+    let journal_tail = engine
+        .journal
+        .entries
+        .iter()
+        .rev()
+        .take(2)
+        .rev()
+        .map(|e| e.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let intent_statements = if let Some(ref intent_llm) = engine.intent_llm {
+        storyteller_engine::inference::intent_synthesis::synthesize_intents(
+            intent_llm.as_ref(),
+            &characters_refs,
+            &resolver_output.original_predictions,
+            &journal_tail,
+            &input,
+            &engine.scene,
+            engine.player_entity_id,
+        )
+        .await
+    } else {
+        None
+    };
+    let intent_ms = intent_start.elapsed().as_millis() as u64;
+
+    resolver_output.intent_statements = intent_statements;
+
+    if let Some(ref intents) = resolver_output.intent_statements {
+        emit_debug(
+            &app,
+            DebugEvent::IntentSynthesized {
+                turn,
+                intent_statements: intents.clone(),
+                timing_ms: intent_ms,
+            },
+        );
+    }
+
     // --- Phase: Context Assembly ---
     emit_debug(
         &app,
@@ -522,6 +750,7 @@ pub async fn submit_input(
         &entity_ids,
         DEFAULT_TOTAL_TOKEN_BUDGET,
         &observer,
+        engine.player_entity_id,
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
@@ -651,38 +880,34 @@ pub async fn submit_input(
     };
     engine.session_log.append(&log_entry)?;
 
-    // Append to persisted session events.jsonl if this is a persisted session.
+    // Persist turn to turns.jsonl (replaces events.jsonl).
     if let Some(ref sid) = engine.session_id {
-        let events_path = session_store.events_path(sid);
-        let event_line = serde_json::json!({
-            "turn": turn,
-            "timestamp": log_entry.timestamp.to_rfc3339(),
-            "player_input": log_entry.player_input,
-            "narrator_output": log_entry.narrator_output,
-            "classifications": classifications,
-            "decomposition": persisted_decomposition,
-            "arbitration": arbitration_json,
-            "timing": {
+        let turn_record = TurnRecord {
+            turn,
+            player_input: Some(log_entry.player_input.clone()),
+            narrator_output: rendering.text.clone(),
+            predictions: serde_json::to_value(&resolver_output.original_predictions).ok(),
+            intent_statements: resolver_output.intent_statements.clone(),
+            classifications: Some(classifications),
+            decomposition: persisted_decomposition,
+            arbitration: Some(arbitration_json),
+            context_assembly: Some(serde_json::json!({
+                "preamble_tokens": token_counts.0,
+                "journal_tokens": token_counts.1,
+                "retrieved_tokens": token_counts.2,
+                "total_tokens": token_counts.3,
+            })),
+            timing: Some(serde_json::json!({
                 "prediction_ms": prediction_ms,
+                "intent_ms": intent_ms,
                 "assembly_ms": assembly_ms,
                 "narrator_ms": narrator_ms,
-            },
-            "context_tokens": {
-                "preamble": token_counts.0,
-                "journal": token_counts.1,
-                "retrieved": token_counts.2,
-                "total": token_counts.3,
-            },
-        });
-        let mut line =
-            serde_json::to_string(&event_line).map_err(|e| format!("serialize event: {e}"))?;
-        line.push('\n');
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&events_path)
-            .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()))
-            .map_err(|e| format!("append events.jsonl: {e}"))?;
+            })),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        if let Err(e) = session_store.append_turn(sid, &turn_record) {
+            tracing::warn!(error = %e, "Failed to persist turn {turn}");
+        }
     }
 
     Ok(TurnResult {
@@ -728,6 +953,7 @@ async fn setup_and_render_opening(
     characters: Vec<CharacterSheet>,
     state: &State<'_, Mutex<Option<EngineState>>>,
     session_id: Option<String>,
+    session_store: Option<&State<'_, Arc<SessionStore>>>,
 ) -> Result<SceneInfo, String> {
     let characters_refs: Vec<&_> = characters.iter().collect();
     let entity_ids: Vec<_> = characters.iter().map(|c| c.entity_id).collect();
@@ -769,6 +995,21 @@ async fn setup_and_render_opening(
         Some(Arc::new(provider))
     };
 
+    // Intent synthesis LLM — same 3b model, plain completion (not structured)
+    let intent_llm: Option<Arc<dyn LlmProvider>> = {
+        let ollama_url =
+            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let model = std::env::var("STORYTELLER_INTENT_MODEL")
+            .unwrap_or_else(|_| "qwen2.5:3b-instruct".to_string());
+        let config = ExternalServerConfig {
+            base_url: ollama_url,
+            model: model.clone(),
+            timeout: std::time::Duration::from_secs(60),
+        };
+        tracing::info!("Intent synthesis LLM provider created ({model})");
+        Some(Arc::new(ExternalServerProvider::new(config)))
+    };
+
     let grammar = PlutchikWestern::new();
 
     // Create session log
@@ -787,6 +1028,7 @@ async fn setup_and_render_opening(
                 original_predictions: vec![],
                 scene_dynamics: "Opening turn — no player input yet".to_string(),
                 conflicts: vec![],
+                intent_statements: None,
             },
             timing_ms: 0,
             model_loaded: predictor.is_some(),
@@ -829,7 +1071,15 @@ async fn setup_and_render_opening(
         scene_dynamics: "A quiet arrival — the distance between them is physical and temporal"
             .to_string(),
         conflicts: vec![],
+        intent_statements: None,
     };
+
+    // Find player character: first cast member whose role contains "protagonist"
+    let player_entity_id = scene
+        .cast
+        .iter()
+        .find(|c| c.role.to_lowercase().contains("protagonist"))
+        .map(|c| c.entity_id);
 
     let observer = CollectingObserver::new();
     let assembly_start = Instant::now();
@@ -842,6 +1092,7 @@ async fn setup_and_render_opening(
         &entity_ids,
         DEFAULT_TOTAL_TOKEN_BUDGET,
         &observer,
+        player_entity_id,
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
@@ -955,6 +1206,34 @@ async fn setup_and_render_opening(
     };
     session_log.append(&log_entry)?;
 
+    // Persist turn 0 (opening narration) to turns.jsonl
+    if let (Some(sid), Some(store)) = (&session_id, &session_store) {
+        let turn0 = TurnRecord {
+            turn: 0,
+            player_input: None,
+            narrator_output: opening.text.clone(),
+            predictions: None,
+            intent_statements: None,
+            classifications: None,
+            decomposition: None,
+            arbitration: None,
+            context_assembly: Some(serde_json::json!({
+                "preamble_tokens": token_counts.0,
+                "journal_tokens": token_counts.1,
+                "retrieved_tokens": token_counts.2,
+                "total_tokens": token_counts.3,
+            })),
+            timing: Some(serde_json::json!({
+                "assembly_ms": assembly_ms,
+                "narrator_ms": narrator_ms,
+            })),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        if let Err(e) = store.append_turn(sid, &turn0) {
+            tracing::warn!(error = %e, "Failed to persist turn 0");
+        }
+    }
+
     let scene_info = SceneInfo {
         title: scene.title.clone(),
         setting_description: scene.setting.description.clone(),
@@ -971,10 +1250,13 @@ async fn setup_and_render_opening(
         predictor,
         event_classifier,
         structured_llm,
+        intent_llm,
         grammar,
         session_log,
         turn_count: 0,
         session_id,
+        player_entity_id,
+        prediction_history: PredictionHistory::default(),
     };
 
     let mut guard = state.lock().await;

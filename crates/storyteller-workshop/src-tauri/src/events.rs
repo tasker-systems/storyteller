@@ -84,6 +84,14 @@ pub enum DebugEvent {
         error: Option<String>,
     },
 
+    /// Intent synthesis completed — per-character directives for the narrator.
+    #[serde(rename = "intent_synthesized")]
+    IntentSynthesized {
+        turn: u32,
+        intent_statements: String,
+        timing_ms: u64,
+    },
+
     /// Action arbitration completed — possibility check result.
     #[serde(rename = "action_arbitrated")]
     ActionArbitrated {

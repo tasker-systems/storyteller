@@ -5,6 +5,7 @@
   import type { DebugState, DebugEvent, PhaseStatus, LlmStatus, TracingLogEntry, EventDecomposedEvent, ActionArbitratedEvent } from "./types";
   import { DEBUG_EVENT_CHANNEL, LOG_EVENT_CHANNEL } from "./types";
   import { checkLlm } from "./api";
+  import { phaseStatus as computePhaseStatus, freshDebugState, applyDebugEvent } from "./logic";
 
   let { visible }: { visible: boolean } = $props();
 
@@ -38,6 +39,7 @@
     events: null,
     decomposition: null,
     arbitration: null,
+    intent_synthesis: null,
     narrator: null,
     error: null,
   });
@@ -78,38 +80,11 @@
   }
 
   function resetForTurn(turn: number) {
-    debugState = {
-      turn,
-      phases: {},
-      prediction: null,
-      context: null,
-      characters: null,
-      events: null,
-      decomposition: null,
-      arbitration: null,
-      narrator: null,
-      error: null,
-    };
+    debugState = freshDebugState(turn);
   }
 
   function phaseStatus(tab: TabName): PhaseStatus {
-    if (tab === "LLM") {
-      if (llmChecking) return "processing";
-      if (!llmStatus) return "pending";
-      return llmStatus.reachable ? "complete" : "error";
-    }
-    if (tab === "Events") {
-      // Events tab combines classification + decomposition phases
-      const evtStatus = debugState.phases["events"] ?? "pending";
-      const decStatus = debugState.phases["decomposition"] ?? "pending";
-      if (evtStatus === "error" || decStatus === "error") return "error";
-      if (evtStatus === "processing" || decStatus === "processing") return "processing";
-      if (evtStatus === "complete" && decStatus === "complete") return "complete";
-      if (evtStatus === "complete" || decStatus === "complete") return "processing";
-      return "pending";
-    }
-    const phase = TAB_PHASE_MAP[tab];
-    return debugState.phases[phase] ?? "pending";
+    return computePhaseStatus(tab, debugState, llmStatus, llmChecking);
   }
 
   async function runLlmCheck() {
@@ -131,49 +106,7 @@
   }
 
   function handleDebugEvent(event: DebugEvent) {
-    if (event.turn !== debugState.turn) {
-      resetForTurn(event.turn);
-    }
-
-    switch (event.type) {
-      case "phase_started":
-        debugState.phases[event.phase] = "processing";
-        break;
-      case "prediction_complete":
-        debugState.prediction = event;
-        debugState.phases["prediction"] = "complete";
-        break;
-      case "context_assembled":
-        debugState.context = event;
-        debugState.phases["context"] = "complete";
-        break;
-      case "characters_updated":
-        debugState.characters = event;
-        debugState.phases["characters"] = "complete";
-        break;
-      case "events_classified":
-        debugState.events = event;
-        debugState.phases["events"] = "complete";
-        break;
-      case "event_decomposed":
-        debugState.decomposition = event as EventDecomposedEvent;
-        debugState.phases["decomposition"] = event.error ? "error" : "complete";
-        break;
-      case "action_arbitrated":
-        debugState.arbitration = event as ActionArbitratedEvent;
-        debugState.phases["arbitration"] = "complete";
-        break;
-      case "narrator_complete":
-        debugState.narrator = event;
-        debugState.phases["narrator"] = "complete";
-        break;
-      case "error":
-        debugState.error = event;
-        debugState.phases[event.phase] = "error";
-        break;
-    }
-
-    debugState = debugState; // trigger reactivity
+    debugState = applyDebugEvent(debugState, event);
   }
 
   function handleLogEntry(entry: TracingLogEntry) {

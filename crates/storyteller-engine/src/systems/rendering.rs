@@ -166,6 +166,7 @@ mod tests {
                 original_predictions: vec![],
                 scene_dynamics: String::new(),
                 conflicts: vec![],
+                intent_statements: None,
             },
             player_input_summary: "test".to_string(),
             estimated_tokens: 100,

@@ -149,6 +149,7 @@ pub fn predict_system(
         input,
         grammar_res.0.as_ref(),
         classifier_ref,
+        &std::collections::HashMap::new(),
     );
 
     turn_ctx.predictions = Some(predictions);
@@ -229,6 +230,7 @@ pub fn resolve_system(mut stage: ResMut<ActiveTurnStage>, mut turn_ctx: ResMut<T
         original_predictions: predictions,
         scene_dynamics: String::new(),
         conflicts: vec![],
+        intent_statements: None,
     };
 
     turn_ctx.resolver_output = Some(resolver_output);
@@ -258,6 +260,7 @@ pub fn assemble_context_system(
         original_predictions: vec![],
         scene_dynamics: String::new(),
         conflicts: vec![],
+        intent_statements: None,
     });
 
     let characters: Vec<&storyteller_core::types::character::CharacterSheet> =
@@ -280,6 +283,7 @@ pub fn assemble_context_system(
         &[], // referenced_entities — empty for now
         crate::context::DEFAULT_TOTAL_TOKEN_BUDGET,
         &NoopObserver,
+        None, // player_entity_id — Bevy system doesn't track player entity yet
     );
 
     tracing::debug!(
@@ -778,6 +782,7 @@ mod tests {
             original_predictions: vec![],
             scene_dynamics: String::new(),
             conflicts: vec![],
+            intent_statements: None,
         });
         app.world_mut().resource_mut::<TurnContext>().player_input =
             Some("I approach slowly".to_string());

@@ -8,6 +8,7 @@ import type {
   GenreOptions,
   SceneSelections,
   SessionSummary,
+  ResumeResult,
 } from "./types";
 
 export async function checkLlm(): Promise<LlmStatus> {
@@ -54,6 +55,6 @@ export async function listSessions(): Promise<SessionSummary[]> {
   return invoke<SessionSummary[]>("list_sessions");
 }
 
-export async function resumeSession(sessionId: string): Promise<SceneInfo> {
-  return invoke<SceneInfo>("resume_session", { sessionId });
+export async function resumeSession(sessionId: string): Promise<ResumeResult> {
+  return invoke<ResumeResult>("resume_session", { sessionId });
 }

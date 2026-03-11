@@ -128,6 +128,17 @@ export interface SessionSummary {
   turn_count: number;
 }
 
+export interface TurnSummary {
+  turn: number;
+  player_input: string | null;
+  narrator_output: string;
+}
+
+export interface ResumeResult {
+  scene_info: SceneInfo;
+  turns: TurnSummary[];
+}
+
 export type StoryBlock =
   | { kind: "narrator"; turn: number; text: string }
   | { kind: "player"; turn: number; text: string }
@@ -244,6 +255,13 @@ export interface ActionArbitratedEvent {
   timing_ms: number;
 }
 
+export interface IntentSynthesizedEvent {
+  type: "intent_synthesized";
+  turn: number;
+  intent_statements: string;
+  timing_ms: number;
+}
+
 export interface ErrorEvent {
   type: "error";
   turn: number;
@@ -259,6 +277,7 @@ export type DebugEvent =
   | EventsClassifiedEvent
   | EventDecomposedEvent
   | ActionArbitratedEvent
+  | IntentSynthesizedEvent
   | NarratorCompleteEvent
   | ErrorEvent;
 
@@ -273,6 +292,7 @@ export interface DebugState {
   events: EventsClassifiedEvent | null;
   decomposition: EventDecomposedEvent | null;
   arbitration: ActionArbitratedEvent | null;
+  intent_synthesis: IntentSynthesizedEvent | null;
   narrator: NarratorCompleteEvent | null;
   error: ErrorEvent | null;
 }

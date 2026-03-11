@@ -9,4 +9,5 @@
 //! authored content loaded from the content resource store once the
 //! prototype validates the agent orchestration approach.
 
+#[cfg(test)]
 pub mod the_flute_kept;

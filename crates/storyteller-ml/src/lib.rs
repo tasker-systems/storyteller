@@ -25,3 +25,4 @@ pub mod event_labels;
 pub mod event_templates;
 pub mod feature_schema;
 pub mod matrix;
+pub mod prediction_history;

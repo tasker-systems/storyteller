@@ -10,6 +10,7 @@ use chrono::Utc;
 
 use storyteller_core::traits::phase_observer::{PhaseEvent, PhaseEventDetail, PhaseObserver};
 use storyteller_core::types::character::{CharacterSheet, SceneData};
+use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::{CastDescription, PersistentPreamble};
 use storyteller_core::types::turn_cycle::TurnCycleStage;
 
@@ -24,6 +25,7 @@ pub fn build_preamble(
     scene: &SceneData,
     characters: &[&CharacterSheet],
     observer: &dyn PhaseObserver,
+    player_entity_id: Option<EntityId>,
 ) -> PersistentPreamble {
     // Narrator voice — hardcoded for the prototype (matches the existing
     // narrator system prompt style). In production this comes from a
@@ -46,6 +48,7 @@ pub fn build_preamble(
         "Re-rendering or summarizing what the player has already read".to_string(),
         "Inventing goodbyes, departures, or scene resolutions not in the facts".to_string(),
         "Breaking the fourth wall".to_string(),
+        "Ending on a note of resolution, summary, or poetic reflection — each passage is a mid-scene cut, not a conclusion".to_string(),
     ];
 
     // Setting from scene data.
@@ -72,6 +75,7 @@ pub fn build_preamble(
                 name: cast_entry.name.clone(),
                 role: cast_entry.role.clone(),
                 voice_note,
+                is_player: player_entity_id == Some(cast_entry.entity_id),
             }
         })
         .collect();
@@ -143,7 +147,11 @@ pub fn render_preamble(preamble: &PersistentPreamble) -> String {
 
     output.push_str("## Cast\n");
     for cast in &preamble.cast_descriptions {
-        output.push_str(&format!("### {} — {}\n", cast.name, cast.role));
+        if cast.is_player {
+            output.push_str(&format!("### {} — {} (player)\n", cast.name, cast.role));
+        } else {
+            output.push_str(&format!("### {} — {}\n", cast.name, cast.role));
+        }
         if !cast.voice_note.is_empty() {
             output.push_str(&format!("Voice: {}\n", cast.voice_note));
         }
@@ -175,7 +183,7 @@ mod tests {
         let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
 
         let observer = CollectingObserver::new();
-        let preamble = build_preamble(&scene, &characters, &observer);
+        let preamble = build_preamble(&scene, &characters, &observer, None);
 
         // Cast
         assert_eq!(preamble.cast_descriptions.len(), 2);
@@ -222,7 +230,7 @@ mod tests {
         let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
 
         let observer = storyteller_core::traits::NoopObserver;
-        let preamble = build_preamble(&scene, &characters, &observer);
+        let preamble = build_preamble(&scene, &characters, &observer, None);
         let tokens = estimate_preamble_tokens(&preamble);
 
         // Architecture doc says ~600-800 tokens for Tier 1
@@ -235,6 +243,84 @@ mod tests {
     }
 
     #[test]
+    fn rendered_preamble_marks_player_character() {
+        let scene = crate::workshop::the_flute_kept::scene();
+        let mut bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let mut pyotir = crate::workshop::the_flute_kept::pyotir();
+        // Align character entity IDs with the scene's cast entries
+        bramblehoof.entity_id = scene.cast[0].entity_id;
+        pyotir.entity_id = scene.cast[1].entity_id;
+        let player_id = bramblehoof.entity_id;
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+
+        let observer = storyteller_core::traits::NoopObserver;
+        let preamble = build_preamble(&scene, &characters, &observer, Some(player_id));
+        let rendered = render_preamble(&preamble);
+
+        // Player character should have "(player)" marker
+        assert!(
+            rendered.contains("(player)"),
+            "Should mark player character: {rendered}"
+        );
+        // Specifically on Bramblehoof's line
+        let bramblehoof_line = rendered
+            .lines()
+            .find(|l| l.contains("Bramblehoof"))
+            .expect("Bramblehoof should be in rendered preamble");
+        assert!(
+            bramblehoof_line.contains("(player)"),
+            "Bramblehoof's line should have (player) marker: {bramblehoof_line}"
+        );
+        // Pyotir should NOT have the marker
+        let pyotir_line = rendered
+            .lines()
+            .find(|l| l.contains("Pyotir"))
+            .expect("Pyotir should be in rendered preamble");
+        assert!(
+            !pyotir_line.contains("(player)"),
+            "NPC should not have (player) marker: {pyotir_line}"
+        );
+    }
+
+    #[test]
+    fn rendered_preamble_no_player_marker_when_no_player_id() {
+        let scene = crate::workshop::the_flute_kept::scene();
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let pyotir = crate::workshop::the_flute_kept::pyotir();
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+
+        let observer = storyteller_core::traits::NoopObserver;
+        let preamble = build_preamble(&scene, &characters, &observer, None);
+        let rendered = render_preamble(&preamble);
+
+        assert!(
+            !rendered.contains("(player)"),
+            "Should not have player marker when player_entity_id is None: {rendered}"
+        );
+    }
+
+    #[test]
+    fn anti_patterns_include_closure_guidance() {
+        let scene = crate::workshop::the_flute_kept::scene();
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let pyotir = crate::workshop::the_flute_kept::pyotir();
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+
+        let observer = storyteller_core::traits::NoopObserver;
+        let preamble = build_preamble(&scene, &characters, &observer, None);
+
+        let has_closure_pattern = preamble
+            .anti_patterns
+            .iter()
+            .any(|ap| ap.contains("resolution") && ap.contains("mid-scene"));
+        assert!(
+            has_closure_pattern,
+            "Anti-patterns should include closure guidance: {:?}",
+            preamble.anti_patterns
+        );
+    }
+
+    #[test]
     fn rendered_preamble_has_all_sections() {
         let scene = crate::workshop::the_flute_kept::scene();
         let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
@@ -242,7 +328,7 @@ mod tests {
         let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
 
         let observer = storyteller_core::traits::NoopObserver;
-        let preamble = build_preamble(&scene, &characters, &observer);
+        let preamble = build_preamble(&scene, &characters, &observer, None);
         let rendered = render_preamble(&preamble);
 
         assert!(rendered.contains("## Your Voice"));

@@ -46,6 +46,10 @@ pub fn predict_character_behaviors(
     player_input: &str,
     grammar: &dyn EmotionalGrammar,
     event_classifier: Option<&EventClassifier>,
+    history: &std::collections::HashMap<
+        storyteller_core::types::entity::EntityId,
+        Vec<storyteller_ml::feature_schema::HistoryEntry>,
+    >,
 ) -> (Vec<CharacterPrediction>, Option<ClassificationOutput>) {
     let (event, classification) = classify_and_extract(
         player_input,
@@ -68,7 +72,10 @@ pub fn predict_character_behaviors(
                 target_roles: &[],
                 scene: scene_features,
                 event,
-                history: &[],
+                history: history
+                    .get(&sheet.entity_id)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]),
             };
             let axis_count = sheet
                 .tensor
@@ -1251,5 +1258,60 @@ mod with_model {
                 delta.primary_id
             );
         }
+    }
+
+    #[test]
+    fn predict_with_history_parameter() {
+        use std::collections::HashMap;
+        use storyteller_ml::prediction_history::PredictionHistory;
+
+        let predictor = CharacterPredictor::load(&model_path()).expect("model should load");
+        let grammar = PlutchikWestern::new();
+        let scene = crate::workshop::the_flute_kept::scene();
+        let sheet = test_character_sheet("Bramblehoof");
+        let characters: Vec<&CharacterSheet> = vec![&sheet];
+
+        // Turn 1: predict with no history
+        let mut history = PredictionHistory::default();
+        let (predictions_first, _) = predict_character_behaviors(
+            &predictor,
+            &characters,
+            &scene,
+            "Hello there",
+            &grammar,
+            None,
+            &HashMap::new(),
+        );
+
+        // Push first turn's predictions into history
+        for pred in &predictions_first {
+            history.push_from_prediction(pred);
+        }
+
+        // Turn 2: predict with accumulated history
+        let (predictions_second, _) = predict_character_behaviors(
+            &predictor,
+            &characters,
+            &scene,
+            "Hello again",
+            &grammar,
+            None,
+            history.as_map(),
+        );
+
+        assert!(
+            !predictions_second.is_empty(),
+            "Should produce predictions with history"
+        );
+
+        // Verify the history was actually populated (pipeline plumbing check).
+        // Feature-level encoding assertions (non-zero at indices 405-452) are
+        // covered by the encode_with_history test in feature_schema.rs.
+        let entries = history.get(sheet.entity_id);
+        assert_eq!(
+            entries.len(),
+            1,
+            "Should have one history entry after turn 1"
+        );
     }
 }
