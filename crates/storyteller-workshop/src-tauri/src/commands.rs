@@ -35,7 +35,7 @@ use storyteller_engine::workshop::the_flute_kept;
 
 use crate::engine_state::EngineState;
 use crate::events::{DebugEvent, TokenCounts, DEBUG_EVENT_CHANNEL};
-use crate::session::{SessionStore, SessionSummary};
+use crate::session::{SessionStore, SessionSummary, TurnRecord};
 use crate::session_log::{ContextAssemblyLog, LogEntry, SessionLog, TimingLog};
 
 // ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ pub async fn start_scene(
     let pyotir = the_flute_kept::pyotir();
     let characters = vec![bramblehoof, pyotir];
 
-    setup_and_render_opening(&app, scene, characters, &state, None).await
+    setup_and_render_opening(&app, scene, characters, &state, None, None).await
 }
 
 /// Return the genre catalog from the scene composer.
@@ -247,6 +247,7 @@ pub async fn compose_scene(
         composed.characters,
         &state,
         Some(session_id),
+        Some(&session_store),
     )
     .await
 }
@@ -268,7 +269,15 @@ pub async fn resume_session(
     session_store: State<'_, Arc<SessionStore>>,
 ) -> Result<SceneInfo, String> {
     let (_selections, scene, characters) = session_store.load_session(&session_id)?;
-    setup_and_render_opening(&app, scene, characters, &state, Some(session_id)).await
+    setup_and_render_opening(
+        &app,
+        scene,
+        characters,
+        &state,
+        Some(session_id),
+        Some(&session_store),
+    )
+    .await
 }
 
 /// Process player input through the engine pipeline and return the narrator's response.
@@ -653,38 +662,33 @@ pub async fn submit_input(
     };
     engine.session_log.append(&log_entry)?;
 
-    // Append to persisted session events.jsonl if this is a persisted session.
+    // Persist turn to turns.jsonl (replaces events.jsonl).
     if let Some(ref sid) = engine.session_id {
-        let events_path = session_store.events_path(sid);
-        let event_line = serde_json::json!({
-            "turn": turn,
-            "timestamp": log_entry.timestamp.to_rfc3339(),
-            "player_input": log_entry.player_input,
-            "narrator_output": log_entry.narrator_output,
-            "classifications": classifications,
-            "decomposition": persisted_decomposition,
-            "arbitration": arbitration_json,
-            "timing": {
+        let turn_record = TurnRecord {
+            turn,
+            player_input: Some(log_entry.player_input.clone()),
+            narrator_output: rendering.text.clone(),
+            predictions: serde_json::to_value(&resolver_output.original_predictions).ok(),
+            intent_statements: resolver_output.intent_statements.clone(),
+            classifications: Some(classifications),
+            decomposition: persisted_decomposition,
+            arbitration: Some(arbitration_json),
+            context_assembly: Some(serde_json::json!({
+                "preamble_tokens": token_counts.0,
+                "journal_tokens": token_counts.1,
+                "retrieved_tokens": token_counts.2,
+                "total_tokens": token_counts.3,
+            })),
+            timing: Some(serde_json::json!({
                 "prediction_ms": prediction_ms,
                 "assembly_ms": assembly_ms,
                 "narrator_ms": narrator_ms,
-            },
-            "context_tokens": {
-                "preamble": token_counts.0,
-                "journal": token_counts.1,
-                "retrieved": token_counts.2,
-                "total": token_counts.3,
-            },
-        });
-        let mut line =
-            serde_json::to_string(&event_line).map_err(|e| format!("serialize event: {e}"))?;
-        line.push('\n');
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&events_path)
-            .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()))
-            .map_err(|e| format!("append events.jsonl: {e}"))?;
+            })),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        if let Err(e) = session_store.append_turn(sid, &turn_record) {
+            tracing::warn!(error = %e, "Failed to persist turn {turn}");
+        }
     }
 
     Ok(TurnResult {
@@ -730,6 +734,7 @@ async fn setup_and_render_opening(
     characters: Vec<CharacterSheet>,
     state: &State<'_, Mutex<Option<EngineState>>>,
     session_id: Option<String>,
+    session_store: Option<&State<'_, Arc<SessionStore>>>,
 ) -> Result<SceneInfo, String> {
     let characters_refs: Vec<&_> = characters.iter().collect();
     let entity_ids: Vec<_> = characters.iter().map(|c| c.entity_id).collect();
@@ -958,6 +963,34 @@ async fn setup_and_render_opening(
         },
     };
     session_log.append(&log_entry)?;
+
+    // Persist turn 0 (opening narration) to turns.jsonl
+    if let (Some(sid), Some(store)) = (&session_id, &session_store) {
+        let turn0 = TurnRecord {
+            turn: 0,
+            player_input: None,
+            narrator_output: opening.text.clone(),
+            predictions: None,
+            intent_statements: None,
+            classifications: None,
+            decomposition: None,
+            arbitration: None,
+            context_assembly: Some(serde_json::json!({
+                "preamble_tokens": token_counts.0,
+                "journal_tokens": token_counts.1,
+                "retrieved_tokens": token_counts.2,
+                "total_tokens": token_counts.3,
+            })),
+            timing: Some(serde_json::json!({
+                "assembly_ms": assembly_ms,
+                "narrator_ms": narrator_ms,
+            })),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        if let Err(e) = store.append_turn(sid, &turn0) {
+            tracing::warn!(error = %e, "Failed to persist turn 0");
+        }
+    }
 
     let scene_info = SceneInfo {
         title: scene.title.clone(),
