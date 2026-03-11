@@ -165,6 +165,7 @@ async fn main() -> anyhow::Result<()> {
         scene_dynamics: "A quiet arrival — the distance between them is physical and temporal"
             .to_string(),
         conflicts: vec![],
+        intent_statements: None,
     };
 
     // Assemble initial context for the opening
@@ -324,6 +325,7 @@ async fn main() -> anyhow::Result<()> {
                 original_predictions: predictions,
                 scene_dynamics: "ML-predicted character behavior".to_string(),
                 conflicts: vec![],
+                intent_statements: None,
             }
         } else {
             ResolverOutput {
@@ -333,6 +335,7 @@ async fn main() -> anyhow::Result<()> {
                     "A quiet arrival — the distance between them is physical and temporal"
                         .to_string(),
                 conflicts: vec![],
+                intent_statements: None,
             }
         };
 

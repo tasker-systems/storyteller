@@ -310,6 +310,7 @@ mod tests {
                 original_predictions: vec![],
                 scene_dynamics: "A quiet moment of observation.".to_string(),
                 conflicts: vec![],
+                intent_statements: None,
             },
             events: vec![NarrativeEvent {
                 id: EventId::new(),

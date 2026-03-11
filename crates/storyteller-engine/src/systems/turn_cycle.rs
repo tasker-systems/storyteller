@@ -229,6 +229,7 @@ pub fn resolve_system(mut stage: ResMut<ActiveTurnStage>, mut turn_ctx: ResMut<T
         original_predictions: predictions,
         scene_dynamics: String::new(),
         conflicts: vec![],
+        intent_statements: None,
     };
 
     turn_ctx.resolver_output = Some(resolver_output);
@@ -258,6 +259,7 @@ pub fn assemble_context_system(
         original_predictions: vec![],
         scene_dynamics: String::new(),
         conflicts: vec![],
+        intent_statements: None,
     });
 
     let characters: Vec<&storyteller_core::types::character::CharacterSheet> =
@@ -778,6 +780,7 @@ mod tests {
             original_predictions: vec![],
             scene_dynamics: String::new(),
             conflicts: vec![],
+            intent_statements: None,
         });
         app.world_mut().resource_mut::<TurnContext>().player_input =
             Some("I approach slowly".to_string());

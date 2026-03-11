@@ -314,6 +314,7 @@ pub async fn submit_input(
             original_predictions: predictions,
             scene_dynamics: "ML-predicted character behavior".to_string(),
             conflicts: vec![],
+            intent_statements: None,
         }
     } else {
         ResolverOutput {
@@ -322,6 +323,7 @@ pub async fn submit_input(
             scene_dynamics: "A quiet arrival — the distance between them is physical and temporal"
                 .to_string(),
             conflicts: vec![],
+            intent_statements: None,
         }
     };
     let prediction_ms = predict_start.elapsed().as_millis() as u64;
@@ -787,6 +789,7 @@ async fn setup_and_render_opening(
                 original_predictions: vec![],
                 scene_dynamics: "Opening turn — no player input yet".to_string(),
                 conflicts: vec![],
+                intent_statements: None,
             },
             timing_ms: 0,
             model_loaded: predictor.is_some(),
@@ -829,6 +832,7 @@ async fn setup_and_render_opening(
         scene_dynamics: "A quiet arrival — the distance between them is physical and temporal"
             .to_string(),
         conflicts: vec![],
+        intent_statements: None,
     };
 
     let observer = CollectingObserver::new();

@@ -336,6 +336,7 @@ mod tests {
                 original_predictions: vec![],
                 scene_dynamics: "Quiet tension between recognition and distance".to_string(),
                 conflicts: vec![],
+                intent_statements: None,
             },
             player_input_summary: "I approach the fence slowly.".to_string(),
             estimated_tokens: 1500,
