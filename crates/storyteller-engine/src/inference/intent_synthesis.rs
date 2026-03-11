@@ -10,7 +10,7 @@
 use storyteller_core::traits::llm::{CompletionRequest, LlmProvider, Message, MessageRole};
 use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::entity::EntityId;
-use storyteller_core::types::prediction::CharacterPrediction;
+use storyteller_core::types::prediction::{ActionType, CharacterPrediction, SpeechRegister};
 
 /// Returns the system prompt for the intent synthesizer.
 pub fn intent_synthesis_system_prompt() -> String {
@@ -99,6 +99,68 @@ pub fn format_dominant_axes(sheet: &CharacterSheet, count: usize) -> String {
 /// Converts an axis ID to a readable English name. Underscores become hyphens.
 fn axis_id_to_readable(id: &str) -> String {
     id.replace('_', "-")
+}
+
+/// Converts a `CharacterPrediction` into natural language for the 3b-instruct model.
+///
+/// Output examples:
+/// - `"would most likely examine (85% confidence), unlikely to move (15%)"`
+/// - `"would most likely move (70% confidence); likely to speak (conversational, 65% confidence)"`
+pub fn format_prediction_readable(pred: &CharacterPrediction) -> String {
+    let mut parts = Vec::new();
+
+    let mut actions = pred.actions.clone();
+    actions.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    for (i, action) in actions.iter().enumerate() {
+        let action_name = action_type_to_readable(action.action_type);
+        let pct = (action.confidence * 100.0).round() as u32;
+        if i == 0 {
+            parts.push(format!(
+                "would most likely {action_name} ({pct}% confidence)"
+            ));
+        } else if action.confidence < 0.3 {
+            parts.push(format!("unlikely to {action_name} ({pct}%)"));
+        } else {
+            parts.push(format!("might {action_name} ({pct}%)"));
+        }
+    }
+
+    if let Some(ref speech) = pred.speech {
+        let register = speech_register_to_readable(speech.register);
+        let pct = (speech.confidence * 100.0).round() as u32;
+        parts.push(format!("likely to speak ({register}, {pct}% confidence)"));
+    }
+
+    if parts.is_empty() {
+        "no strong behavioral prediction".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
+fn action_type_to_readable(action_type: ActionType) -> &'static str {
+    match action_type {
+        ActionType::Perform => "act",
+        ActionType::Speak => "speak",
+        ActionType::Move => "move",
+        ActionType::Examine => "examine",
+        ActionType::Wait => "wait",
+        ActionType::Resist => "resist",
+    }
+}
+
+fn speech_register_to_readable(register: SpeechRegister) -> &'static str {
+    match register {
+        SpeechRegister::Whisper => "whispered",
+        SpeechRegister::Conversational => "conversational",
+        SpeechRegister::Declamatory => "raised voice",
+        SpeechRegister::Internal => "internal",
+    }
 }
 
 /// Produces a compact summary of a character sheet for the intent synthesizer.
@@ -448,5 +510,131 @@ mod tests {
         assert_eq!(count_2, 2);
         assert!(count_5 <= 5);
         assert!(count_5 > count_2);
+    }
+
+    #[test]
+    fn format_prediction_readable_includes_action_and_confidence() {
+        use storyteller_core::types::prediction::*;
+        use storyteller_core::types::tensor::AwarenessLevel;
+
+        let pred = CharacterPrediction {
+            character_id: EntityId::new(),
+            character_name: "Arthur".to_string(),
+            frame: ActivatedTensorFrame {
+                activated_axes: vec!["grief".to_string()],
+                activation_reason: "loss context".to_string(),
+                confidence: 0.8,
+            },
+            actions: vec![ActionPrediction {
+                description: "Observes carefully".to_string(),
+                confidence: 0.85,
+                action_type: ActionType::Examine,
+                target: None,
+            }],
+            speech: None,
+            thought: ThoughtPrediction {
+                emotional_subtext: "guarded hope".to_string(),
+                awareness_level: AwarenessLevel::Recognizable,
+                internal_conflict: None,
+            },
+            emotional_deltas: vec![],
+        };
+
+        let result = format_prediction_readable(&pred);
+        assert!(
+            result.contains("examine"),
+            "Should mention action type: {result}"
+        );
+        assert!(
+            result.contains("85%"),
+            "Should include confidence: {result}"
+        );
+    }
+
+    #[test]
+    fn format_prediction_readable_includes_speech_when_present() {
+        use storyteller_core::types::prediction::*;
+        use storyteller_core::types::tensor::AwarenessLevel;
+
+        let pred = CharacterPrediction {
+            character_id: EntityId::new(),
+            character_name: "Arthur".to_string(),
+            frame: ActivatedTensorFrame {
+                activated_axes: vec![],
+                activation_reason: "test".to_string(),
+                confidence: 0.8,
+            },
+            actions: vec![ActionPrediction {
+                description: "Approaches".to_string(),
+                confidence: 0.70,
+                action_type: ActionType::Move,
+                target: None,
+            }],
+            speech: Some(SpeechPrediction {
+                content_direction: "deflecting with humor".to_string(),
+                register: SpeechRegister::Conversational,
+                confidence: 0.65,
+            }),
+            thought: ThoughtPrediction {
+                emotional_subtext: "nervous".to_string(),
+                awareness_level: AwarenessLevel::Recognizable,
+                internal_conflict: None,
+            },
+            emotional_deltas: vec![],
+        };
+
+        let result = format_prediction_readable(&pred);
+        assert!(result.contains("speak"), "Should mention speech: {result}");
+        assert!(
+            result.contains("conversational"),
+            "Should mention register: {result}"
+        );
+        assert!(
+            result.contains("65%"),
+            "Should include speech confidence: {result}"
+        );
+    }
+
+    #[test]
+    fn format_prediction_readable_handles_multiple_actions() {
+        use storyteller_core::types::prediction::*;
+        use storyteller_core::types::tensor::AwarenessLevel;
+
+        let pred = CharacterPrediction {
+            character_id: EntityId::new(),
+            character_name: "Arthur".to_string(),
+            frame: ActivatedTensorFrame {
+                activated_axes: vec![],
+                activation_reason: "test".to_string(),
+                confidence: 0.8,
+            },
+            actions: vec![
+                ActionPrediction {
+                    description: "Observes".to_string(),
+                    confidence: 0.85,
+                    action_type: ActionType::Examine,
+                    target: None,
+                },
+                ActionPrediction {
+                    description: "Moves".to_string(),
+                    confidence: 0.15,
+                    action_type: ActionType::Move,
+                    target: None,
+                },
+            ],
+            speech: None,
+            thought: ThoughtPrediction {
+                emotional_subtext: "calm".to_string(),
+                awareness_level: AwarenessLevel::Recognizable,
+                internal_conflict: None,
+            },
+            emotional_deltas: vec![],
+        };
+
+        let result = format_prediction_readable(&pred);
+        assert!(
+            result.contains("most likely"),
+            "Should identify primary: {result}"
+        );
     }
 }
