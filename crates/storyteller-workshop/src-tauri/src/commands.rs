@@ -742,6 +742,7 @@ pub async fn submit_input(
         &entity_ids,
         DEFAULT_TOTAL_TOKEN_BUDGET,
         &observer,
+        engine.player_entity_id,
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
@@ -1065,6 +1066,13 @@ async fn setup_and_render_opening(
         intent_statements: None,
     };
 
+    // Find player character: first cast member whose role contains "protagonist"
+    let player_entity_id = scene
+        .cast
+        .iter()
+        .find(|c| c.role.to_lowercase().contains("protagonist"))
+        .map(|c| c.entity_id);
+
     let observer = CollectingObserver::new();
     let assembly_start = Instant::now();
     let context = assemble_narrator_context(
@@ -1076,6 +1084,7 @@ async fn setup_and_render_opening(
         &entity_ids,
         DEFAULT_TOTAL_TOKEN_BUDGET,
         &observer,
+        player_entity_id,
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
@@ -1223,13 +1232,6 @@ async fn setup_and_render_opening(
         cast: scene.cast.iter().map(|c| c.name.clone()).collect(),
         opening_prose: opening.text,
     };
-
-    // Find player character: first cast member whose role contains "protagonist"
-    let player_entity_id = scene
-        .cast
-        .iter()
-        .find(|c| c.role.to_lowercase().contains("protagonist"))
-        .map(|c| c.entity_id);
 
     // Store engine state
     let engine_state = EngineState {

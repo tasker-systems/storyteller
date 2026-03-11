@@ -10,6 +10,7 @@ use chrono::Utc;
 
 use storyteller_core::traits::phase_observer::{PhaseEvent, PhaseEventDetail, PhaseObserver};
 use storyteller_core::types::character::{CharacterSheet, SceneData};
+use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::{CastDescription, PersistentPreamble};
 use storyteller_core::types::turn_cycle::TurnCycleStage;
 
@@ -24,6 +25,7 @@ pub fn build_preamble(
     scene: &SceneData,
     characters: &[&CharacterSheet],
     observer: &dyn PhaseObserver,
+    player_entity_id: Option<EntityId>,
 ) -> PersistentPreamble {
     // Narrator voice — hardcoded for the prototype (matches the existing
     // narrator system prompt style). In production this comes from a
@@ -72,6 +74,7 @@ pub fn build_preamble(
                 name: cast_entry.name.clone(),
                 role: cast_entry.role.clone(),
                 voice_note,
+                is_player: player_entity_id == Some(cast_entry.entity_id),
             }
         })
         .collect();
@@ -175,7 +178,7 @@ mod tests {
         let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
 
         let observer = CollectingObserver::new();
-        let preamble = build_preamble(&scene, &characters, &observer);
+        let preamble = build_preamble(&scene, &characters, &observer, None);
 
         // Cast
         assert_eq!(preamble.cast_descriptions.len(), 2);
@@ -222,7 +225,7 @@ mod tests {
         let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
 
         let observer = storyteller_core::traits::NoopObserver;
-        let preamble = build_preamble(&scene, &characters, &observer);
+        let preamble = build_preamble(&scene, &characters, &observer, None);
         let tokens = estimate_preamble_tokens(&preamble);
 
         // Architecture doc says ~600-800 tokens for Tier 1
@@ -242,7 +245,7 @@ mod tests {
         let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
 
         let observer = storyteller_core::traits::NoopObserver;
-        let preamble = build_preamble(&scene, &characters, &observer);
+        let preamble = build_preamble(&scene, &characters, &observer, None);
         let rendered = render_preamble(&preamble);
 
         assert!(rendered.contains("## Your Voice"));

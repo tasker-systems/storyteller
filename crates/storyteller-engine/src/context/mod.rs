@@ -49,9 +49,10 @@ pub fn assemble_narrator_context(
     referenced_entities: &[EntityId],
     total_budget: u32,
     observer: &dyn PhaseObserver,
+    player_entity_id: Option<EntityId>,
 ) -> NarratorContextInput {
     // Tier 1: Preamble
-    let preamble = build_preamble(scene, characters, observer);
+    let preamble = build_preamble(scene, characters, observer, player_entity_id);
     let preamble_tokens = estimate_preamble_tokens(&preamble);
 
     // Tier 2: Journal (already built and compressed externally)
@@ -131,6 +132,7 @@ mod tests {
             &[bramblehoof.entity_id, pyotir.entity_id],
             DEFAULT_TOTAL_TOKEN_BUDGET,
             &observer,
+            None,
         );
 
         // All three tiers present
@@ -177,6 +179,7 @@ mod tests {
             &[bramblehoof.entity_id],
             100, // absurdly low budget
             &observer,
+            None,
         );
 
         let events = observer.take_events();

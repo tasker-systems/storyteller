@@ -282,6 +282,7 @@ pub fn assemble_context_system(
         &[], // referenced_entities — empty for now
         crate::context::DEFAULT_TOTAL_TOKEN_BUDGET,
         &NoopObserver,
+        None, // player_entity_id — Bevy system doesn't track player entity yet
     );
 
     tracing::debug!(
