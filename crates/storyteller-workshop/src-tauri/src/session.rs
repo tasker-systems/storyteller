@@ -1,6 +1,7 @@
 //! Session persistence — flat-file JSON storage in `.story/sessions/`.
 
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,32 @@ pub struct SessionSummary {
     pub cast_names: Vec<String>,
     /// Number of events recorded in the session so far.
     pub turn_count: usize,
+}
+
+/// A single turn record persisted to turns.jsonl.
+///
+/// Turn 0 is the opening narration (player_input is None).
+/// Subsequent turns contain the full pipeline output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnRecord {
+    pub turn: u32,
+    pub player_input: Option<String>,
+    pub narrator_output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predictions: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intent_statements: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classifications: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decomposition: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arbitration: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_assembly: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timing: Option<serde_json::Value>,
+    pub timestamp: String,
 }
 
 /// Write a serializable value as pretty-printed JSON to a file within a directory.
@@ -131,11 +158,19 @@ impl SessionStore {
                 Err(_) => "Untitled".to_string(),
             };
 
-            // Count lines in events.jsonl for turn count.
+            // Count lines in turns.jsonl (preferred) or events.jsonl (fallback).
+            let turns_path = path.join("turns.jsonl");
             let events_path = path.join("events.jsonl");
-            let turn_count = match fs::read_to_string(&events_path) {
-                Ok(s) => s.lines().filter(|l| !l.is_empty()).count(),
-                Err(_) => 0,
+            let turn_count = if turns_path.exists() {
+                match fs::read_to_string(&turns_path) {
+                    Ok(s) => s.lines().filter(|l| !l.is_empty()).count(),
+                    Err(_) => 0,
+                }
+            } else {
+                match fs::read_to_string(&events_path) {
+                    Ok(s) => s.lines().filter(|l| !l.is_empty()).count(),
+                    Err(_) => 0,
+                }
             };
 
             let cast_names: Vec<String> = selections
@@ -188,6 +223,50 @@ impl SessionStore {
     /// Returns the path to `events.jsonl` for a session, for appending events.
     pub fn events_path(&self, session_id: &str) -> PathBuf {
         self.base_dir.join(session_id).join("events.jsonl")
+    }
+
+    /// Returns the path to `turns.jsonl` for a session.
+    pub fn turns_path(&self, session_id: &str) -> PathBuf {
+        self.base_dir.join(session_id).join("turns.jsonl")
+    }
+
+    /// Append a turn record as a JSON line to the session's `turns.jsonl`.
+    ///
+    /// Creates the file on first call.
+    pub fn append_turn(&self, session_id: &str, record: &TurnRecord) -> Result<(), String> {
+        let path = self.turns_path(session_id);
+        let mut json =
+            serde_json::to_string(record).map_err(|e| format!("serialize turn record: {e}"))?;
+        json.push('\n');
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("open turns.jsonl: {e}"))?;
+
+        file.write_all(json.as_bytes())
+            .map_err(|e| format!("write turns.jsonl: {e}"))?;
+
+        Ok(())
+    }
+
+    /// Load all turn records from a session's `turns.jsonl`.
+    ///
+    /// Returns an empty vec if the file does not exist.
+    pub fn load_turns(&self, session_id: &str) -> Result<Vec<TurnRecord>, String> {
+        let path = self.turns_path(session_id);
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let contents = fs::read_to_string(&path).map_err(|e| format!("read turns.jsonl: {e}"))?;
+
+        contents
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|line| serde_json::from_str(line).map_err(|e| format!("parse turn record: {e}")))
+            .collect()
     }
 }
 
@@ -296,5 +375,65 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn turn_record_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("storyteller-test-{}", uuid::Uuid::now_v7()));
+        let store = SessionStore::new(&dir).expect("create store");
+
+        let session_id = "test-session-001";
+        fs::create_dir_all(dir.join(".story/sessions").join(session_id))
+            .expect("create session dir");
+
+        let turn0 = TurnRecord {
+            turn: 0,
+            player_input: None,
+            narrator_output: "The old rectory stands quiet.".to_string(),
+            predictions: None,
+            intent_statements: None,
+            classifications: None,
+            decomposition: None,
+            arbitration: None,
+            context_assembly: None,
+            timing: None,
+            timestamp: "2026-03-10T21:00:00Z".to_string(),
+        };
+
+        let turn1 = TurnRecord {
+            turn: 1,
+            player_input: Some("Margaret enters.".to_string()),
+            narrator_output: "Margaret steps through the door.".to_string(),
+            predictions: Some(serde_json::json!([{"character_name": "Arthur"}])),
+            intent_statements: Some("**Arthur** should look up warily.".to_string()),
+            classifications: Some(vec!["SpeechAct: 0.62".to_string()]),
+            decomposition: None,
+            arbitration: Some(serde_json::json!({"verdict": "Permitted"})),
+            context_assembly: None,
+            timing: Some(serde_json::json!({"narrator_ms": 5000})),
+            timestamp: "2026-03-10T21:01:00Z".to_string(),
+        };
+
+        store
+            .append_turn(session_id, &turn0)
+            .expect("append turn 0");
+        store
+            .append_turn(session_id, &turn1)
+            .expect("append turn 1");
+
+        let loaded = store.load_turns(session_id).expect("load turns");
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].turn, 0);
+        assert!(loaded[0].player_input.is_none());
+        assert_eq!(loaded[1].turn, 1);
+        assert_eq!(loaded[1].player_input.as_deref(), Some("Margaret enters."));
+        assert!(loaded[1].intent_statements.is_some());
+
+        // Verify list_sessions counts turns from turns.jsonl
+        // (session_id is not a UUIDv7, so list_sessions may or may not include
+        // it, but turns_path and load_turns are the primary contract under test.)
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&dir);
     }
 }
