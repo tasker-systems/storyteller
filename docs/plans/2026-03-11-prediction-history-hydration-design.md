@@ -49,11 +49,15 @@ Each `HistoryEntry` is derived from a `CharacterPrediction`:
 | `action_type` | `actions[0].action_type` (highest confidence action) |
 | `speech_register` | `speech.register` if speech predicted, else `Conversational` default |
 | `awareness_level` | `thought.awareness_level` |
-| `emotional_valence` | Sum of positive `emotional_deltas` intensity changes minus sum of negative |
+| `emotional_valence` | Sum of positive `emotional_deltas.intensity_change` minus sum of negative, clamped to `[-1.0, 1.0]` |
 
 ### PredictionHistory Type
 
-A `HashMap<EntityId, VecDeque<HistoryEntry>>` with max depth 3 per character. Owned by the caller (workshop `EngineState` or Bevy resource), not by the ML layer. The prediction function receives `&HashMap<EntityId, VecDeque<HistoryEntry>>` and looks up each character's entries.
+A `HashMap<EntityId, VecDeque<HistoryEntry>>` with max depth 3 per character. Owned by the caller (workshop `EngineState` or Bevy resource), not by the ML layer.
+
+### predict_character_behaviors() Signature Change
+
+The function gains a `history: &HashMap<EntityId, VecDeque<HistoryEntry>>` parameter. Inside its per-character `.map()` closure, it looks up the character's history by `EntityId` and converts to `&[HistoryEntry]` for `PredictionInput.history`. Characters with no history entry get `&[]` (empty slice, same as current behavior). This keeps the call site clean — callers pass the whole map, the function handles per-character lookup internally.
 
 ### Integration Points
 
@@ -114,8 +118,10 @@ This is captured as a named future direction. The prediction-derived history (ap
 - Verify encoding matches the expected one-hot positions for known action types / registers
 
 **Integration tests (feature-gated `test-ml-model`):**
-- `predict_character_behaviors()` with populated history vs empty history produces different output vectors
-- Two consecutive simulated turns with the same event input but accumulated history produce different predictions
+- `predict_character_behaviors()` with populated history vs empty history — verify the encoding pipeline is wired correctly (non-zero features at indices 405-452 reach the model)
+- Two consecutive simulated turns with the same event input but accumulated history — verify the pipeline assembles and encodes correctly end-to-end
+
+**Note on model sensitivity:** The current ONNX model was trained with Region 7 features at zero. These integration tests validate that the *encoding pipeline* is wired correctly, not that the model produces meaningfully different outputs. The model may need retraining with non-zero history signal before the predictions visibly change — but that retraining is out of scope for this spec.
 
 ## Scope Boundaries
 
