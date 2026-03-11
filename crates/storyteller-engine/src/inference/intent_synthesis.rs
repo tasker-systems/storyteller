@@ -40,8 +40,10 @@ Rules for the player character (marked [PLAYER CHARACTER]):
 - If the directed action is in tension with the character's nature, call this out explicitly — this is how the system nudges players toward authentic characterization without forcing their hand.
 - This is advisory — the narrator decides how to weigh it.
 
-Format each character section as:
-**CharacterName** directive paragraph here."
+Format:
+
+**CharacterName**
+[Your directive paragraph for this character.]"
         .to_string()
 }
 
