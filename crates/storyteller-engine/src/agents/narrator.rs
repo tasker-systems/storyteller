@@ -228,7 +228,12 @@ or awareness, never by restating it. Assume the reader remembers.
 ## Scope
 Render ONLY the actions and events described in "This Turn." Do not
 invent departures, goodbyes, or scene resolutions. Do not write beyond
-the moment. The scene continues after your passage ends.
+the moment.
+
+End mid-moment. Your last sentence should feel like the next thing is
+already happening — a gesture half-completed, a word hanging in the air,
+a gaze that hasn't yet been returned. The camera holds; it does not fade.
+The scene continues after your passage ends.
 
 Write in present tense, third person. HARD LIMIT: under 200 words."#
     )
@@ -372,6 +377,10 @@ mod tests {
         assert!(prompt.contains("Pyotir"));
         assert!(prompt.contains("present tense"));
         assert!(prompt.contains("intent statements"));
+        assert!(
+            prompt.contains("End mid-moment"),
+            "Should have mid-moment ending instruction"
+        );
     }
 
     #[test]
@@ -510,6 +519,24 @@ mod tests {
             events[1].detail,
             PhaseEventDetail::NarratorRenderingComplete { .. }
         ));
+    }
+
+    #[test]
+    fn system_prompt_has_mid_moment_ending_instruction() {
+        let context = mock_context();
+        let prompt = build_system_prompt(&context);
+        assert!(
+            prompt.contains("End mid-moment"),
+            "Should instruct mid-moment endings: {prompt}"
+        );
+        assert!(
+            prompt.contains("camera holds"),
+            "Should use camera metaphor: {prompt}"
+        );
+        assert!(
+            prompt.contains("gesture half-completed"),
+            "Should give positive examples of how to end: {prompt}"
+        );
     }
 
     #[test]
