@@ -203,6 +203,14 @@ You receive intent statements describing what each character wants to do
 this turn. Honor these intents — render them with each character's full
 agency. Characters act, speak, and drive the scene. They are not scenery.
 
+When the player character's paragraph appears in the intent statements,
+it describes how the character's nature relates to the player's directed
+action. The player's action is what happens — but render it through who
+the character is. If friction is noted, let the character's body,
+hesitation, or instinct show through the action. Do not block or
+subvert the player's intent. Do not explain the tension to the reader.
+Show it physically.
+
 Render only what is observable — physical actions, speech, gestures.
 Never state what a character thinks, feels, or realizes. Show it through
 the body. Trust the reader to infer.
@@ -502,6 +510,24 @@ mod tests {
             events[1].detail,
             PhaseEventDetail::NarratorRenderingComplete { .. }
         ));
+    }
+
+    #[test]
+    fn system_prompt_includes_tension_rendering_instruction() {
+        let context = mock_context();
+        let prompt = build_system_prompt(&context);
+        assert!(
+            prompt.contains("player character's paragraph"),
+            "Should mention player character intents: {prompt}"
+        );
+        assert!(
+            prompt.contains("Do not block or"),
+            "Should instruct not to block player intent"
+        );
+        assert!(
+            prompt.contains("Show it physically"),
+            "Should instruct physical rendering"
+        );
     }
 
     #[test]
