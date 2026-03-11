@@ -239,29 +239,57 @@ pub fn summarize_prediction(pred: &CharacterPrediction) -> String {
     )
 }
 
-/// Builds character and prediction summaries for all non-player characters.
+/// Builds character and prediction summaries for all characters in the scene.
 ///
 /// Returns `(character_summary, predictions_summary)` as formatted strings.
-/// The player character (identified by `player_entity_id`) is excluded from both.
+/// The player character (identified by `player_entity_id`) is included with a
+/// `[PLAYER CHARACTER]` marker, readable dominant traits, and their directed action.
+/// NPC predictions are included in the predictions summary; player predictions
+/// appear inline in the character summary block.
 pub fn build_summaries(
     characters: &[&CharacterSheet],
     predictions: &[CharacterPrediction],
     player_entity_id: Option<EntityId>,
+    player_input: Option<&str>,
 ) -> (String, String) {
-    let char_lines: Vec<String> = characters
-        .iter()
-        .filter(|c| player_entity_id != Some(c.entity_id))
-        .map(|c| summarize_character(c))
-        .collect();
+    let mut char_lines: Vec<String> = Vec::new();
+    let mut pred_lines: Vec<String> = Vec::new();
 
-    let pred_lines: Vec<String> = predictions
-        .iter()
-        .filter(|p| player_entity_id != Some(p.character_id))
-        .map(summarize_prediction)
-        .collect();
+    for character in characters {
+        let is_player = player_entity_id == Some(character.entity_id);
+
+        if is_player {
+            let action_text = player_input.unwrap_or("(no action specified)");
+            let traits = format_dominant_axes(character, 5);
+            let mut player_block = format!(
+                "[PLAYER CHARACTER — directed action: \"{action_text}\"]\n\
+                 {} | {} | Dominant traits (0-1 scale): {}",
+                character.name, character.performance_notes, traits,
+            );
+
+            if let Some(pred) = predictions
+                .iter()
+                .find(|p| p.character_id == character.entity_id)
+            {
+                let readable_pred = format_prediction_readable(pred);
+                player_block.push_str(&format!("\nML prediction: {readable_pred}"));
+            }
+
+            char_lines.push(player_block);
+        } else {
+            char_lines.push(summarize_character(character));
+        }
+    }
+
+    for pred in predictions {
+        let is_player = player_entity_id == Some(pred.character_id);
+        if !is_player {
+            pred_lines.push(summarize_prediction(pred));
+        }
+    }
 
     let char_summary = if char_lines.is_empty() {
-        "No non-player characters in scene.".to_string()
+        "No characters in scene.".to_string()
     } else {
         char_lines.join("\n")
     };
@@ -318,7 +346,12 @@ pub async fn synthesize_intents(
     scene: &SceneData,
     player_entity_id: Option<EntityId>,
 ) -> Option<String> {
-    let (char_summary, pred_summary) = build_summaries(characters, predictions, player_entity_id);
+    let (char_summary, pred_summary) = build_summaries(
+        characters,
+        predictions,
+        player_entity_id,
+        Some(player_input),
+    );
     let scene_context = build_scene_context(scene);
 
     let user_prompt = build_intent_user_prompt(
@@ -385,29 +418,99 @@ mod tests {
     }
 
     #[test]
-    fn build_summaries_skips_player_character() {
-        // Use the workshop fixtures for fully-constructed CharacterSheets
+    fn build_summaries_includes_player_with_marker_and_npc_without() {
         let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
         let pyotir = crate::workshop::the_flute_kept::pyotir();
-
         let player_id = bramblehoof.entity_id;
         let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
         let predictions = vec![];
-
-        let (char_summary, _) = build_summaries(&characters, &predictions, Some(player_id));
-
-        // Each character summary line starts with "Name |", so check that
-        // no line starts with the player's name
+        let (char_summary, _) = build_summaries(
+            &characters,
+            &predictions,
+            Some(player_id),
+            Some("I approach the fence"),
+        );
         assert!(
-            !char_summary
-                .lines()
-                .any(|line| line.starts_with("Bramblehoof")),
-            "Player should be excluded from summaries"
+            char_summary.contains("[PLAYER CHARACTER"),
+            "Player should have marker"
+        );
+        assert!(
+            char_summary.contains("Bramblehoof"),
+            "Player name should appear"
         );
         assert!(
             char_summary.lines().any(|line| line.starts_with("Pyotir")),
             "NPC should be included in summaries"
         );
+    }
+
+    #[test]
+    fn build_summaries_includes_player_character_with_marker() {
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let pyotir = crate::workshop::the_flute_kept::pyotir();
+        let player_id = bramblehoof.entity_id;
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+        let predictions = vec![];
+        let (char_summary, _) = build_summaries(
+            &characters,
+            &predictions,
+            Some(player_id),
+            Some("I charge at the intruder"),
+        );
+        assert!(
+            char_summary.contains("[PLAYER CHARACTER"),
+            "Should contain player character marker: {char_summary}"
+        );
+        assert!(
+            char_summary.contains("Bramblehoof"),
+            "Player character name should appear: {char_summary}"
+        );
+        assert!(
+            char_summary.contains("directed action"),
+            "Should include directed action label: {char_summary}"
+        );
+        assert!(
+            char_summary.contains("charge at the intruder"),
+            "Should include the player's input: {char_summary}"
+        );
+        assert!(
+            char_summary.contains("Pyotir"),
+            "NPC should be included: {char_summary}"
+        );
+    }
+
+    #[test]
+    fn build_summaries_includes_dominant_traits_for_player() {
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let pyotir = crate::workshop::the_flute_kept::pyotir();
+        let player_id = bramblehoof.entity_id;
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+        let predictions = vec![];
+        let (char_summary, _) = build_summaries(
+            &characters,
+            &predictions,
+            Some(player_id),
+            Some("I look around"),
+        );
+        assert!(
+            char_summary.contains("Dominant traits (0-1 scale):"),
+            "Should label the trait scale: {char_summary}"
+        );
+    }
+
+    #[test]
+    fn build_summaries_backward_compat_no_player() {
+        let bramblehoof = crate::workshop::the_flute_kept::bramblehoof();
+        let pyotir = crate::workshop::the_flute_kept::pyotir();
+        let characters: Vec<&CharacterSheet> = vec![&bramblehoof, &pyotir];
+        let predictions = vec![];
+        let (char_summary, _) = build_summaries(&characters, &predictions, None, None);
+        assert!(
+            !char_summary.contains("[PLAYER CHARACTER"),
+            "Should not have player marker when no player_entity_id"
+        );
+        assert!(char_summary.contains("Bramblehoof"));
+        assert!(char_summary.contains("Pyotir"));
     }
 
     #[test]
