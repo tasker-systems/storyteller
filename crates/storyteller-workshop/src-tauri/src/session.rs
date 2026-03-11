@@ -220,11 +220,6 @@ impl SessionStore {
         Ok((selections, scene, characters))
     }
 
-    /// Returns the path to `events.jsonl` for a session, for appending events.
-    pub fn events_path(&self, session_id: &str) -> PathBuf {
-        self.base_dir.join(session_id).join("events.jsonl")
-    }
-
     /// Returns the path to `turns.jsonl` for a session.
     pub fn turns_path(&self, session_id: &str) -> PathBuf {
         self.base_dir.join(session_id).join("turns.jsonl")
@@ -366,9 +361,9 @@ mod tests {
         assert_eq!(loaded_scene.title, "The Frozen Path");
         assert!(loaded_chars.is_empty());
 
-        // Verify events_path
-        let events = store.events_path(&session_id);
-        assert_eq!(events, session_dir.join("events.jsonl"));
+        // Verify turns_path
+        let turns = store.turns_path(&session_id);
+        assert_eq!(turns, session_dir.join("turns.jsonl"));
 
         // Load nonexistent session
         assert!(store.load_session("nonexistent").is_err());
