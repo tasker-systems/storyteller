@@ -23,9 +23,9 @@ You receive:
 - Recent scene history: what just happened
 - Player input: what the player character just did or said
 
-Your job: Write a brief directive for each non-player character describing what they WANT to do this turn and WHY.
+Your job: Write a brief directive for each character. For non-player characters, describe what they WANT to do this turn and WHY. For the player character, describe how the character's nature relates to the directed action.
 
-Rules:
+Rules for non-player characters:
 - Be directive: \"Arthur should respond\" not \"Arthur might respond\"
 - Be specific about emotional subtext: \"reluctantly, deflecting with humor\" not \"with some emotion\"
 - Include speech direction when a character should speak: \"should say something about...\" not prescribing exact words
@@ -33,6 +33,12 @@ Rules:
 - One paragraph per character, 2-4 sentences each
 - Do NOT write dialogue. The narrator writes all dialogue.
 - Do NOT narrate the scene. You are briefing the narrator, not writing prose.
+
+Rules for the player character (marked [PLAYER CHARACTER]):
+- The player has directed this character's action. Do NOT override it.
+- Describe how this character's personality and emotional state relate to the directed action — whether their nature resists it, inflects it, or suits it. Ground in physical behavior the narrator can render.
+- If the directed action is in tension with the character's nature, call this out explicitly — this is how the system nudges players toward authentic characterization without forcing their hand.
+- This is advisory — the narrator decides how to weigh it.
 
 Format each character section as:
 **CharacterName** directive paragraph here."
@@ -391,6 +397,23 @@ mod tests {
         assert!(prompt.contains("Intent Synthesizer"));
         assert!(prompt.contains("directive"));
         assert!(prompt.contains("Do NOT write dialogue"));
+    }
+
+    #[test]
+    fn system_prompt_includes_player_character_rules() {
+        let prompt = intent_synthesis_system_prompt();
+        assert!(
+            prompt.contains("PLAYER CHARACTER"),
+            "Should mention player character: {prompt}"
+        );
+        assert!(
+            prompt.contains("Do NOT override"),
+            "Should instruct not to override player action: {prompt}"
+        );
+        assert!(
+            prompt.contains("advisory"),
+            "Should note this is advisory: {prompt}"
+        );
     }
 
     #[test]
