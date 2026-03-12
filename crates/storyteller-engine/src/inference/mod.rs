@@ -14,6 +14,7 @@ pub mod event_decomposition;
 pub mod external;
 pub mod frame;
 pub mod intent_synthesis;
+pub mod intention_generation;
 pub mod structured;
 
 #[cfg(feature = "local-llm")]
