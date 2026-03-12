@@ -263,6 +263,27 @@ impl SessionStore {
             .map(|line| serde_json::from_str(line).map_err(|e| format!("parse turn record: {e}")))
             .collect()
     }
+
+    /// Save composed goals to the session directory.
+    pub fn save_goals(&self, session_id: &str, goals: &serde_json::Value) -> Result<(), String> {
+        let path = self.base_dir.join(session_id).join("goals.json");
+        let json = serde_json::to_string_pretty(goals).map_err(|e| e.to_string())?;
+        std::fs::write(&path, json).map_err(|e| format!("Failed to write goals.json: {e}"))
+    }
+
+    /// Load composed goals from the session directory. Returns None if goals.json doesn't exist
+    /// (backward compatibility with pre-goal sessions).
+    pub fn load_goals(&self, session_id: &str) -> Result<Option<serde_json::Value>, String> {
+        let path = self.base_dir.join(session_id).join("goals.json");
+        if !path.exists() {
+            return Ok(None);
+        }
+        let json = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read goals.json: {e}"))?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|e| format!("Failed to parse goals.json: {e}"))?;
+        Ok(Some(value))
+    }
 }
 
 #[cfg(test)]
@@ -717,5 +738,123 @@ mod tests {
         assert_eq!(summaries[2].session_id, id1);
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn goals_roundtrip_through_session() {
+        let dir = std::env::temp_dir().join(format!("storyteller-test-{}", uuid::Uuid::now_v7()));
+        let store = SessionStore::new(&dir).expect("create store");
+
+        // Create a session first using existing test patterns
+        let selections = SceneSelections {
+            genre_id: "test_genre".to_string(),
+            profile_id: "test_profile".to_string(),
+            cast: vec![CastSelection {
+                archetype_id: "hero".to_string(),
+                name: Some("Aldric".to_string()),
+                role: "protagonist".to_string(),
+            }],
+            dynamics: Vec::new(),
+            title_override: Some("Test".to_string()),
+            setting_override: None,
+            seed: None,
+        };
+
+        let scene = SceneData {
+            scene_id: SceneId::new(),
+            title: "Test".to_string(),
+            scene_type: SceneType::Gravitational,
+            setting: SceneSetting {
+                description: "A room".to_string(),
+                affordances: vec![],
+                sensory_details: vec![],
+                aesthetic_detail: String::new(),
+            },
+            cast: vec![],
+            stakes: vec![],
+            constraints: SceneConstraints {
+                hard: vec![],
+                soft: vec![],
+                perceptual: vec![],
+            },
+            emotional_arc: vec![],
+            evaluation_criteria: vec![],
+        };
+
+        let session_id = store
+            .create_session(&selections, &scene, &[])
+            .expect("create session");
+
+        let goals_json = serde_json::json!({
+            "active_scene_goals": [{"goal_id": "protect_secret", "visibility": "Hidden", "selected_fragments": []}],
+            "active_character_goals": {},
+            "generated_intentions": {
+                "scene_intention": {"dramatic_tension": "Test.", "trajectory": "Test."},
+                "character_intentions": []
+            }
+        });
+
+        store
+            .save_goals(&session_id, &goals_json)
+            .expect("save goals");
+        let loaded = store.load_goals(&session_id).expect("load goals");
+        assert!(loaded.is_some());
+        assert_eq!(
+            loaded.unwrap()["active_scene_goals"][0]["goal_id"],
+            "protect_secret"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_goals_returns_none_for_old_sessions() {
+        let dir = std::env::temp_dir().join(format!("storyteller-test-{}", uuid::Uuid::now_v7()));
+        let store = SessionStore::new(&dir).expect("create store");
+
+        let selections = SceneSelections {
+            genre_id: "test_genre".to_string(),
+            profile_id: "test_profile".to_string(),
+            cast: vec![CastSelection {
+                archetype_id: "hero".to_string(),
+                name: Some("Aldric".to_string()),
+                role: "protagonist".to_string(),
+            }],
+            dynamics: Vec::new(),
+            title_override: Some("Test".to_string()),
+            setting_override: None,
+            seed: None,
+        };
+
+        let scene = SceneData {
+            scene_id: SceneId::new(),
+            title: "Test".to_string(),
+            scene_type: SceneType::Gravitational,
+            setting: SceneSetting {
+                description: "A room".to_string(),
+                affordances: vec![],
+                sensory_details: vec![],
+                aesthetic_detail: String::new(),
+            },
+            cast: vec![],
+            stakes: vec![],
+            constraints: SceneConstraints {
+                hard: vec![],
+                soft: vec![],
+                perceptual: vec![],
+            },
+            emotional_arc: vec![],
+            evaluation_criteria: vec![],
+        };
+
+        let session_id = store
+            .create_session(&selections, &scene, &[])
+            .expect("create session");
+
+        // Don't save goals — this is an old session
+        let loaded = store.load_goals(&session_id).expect("load goals");
+        assert!(loaded.is_none());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
