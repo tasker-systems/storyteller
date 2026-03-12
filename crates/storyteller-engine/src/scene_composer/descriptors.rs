@@ -3,11 +3,21 @@
 //! The descriptor files define the combinatorial matrix for scene template generation:
 //! archetypes, genres, profiles, dynamics, axis vocabulary, and cross-dimensions.
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::path::Path;
 
 use storyteller_core::StorytellerError;
+
+/// Deserialize `null` as `Default::default()` (e.g. empty Vec).
+/// Needed because LLM-generated lexicon data emits `null` for optional arrays.
+fn deserialize_null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(|opt| opt.unwrap_or_default())
+}
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -322,7 +332,7 @@ pub struct DimensionalContext {
     pub archetypes: Option<Vec<String>>,
     pub profiles: Option<Vec<String>>,
     pub dynamics: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_as_default")]
     pub valence: Vec<String>,
 }
 
