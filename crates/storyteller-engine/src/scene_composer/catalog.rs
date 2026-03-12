@@ -213,6 +213,75 @@ impl SceneComposer {
     pub(crate) fn find_dynamic(&self, id: &str) -> Option<&Dynamic> {
         self.descriptors.dynamics.iter().find(|d| d.id == id)
     }
+
+    // -- goal system ----------------------------------------------------------
+
+    /// Access the goal definitions from the descriptor set.
+    pub fn goal_defs(&self) -> &[super::descriptors::Goal] {
+        &self.descriptors.goals
+    }
+
+    /// Run goal intersection for a composed scene.
+    ///
+    /// Pass 1: Scene goals from profile ∩ cast archetypes.
+    /// Pass 2: Character goals from archetype ∩ dynamics - blocked.
+    pub fn intersect_goals(
+        &self,
+        selections: &super::compose::SceneSelections,
+        composed: &super::compose::ComposedScene,
+    ) -> super::goals::ComposedGoals {
+        use super::goals::{
+            intersect_character_goals, intersect_scene_goals, CastMember, ComposedGoals,
+        };
+
+        let profile = match self.find_profile(&selections.profile_id) {
+            Some(p) => p,
+            None => return ComposedGoals::default(),
+        };
+
+        // Build cast members with their archetypes and dynamics
+        let cast_members: Vec<CastMember> = composed
+            .characters
+            .iter()
+            .enumerate()
+            .map(|(i, character)| {
+                let archetype = self
+                    .find_archetype(&selections.cast[i].archetype_id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        panic!("archetype {} should exist", selections.cast[i].archetype_id)
+                    });
+
+                let dynamics: Vec<_> = selections
+                    .dynamics
+                    .iter()
+                    .filter(|d| d.cast_index_a == i || d.cast_index_b == i)
+                    .filter_map(|d| self.find_dynamic(&d.dynamic_id).cloned())
+                    .collect();
+
+                CastMember {
+                    entity_id: character.entity_id,
+                    archetype,
+                    dynamics,
+                }
+            })
+            .collect();
+
+        let scene_goals = intersect_scene_goals(profile, &cast_members, &self.descriptors.goals);
+
+        let mut character_goals = std::collections::HashMap::new();
+        for member in &cast_members {
+            let goals = intersect_character_goals(member, &scene_goals, &self.descriptors.goals);
+            if !goals.is_empty() {
+                character_goals.insert(member.entity_id, goals);
+            }
+        }
+
+        ComposedGoals {
+            scene_goals,
+            character_goals,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -29,7 +29,9 @@ use storyteller_engine::inference::event_decomposition::{
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
 use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_engine::inference::structured::OllamaStructuredProvider;
-use storyteller_engine::scene_composer::{ComposedScene, SceneComposer, SceneSelections};
+use storyteller_engine::scene_composer::{
+    ComposedGoals, ComposedScene, SceneComposer, SceneSelections,
+};
 use storyteller_engine::systems::arbitration::check_action_possibility;
 use storyteller_ml::prediction_history::PredictionHistory;
 
@@ -252,9 +254,49 @@ pub async fn compose_scene(
 ) -> Result<SceneInfo, String> {
     let composed: ComposedScene = composer.compose(&selections)?;
 
+    // Goal intersection
+    let mut composed_goals = composer.intersect_goals(&selections, &composed);
+
+    // Likeness pass (populate fragments)
+    use storyteller_engine::scene_composer::likeness::{
+        populate_character_goal_fragments, populate_scene_goal_fragments, LikenessContext,
+    };
+    {
+        let likeness_ctx = LikenessContext {
+            genre_id: &selections.genre_id,
+            profile_id: &selections.profile_id,
+            archetype_ids: selections
+                .cast
+                .iter()
+                .map(|c| c.archetype_id.as_str())
+                .collect(),
+            dynamic_ids: selections
+                .dynamics
+                .iter()
+                .map(|d| d.dynamic_id.as_str())
+                .collect(),
+        };
+        let mut rng = rand::rng();
+        populate_scene_goal_fragments(
+            &mut composed_goals.scene_goals,
+            composer.goal_defs(),
+            &likeness_ctx,
+            &mut rng,
+        );
+        for goals in composed_goals.character_goals.values_mut() {
+            populate_character_goal_fragments(goals, composer.goal_defs(), &likeness_ctx, &mut rng);
+        }
+    }
+
     // Persist the session before rendering (crash-safe: data is on disk first).
     let session_id =
         session_store.create_session(&selections, &composed.scene, &composed.characters)?;
+
+    // Persist goals
+    let goals_json = serde_json::to_value(&composed_goals).map_err(|e| e.to_string())?;
+    session_store
+        .save_goals(&session_id, &goals_json)
+        .map_err(|e| e.to_string())?;
 
     setup_and_render_opening(
         &app,
@@ -263,6 +305,7 @@ pub async fn compose_scene(
         &state,
         Some(session_id),
         Some(&session_store),
+        composed_goals,
     )
     .await
 }
@@ -292,6 +335,14 @@ pub async fn resume_session(
     // Try to load saved turns
     let turns = session_store.load_turns(&session_id)?;
 
+    // Load goals from session (if available)
+    let loaded_goals = session_store
+        .load_goals(&session_id)
+        .map_err(|e| e.to_string())?;
+    let composed_goals: ComposedGoals = loaded_goals
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
     if turns.is_empty() {
         // Legacy session or no turns.jsonl — fall back to fresh opening render
         let scene_info = setup_and_render_opening(
@@ -301,6 +352,7 @@ pub async fn resume_session(
             &state,
             Some(session_id),
             Some(&session_store),
+            composed_goals,
         )
         .await?;
 
@@ -954,6 +1006,7 @@ async fn setup_and_render_opening(
     state: &State<'_, Mutex<Option<EngineState>>>,
     session_id: Option<String>,
     session_store: Option<&State<'_, Arc<SessionStore>>>,
+    composed_goals: ComposedGoals,
 ) -> Result<SceneInfo, String> {
     let characters_refs: Vec<&_> = characters.iter().collect();
     let entity_ids: Vec<_> = characters.iter().map(|c| c.entity_id).collect();
@@ -1008,6 +1061,21 @@ async fn setup_and_render_opening(
         };
         tracing::info!("Intent synthesis LLM provider created ({model})");
         Some(Arc::new(ExternalServerProvider::new(config)))
+    };
+
+    // Intention generation (composition-time LLM call)
+    let generated_intentions = if !composed_goals.scene_goals.is_empty() {
+        use storyteller_engine::inference::intention_generation::generate_intentions;
+        let characters_refs_for_ig: Vec<&CharacterSheet> = characters.iter().collect();
+        generate_intentions(
+            llm.as_ref(),
+            &scene,
+            &characters_refs_for_ig,
+            &composed_goals,
+        )
+        .await
+    } else {
+        None
     };
 
     let grammar = PlutchikWestern::new();
@@ -1083,7 +1151,7 @@ async fn setup_and_render_opening(
 
     let observer = CollectingObserver::new();
     let assembly_start = Instant::now();
-    let context = assemble_narrator_context(
+    let mut context = assemble_narrator_context(
         &scene,
         &characters_refs,
         &journal,
@@ -1095,6 +1163,34 @@ async fn setup_and_render_opening(
         player_entity_id,
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
+
+    // Inject goal intentions into preamble
+    use storyteller_engine::inference::intention_generation::intentions_to_preamble;
+    use storyteller_engine::scene_composer::GoalVisibility;
+
+    if let Some(ref intentions) = generated_intentions {
+        let (scene_direction, character_drives) = intentions_to_preamble(intentions);
+        context.preamble.scene_direction = Some(scene_direction);
+        context.preamble.character_drives = character_drives;
+    }
+
+    // Player context based on player's character goals
+    context.preamble.player_context = player_entity_id
+        .and_then(|pid| composed_goals.character_goals.get(&pid))
+        .map(|goals| {
+            goals
+                .iter()
+                .filter(|g| {
+                    matches!(
+                        g.visibility,
+                        GoalVisibility::Overt | GoalVisibility::Signaled
+                    )
+                })
+                .map(|g| g.goal_id.replace('_', " "))
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+        .filter(|s| !s.is_empty());
 
     // Extract token counts from observer
     let token_counts = extract_token_counts(&observer);
