@@ -90,17 +90,26 @@ def enrich_goal(
         goal, relevant_profiles, relevant_archetypes, relevant_dynamics
     )
 
-    response = httpx.post(
-        f"{base_url}/api/generate",
-        json={
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.8, "num_predict": 2000},
-        },
-        timeout=120.0,
-    )
-    response.raise_for_status()
+    for attempt in range(3):
+        try:
+            response = httpx.post(
+                f"{base_url}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.8, "num_predict": 2000},
+                },
+                timeout=600.0,
+            )
+            response.raise_for_status()
+            break
+        except httpx.ReadTimeout:
+            if attempt < 2:
+                print(f"  Timeout (attempt {attempt + 1}/3), retrying...")
+                continue
+            print(f"  Warning: timed out after 3 attempts for {goal['id']}")
+            return []
 
     text = response.json()["response"]
 
@@ -126,13 +135,17 @@ def enrich_all_goals(
     with open(goals_path) as f:
         goals_data = json.load(f)
 
-    for goal in goals_data["goals"]:
-        print(f"Enriching: {goal['id']}...")
+    for i, goal in enumerate(goals_data["goals"]):
+        if goal.get("lexicon"):
+            print(f"Skipping: {goal['id']} (already has {len(goal['lexicon'])} entries)")
+            continue
+        print(f"Enriching: {goal['id']} ({i + 1}/{len(goals_data['goals'])})...")
         entries = enrich_goal(goal, descriptors, model, base_url)
         goal["lexicon"] = entries
         print(f"  Generated {len(entries)} entries")
 
-    with open(goals_path, "w") as f:
-        json.dump(goals_data, f, indent=2)
+        # Save after each goal so progress survives interruption
+        with open(goals_path, "w") as f:
+            json.dump(goals_data, f, indent=2)
 
     print(f"\nDone. Enriched {len(goals_data['goals'])} goals.")
