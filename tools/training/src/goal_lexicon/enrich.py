@@ -98,7 +98,7 @@ def enrich_goal(
                     "model": model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.8, "num_predict": 2000},
+                    "options": {"temperature": 0.8, "num_predict": 8000},
                 },
                 timeout=600.0,
             )
