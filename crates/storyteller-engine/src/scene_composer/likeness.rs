@@ -135,7 +135,7 @@ pub fn select_fragments<R: Rng>(
             FragmentRegister::Atmospheric if atmospherics.len() < 2 => {
                 atmospherics.push(fragment);
             }
-            FragmentRegister::Transitional if transitionals.len() < 1 => {
+            FragmentRegister::Transitional if transitionals.is_empty() => {
                 transitionals.push(fragment);
             }
             _ => {}
