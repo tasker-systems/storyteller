@@ -6250,6 +6250,7 @@ dependencies = [
  "serde_json",
  "storyteller-core",
  "storyteller-engine",
+ "storyteller-ml",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
