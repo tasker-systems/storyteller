@@ -190,6 +190,9 @@ Example goals by category:
 | Bonding | `offer_shelter`, `share_vulnerability`, `find_common_ground` |
 | Departure | `prepare_to_leave`, `say_what_must_be_said`, `resist_farewell` |
 | Protection | `protect_secret`, `shield_someone_vulnerable`, `maintain_deception` |
+| Transaction | `negotiate_terms`, `secure_resource`, `broker_alliance` |
+
+The `transaction` category is the most constrained — compatible only with itself and `confrontation`. It exists primarily for sci-fi noir and low fantasy genres where material exchange drives scenes. The initial vocabulary may include only 1-2 transaction goals; the category is defined now to avoid needing schema changes when those genres are fleshed out.
 
 ## Two-Pass Set Intersection
 
@@ -244,6 +247,8 @@ This prevents moon-base-in-the-library incoherence while preserving productive t
 ### Empty Set Behavior
 
 If intersection produces zero scene goals, that is a valid state. The narrator operates as it does today — no goal-directed guidance, no failure. Goals enrich when present; their absence isn't an error. This keeps the path clean for gravity-derived goals to fill gaps that authored goals don't cover.
+
+Similarly, if a character's goals are all filtered out by the coherence check, that character simply receives no generated intention. The narrator renders them using the existing pipeline (ML predictions + intent synthesis) without goal-directed guidance. This is graceful degradation, not an error — not every character in a scene needs an authored objective.
 
 ## Build-Time Lexicon Enrichment
 
@@ -348,7 +353,7 @@ A scene with 2 scene goals and 2-3 character goals per NPC produces roughly 20-3
 
 ### The Core Step
 
-A single LLM call (qwen 32b or 14b via Ollama) at scene setup that transforms active goals + selected lexicon fragments + full scene context into concrete situational intentions.
+A single LLM call via Ollama at scene setup that transforms active goals + selected lexicon fragments + full scene context into concrete situational intentions. The model is configurable; recommended starting point is `qwen2.5:14b-instruct` for the balance of quality and latency, with `qwen2.5:32b-instruct` available for higher-quality generation at the cost of longer setup time. The model choice is a workshop configuration, not hardcoded.
 
 ### Input Prompt Structure
 
@@ -410,7 +415,7 @@ characters' pursuits naturally complicate each other.
 
 ### Validation
 
-A post-processing check verifies that generated intentions reference objects and locations that exist in the scene's setting description and affordances. If the LLM invents elements not in the setting, the check flags it. Given that setting affordances are in the prompt, this should be rare but is worth catching.
+A post-processing check verifies that generated intentions reference objects and locations that exist in the scene's setting description and affordances. If the LLM invents elements not in the setting, a warning is logged with the invented elements noted, but the intentions are used as-is. The narrator is capable of incorporating novel setting elements, and a warning gives the author feedback for improving setting affordances without blocking scene setup. Given that setting affordances are in the prompt, invention should be rare.
 
 ### Latency
 
@@ -449,6 +454,30 @@ Single LLM call at scene setup (not per-turn). Using the same Ollama infrastruct
 ## Boundaries
 [hard constraints — existing]
 ```
+
+### Struct Changes
+
+`PersistentPreamble` gains two new fields:
+
+```rust
+pub struct PersistentPreamble {
+    pub narrator_identity: String,
+    pub anti_patterns: Vec<String>,
+    pub setting_description: String,
+    pub cast_descriptions: Vec<CastDescription>,
+    pub boundaries: Vec<String>,
+    // NEW
+    pub scene_direction: Option<SceneDirection>,
+    pub character_drives: Vec<CharacterDrive>,
+    pub player_context: Option<String>,
+}
+```
+
+Both fields are `Option`/`Vec` to support graceful degradation — when no goals are active, these are `None`/empty and the preamble renders identically to today.
+
+`build_preamble()` gains a `composed_goals: Option<&ComposedGoals>` parameter. When present, it populates the new fields from the generated intentions. When absent (no goals active, or pre-goal-system scenes), the function behaves identically to its current implementation.
+
+`render_preamble()` conditionally emits the Scene Direction, Character Drives, and Player Context sections only when populated.
 
 ### Token Budget
 
@@ -520,6 +549,55 @@ This stores the full audit trail: which goals were active, what lexicon material
 ### turns.jsonl
 
 Goals are static scene-level data, not per-turn. No changes to turns.jsonl structure for this branch. Future event evaluation work may add per-turn goal progress tracking.
+
+## Files
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `storyteller-data/training-data/descriptors/goals.json` | Goal vocabulary descriptor |
+| `crates/storyteller-engine/src/scene_composer/goals.rs` | Goal types, set intersection, coherence check |
+| `crates/storyteller-engine/src/scene_composer/likeness.rs` | Likeness pass: dimensional match, tensor affinity, diversity sampling |
+| `crates/storyteller-engine/src/inference/intention_generation.rs` | Composition-time LLM call for concrete intention generation |
+| `crates/storyteller-workshop/src-tauri/src/goals.rs` | Session persistence for goals.json in session directory |
+| `tools/training/src/goal_lexicon/` | Python build-time lexicon enrichment pipeline |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `storyteller-data/training-data/descriptors/profiles.json` | Add `scene_goals` field to each profile |
+| `storyteller-data/training-data/descriptors/archetypes.json` | Add `pursuable_goals` field to each archetype |
+| `storyteller-data/training-data/descriptors/dynamics.json` | Add `enabled_goals` and `blocked_goals` fields to each dynamic |
+| `crates/storyteller-engine/src/scene_composer/descriptors.rs` | Deserialize new goal fields; load `goals.json` into `DescriptorSet` |
+| `crates/storyteller-engine/src/scene_composer/compose.rs` | Call goal intersection + likeness pass during `compose()`; return `ComposedGoals` |
+| `crates/storyteller-engine/src/scene_composer/mod.rs` | Re-export new modules |
+| `crates/storyteller-engine/src/context/preamble.rs` | Add `scene_direction`, `character_drives`, `player_context` to `PersistentPreamble`; update `build_preamble()` signature; update `render_preamble()` |
+| `crates/storyteller-workshop/src-tauri/src/commands.rs` | Call intention generation after composition; pass goals to `build_preamble()`; persist `goals.json`; load on resume |
+| `crates/storyteller-workshop/src/lib/SceneSetup.svelte` | Display player character goals in scene setup summary |
+
+## Testing
+
+### Unit Tests
+
+- **Set intersection** (`goals.rs`): Pass 1 scene goal filtering (profile ∩ cast), Pass 2 per-character goals (archetype ∩ dynamics - blocked), coherence filter with affinity table, empty set cases (no scene goals, no character goals, all filtered)
+- **Likeness pass** (`likeness.rs`): Dimensional match scoring (full match, partial match, wildcard), tensor affinity scoring against character tensor values, diversity sampling produces different selections across runs with same inputs
+- **Descriptor loading** (`descriptors.rs`): `goals.json` deserialization, profiles/archetypes/dynamics with new goal fields, backward compatibility (descriptors without goal fields load without error)
+
+### Integration Tests
+
+- **Composition with goals** (`compose.rs`): Full `compose()` call with goal-tagged descriptors produces `ComposedGoals` with expected scene and character goals
+- **Preamble rendering** (`preamble.rs`): Preamble with goals renders Scene Direction and Character Drives sections; preamble without goals renders identically to current behavior
+
+### Feature-Gated Tests (test-llm)
+
+- **Intention generation** (`intention_generation.rs`): Full LLM call with test fixtures produces structured JSON output matching the four-part intention schema; validation check catches invented setting elements
+- **End-to-end** (`commands.rs`): Scene setup with goals produces a preamble containing goal-derived content; narrator opening narration references scene direction
+
+### Build-Time Pipeline Tests (Python)
+
+- **Lexicon generation** (`tools/training/`): Enrichment prompt produces valid lexicon entries with correct schema; dimensional context tags reference valid descriptor IDs
 
 ## Future Work (Not This Branch)
 
