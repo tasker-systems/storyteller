@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod compose;
 pub mod descriptors;
 pub mod goals;
+pub mod likeness;
 pub mod names;
 
 pub use catalog::SceneComposer;
