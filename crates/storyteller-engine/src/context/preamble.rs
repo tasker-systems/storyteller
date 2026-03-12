@@ -89,6 +89,9 @@ pub fn build_preamble(
         setting_description,
         cast_descriptions,
         boundaries,
+        scene_direction: None,
+        character_drives: Vec::new(),
+        player_context: None,
     };
 
     // Emit observability event.

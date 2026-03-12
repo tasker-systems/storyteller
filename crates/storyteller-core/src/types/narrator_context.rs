@@ -40,6 +40,37 @@ pub struct PersistentPreamble {
     pub cast_descriptions: Vec<CastDescription>,
     /// Hard narrative boundaries that cannot be crossed.
     pub boundaries: Vec<String>,
+    /// Scene-level dramaturgical direction. None when goals system is not active.
+    #[serde(default)]
+    pub scene_direction: Option<SceneDirection>,
+    /// Per-character drives generated from goals. Empty when goals system is not active.
+    #[serde(default)]
+    pub character_drives: Vec<CharacterDrive>,
+    /// Player-facing goal context. None when goals system is not active or player has no goals.
+    #[serde(default)]
+    pub player_context: Option<String>,
+}
+
+/// Scene-level dramaturgical direction from goal system.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SceneDirection {
+    /// What this scene is actually about — the specific situation.
+    pub dramatic_tension: String,
+    /// Where the scene is headed — the moment it's building toward.
+    pub trajectory: String,
+}
+
+/// A character's concrete drive in this scene from goal system.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CharacterDrive {
+    /// Character name.
+    pub name: String,
+    /// What they are concretely trying to do.
+    pub objective: String,
+    /// What makes it hard.
+    pub constraint: String,
+    /// How they pursue the objective — manner and tactics.
+    pub behavioral_stance: String,
 }
 
 /// A cast member's description within the preamble.
@@ -190,6 +221,9 @@ mod tests {
                 is_player: false,
             }],
             boundaries: vec!["Pyotir cannot leave".to_string()],
+            scene_direction: None,
+            character_drives: Vec::new(),
+            player_context: None,
         };
         assert_eq!(preamble.cast_descriptions.len(), 1);
         assert_eq!(preamble.anti_patterns.len(), 2);
