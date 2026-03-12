@@ -345,6 +345,9 @@ mod tests {
                     },
                 ],
                 boundaries: vec!["Pyotir cannot leave".to_string()],
+                scene_direction: None,
+                character_drives: Vec::new(),
+                player_context: None,
             },
             journal: SceneJournal::new(SceneId::new(), 1200),
             retrieved: vec![RetrievedContext {

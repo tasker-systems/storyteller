@@ -91,6 +91,9 @@ impl StorykeeperQuery for InMemoryStorykeeper {
             setting_description: String::new(),
             cast_descriptions: Vec::new(),
             boundaries: Vec::new(),
+            scene_direction: None,
+            character_drives: Vec::new(),
+            player_context: None,
         };
 
         let sessions = self.sessions.lock().expect("session lock poisoned");

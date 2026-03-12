@@ -9,6 +9,7 @@ dependencies = [
     "onnx>=1.15.0",
     "onnxruntime>=1.17.0",
     "onnxscript>=0.1.0",
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]
@@ -20,13 +21,14 @@ dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
 
 [project.scripts]
 train-character-model = "training.cli:main"
+enrich-goals = "goal_lexicon.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/training"]
+packages = ["src/training", "src/goal_lexicon"]
 
 [tool.ruff]
 line-length = 100

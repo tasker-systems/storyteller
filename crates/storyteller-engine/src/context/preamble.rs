@@ -89,6 +89,9 @@ pub fn build_preamble(
         setting_description,
         cast_descriptions,
         boundaries,
+        scene_direction: None,
+        character_drives: Vec::new(),
+        player_context: None,
     };
 
     // Emit observability event.
@@ -121,6 +124,19 @@ pub fn estimate_preamble_tokens(preamble: &PersistentPreamble) -> u32 {
     }
     for boundary in &preamble.boundaries {
         total += estimate_tokens(boundary);
+    }
+    if let Some(ref direction) = preamble.scene_direction {
+        total += estimate_tokens(&direction.dramatic_tension);
+        total += estimate_tokens(&direction.trajectory);
+    }
+    for drive in &preamble.character_drives {
+        total += estimate_tokens(&drive.name);
+        total += estimate_tokens(&drive.objective);
+        total += estimate_tokens(&drive.constraint);
+        total += estimate_tokens(&drive.behavioral_stance);
+    }
+    if let Some(ref context) = preamble.player_context {
+        total += estimate_tokens(context);
     }
     total
 }
@@ -155,6 +171,33 @@ pub fn render_preamble(preamble: &PersistentPreamble) -> String {
         if !cast.voice_note.is_empty() {
             output.push_str(&format!("Voice: {}\n", cast.voice_note));
         }
+        output.push('\n');
+    }
+
+    // Scene Direction (from goal system)
+    if let Some(ref direction) = preamble.scene_direction {
+        output.push_str("\n## Scene Direction\n");
+        output.push_str(&direction.dramatic_tension);
+        output.push('\n');
+        output.push_str(&direction.trajectory);
+        output.push('\n');
+    }
+
+    // Character Drives (from goal system)
+    for drive in &preamble.character_drives {
+        output.push_str(&format!("\n## {}'s Drive\n", drive.name));
+        output.push_str(&drive.objective);
+        output.push(' ');
+        output.push_str(&drive.constraint);
+        output.push(' ');
+        output.push_str(&drive.behavioral_stance);
+        output.push('\n');
+    }
+
+    // Player Context (from goal system)
+    if let Some(ref context) = preamble.player_context {
+        output.push_str("\n## Player Context\n");
+        output.push_str(context);
         output.push('\n');
     }
 
@@ -339,5 +382,79 @@ mod tests {
         assert!(rendered.contains("Bramblehoof"));
         assert!(rendered.contains("Pyotir"));
         assert!(rendered.contains("metaphor"));
+    }
+
+    #[test]
+    fn preamble_renders_scene_direction_and_drives() {
+        use storyteller_core::types::narrator_context::{CharacterDrive, SceneDirection};
+
+        let preamble = PersistentPreamble {
+            narrator_identity: "Literary fiction narrator".to_string(),
+            anti_patterns: vec!["Never break character".to_string()],
+            setting_description: "A quiet rectory".to_string(),
+            cast_descriptions: Vec::new(),
+            boundaries: Vec::new(),
+            scene_direction: Some(SceneDirection {
+                dramatic_tension: "Arthur came for a hidden letter.".to_string(),
+                trajectory: "Toward a moment of trust or betrayal.".to_string(),
+            }),
+            character_drives: vec![CharacterDrive {
+                name: "Arthur".to_string(),
+                objective: "Retrieve the letter from the tea caddy.".to_string(),
+                constraint: "Margaret keeps gravitating to the mantel.".to_string(),
+                behavioral_stance: "Polite deflection masking quiet urgency.".to_string(),
+            }],
+            player_context: Some("You sense Arthur is here for more than tea.".to_string()),
+        };
+
+        let rendered = render_preamble(&preamble);
+        assert!(
+            rendered.contains("## Scene Direction"),
+            "should have scene direction header"
+        );
+        assert!(
+            rendered.contains("Arthur came for a hidden letter."),
+            "should contain dramatic tension"
+        );
+        assert!(
+            rendered.contains("## Arthur's Drive"),
+            "should have character drive header"
+        );
+        assert!(
+            rendered.contains("Retrieve the letter"),
+            "should contain objective"
+        );
+        assert!(
+            rendered.contains("## Player Context"),
+            "should have player context header"
+        );
+    }
+
+    #[test]
+    fn preamble_without_goals_renders_same_as_before() {
+        let preamble = PersistentPreamble {
+            narrator_identity: "Literary fiction narrator".to_string(),
+            anti_patterns: vec!["Never break character".to_string()],
+            setting_description: "A quiet rectory".to_string(),
+            cast_descriptions: Vec::new(),
+            boundaries: Vec::new(),
+            scene_direction: None,
+            character_drives: Vec::new(),
+            player_context: None,
+        };
+
+        let rendered = render_preamble(&preamble);
+        assert!(
+            !rendered.contains("## Scene Direction"),
+            "should not have scene direction"
+        );
+        assert!(
+            !rendered.contains("Drive"),
+            "should not have character drives"
+        );
+        assert!(
+            !rendered.contains("## Player Context"),
+            "should not have player context"
+        );
     }
 }
