@@ -24,11 +24,11 @@ def build_enrichment_prompt(
     """Build the prompt for generating behavioral lexicon entries for a goal."""
     prompt = f"""Generate behavioral lexicon entries for this narrative goal.
 
-Goal: {goal['id']}
-Description: {goal['description']}
-Category: {goal['category']}
-Visibility: {goal['visibility']}
-Valence: {goal['valence']}
+Goal: {goal["id"]}
+Description: {goal["description"]}
+Category: {goal["category"]}
+Visibility: {goal["visibility"]}
+Valence: {goal["valence"]}
 
 Relevant profiles (scene types where this goal appears):
 """
