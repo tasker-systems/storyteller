@@ -17,6 +17,7 @@ import type {
   LlmStatus,
   EventDecomposedEvent,
   ActionArbitratedEvent,
+  GoalsGeneratedEvent,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -169,9 +170,6 @@ export function castPairs(
 
 /**
  * Compute the phase status indicator for a debug panel tab.
- *
- * The Events tab is special: it combines classification + decomposition
- * phases with error > processing > complete > pending precedence.
  */
 export function phaseStatus(
   tab: string,
@@ -184,8 +182,9 @@ export function phaseStatus(
     Context: "context",
     "ML Predictions": "prediction",
     Characters: "characters",
-    Events: "events",
+    Events: "decomposition",
     Arbitration: "arbitration",
+    Goals: "goals",
     Narrator: "narrator",
     Logs: "logs",
   };
@@ -194,16 +193,6 @@ export function phaseStatus(
     if (llmChecking) return "processing";
     if (!llmStatus) return "pending";
     return llmStatus.reachable ? "complete" : "error";
-  }
-
-  if (tab === "Events") {
-    const evtStatus = debugState.phases["events"] ?? "pending";
-    const decStatus = debugState.phases["decomposition"] ?? "pending";
-    if (evtStatus === "error" || decStatus === "error") return "error";
-    if (evtStatus === "processing" || decStatus === "processing") return "processing";
-    if (evtStatus === "complete" && decStatus === "complete") return "complete";
-    if (evtStatus === "complete" || decStatus === "complete") return "processing";
-    return "pending";
   }
 
   const phase = TAB_PHASE_MAP[tab];
@@ -220,10 +209,10 @@ export function freshDebugState(turn: number): DebugState {
     prediction: null,
     context: null,
     characters: null,
-    events: null,
     decomposition: null,
     arbitration: null,
     intent_synthesis: null,
+    goals: null,
     narrator: null,
     error: null,
   };
@@ -252,10 +241,6 @@ export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugStat
       next.characters = event;
       next.phases["characters"] = "complete";
       break;
-    case "events_classified":
-      next.events = event;
-      next.phases["events"] = "complete";
-      break;
     case "event_decomposed":
       next.decomposition = event as EventDecomposedEvent;
       next.phases["decomposition"] = event.error ? "error" : "complete";
@@ -267,6 +252,10 @@ export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugStat
     case "intent_synthesized":
       next.intent_synthesis = event;
       next.phases["intent_synthesis"] = "complete";
+      break;
+    case "goals_generated":
+      next.goals = event as GoalsGeneratedEvent;
+      next.phases["goals"] = "complete";
       break;
     case "narrator_complete":
       next.narrator = event;

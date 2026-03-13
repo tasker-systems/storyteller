@@ -455,7 +455,14 @@ pub fn decode_outputs(
     // --- Thought head ---
     let awareness_level = argmax_to_awareness_level(&output[offset..offset + NUM_AWARENESS_LEVELS]);
     offset += NUM_AWARENESS_LEVELS;
-    let dominant_emotion_index = output[offset].round() as u8;
+    let raw_index = output[offset].round() as u8;
+    if raw_index > 7 {
+        tracing::warn!(
+            raw_index,
+            "dominant_emotion_index out of Plutchik range, clamping to 7"
+        );
+    }
+    let dominant_emotion_index = raw_index.min(7);
     offset += 1;
 
     // --- Emotion head ---
@@ -1153,6 +1160,42 @@ mod tests {
             + NUM_PRIMARIES * FEATURES_PER_PRIMARY
             + SELF_EDGE_FEATURES;
         assert!((features[edge_start] - 0.6).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn dominant_emotion_index_clamps_out_of_range() {
+        let mut output = vec![0.0f32; TOTAL_OUTPUT_FEATURES];
+        // Set action head default so decode doesn't produce surprising results
+        output[0] = 1.0;
+
+        // Set dominant_emotion_index position to 8.4 (out of Plutchik 0-7 range)
+        // Position: after action head (14) + speech head (6) + awareness (5) = offset 25
+        let emotion_index_offset = 6 + 1 + 1 + 1 + 5 // action head
+            + 1 + 4 + 1   // speech head
+            + 5; // awareness levels
+        output[emotion_index_offset] = 8.4;
+
+        let pred =
+            decode_outputs(&output, EntityId::new(), vec![], 0.8).expect("decode should succeed");
+
+        // Should clamp to 7, not pass through as 8
+        assert_eq!(pred.thought.dominant_emotion_index, 7);
+    }
+
+    #[test]
+    fn dominant_emotion_index_passes_valid_values() {
+        let mut output = vec![0.0f32; TOTAL_OUTPUT_FEATURES];
+        output[0] = 1.0;
+
+        // Set dominant_emotion_index to 3.0 (valid Plutchik range)
+        let emotion_index_offset = 6 + 1 + 1 + 1 + 5 + 1 + 4 + 1 + 5;
+        output[emotion_index_offset] = 3.0;
+
+        let pred =
+            decode_outputs(&output, EntityId::new(), vec![], 0.8).expect("decode should succeed");
+
+        // Should pass through as 3
+        assert_eq!(pred.thought.dominant_emotion_index, 3);
     }
 
     #[test]

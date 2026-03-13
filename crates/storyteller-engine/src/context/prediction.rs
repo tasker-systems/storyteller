@@ -23,19 +23,19 @@ use storyteller_core::types::prediction::{
 use storyteller_core::types::tensor::AwarenessLevel;
 use storyteller_ml::feature_schema::{EventFeatureInput, PredictionInput, SceneFeatureInput};
 
-use crate::inference::event_classifier::{ClassificationOutput, EventClassifier};
+use crate::inference::event_decomposition::EventDecomposition;
 use crate::inference::frame::CharacterPredictor;
+use storyteller_core::types::event_grammar::RelationalDirection;
 
 use super::tokens::estimate_tokens;
 
 /// Run the full predict → enrich pipeline for all characters in a scene.
 ///
 /// Steps:
-/// 1. Classify player input (ML classifier if available, keyword fallback)
-/// 2. Build scene features from scene data
-/// 3. Build prediction input for each character
-/// 4. Run batch inference via the ONNX model
-/// 5. Enrich each raw prediction with narrative descriptions
+/// 1. Build scene features from scene data
+/// 2. Build prediction input for each character using provided event features
+/// 3. Run batch inference via the ONNX model
+/// 4. Enrich each raw prediction with narrative descriptions
 ///
 /// Returns assembled predictions and optionally the ML classification output.
 /// Logs warnings for any individual character prediction failures.
@@ -43,19 +43,15 @@ pub fn predict_character_behaviors(
     predictor: &CharacterPredictor,
     characters: &[&CharacterSheet],
     scene: &SceneData,
-    player_input: &str,
+    _player_input: &str,
     grammar: &dyn EmotionalGrammar,
-    event_classifier: Option<&EventClassifier>,
+    event_features: EventFeatureInput,
     history: &std::collections::HashMap<
         storyteller_core::types::entity::EntityId,
         Vec<storyteller_ml::feature_schema::HistoryEntry>,
     >,
-) -> (Vec<CharacterPrediction>, Option<ClassificationOutput>) {
-    let (event, classification) = classify_and_extract(
-        player_input,
-        event_classifier,
-        characters.len().saturating_sub(1),
-    );
+) -> Vec<CharacterPrediction> {
+    let event = event_features;
     let scene_features = build_scene_features(scene, characters.len());
 
     let batch: Vec<(
@@ -101,165 +97,68 @@ pub fn predict_character_behaviors(
         })
         .collect();
 
-    (predictions, classification)
+    predictions
 }
 
-/// Classify player input using ML classifier (if available) or keyword fallback.
+/// Derive ONNX model input features from the LLM event decomposition output.
 ///
-/// Returns `EventFeatureInput` (always) for character prediction, and
-/// optionally `ClassificationOutput` for event extraction.
-pub fn classify_and_extract(
-    input: &str,
-    event_classifier: Option<&EventClassifier>,
-    target_count: usize,
-) -> (EventFeatureInput, Option<ClassificationOutput>) {
-    match event_classifier {
-        Some(classifier) => match classifier.classify_text(input) {
-            Ok(output) => {
-                let event_features = classification_to_event_features(&output, target_count);
-                (event_features, Some(output))
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "ML classification failed, falling back to keyword");
-                (classify_player_input(input, target_count), None)
-            }
-        },
-        None => (classify_player_input(input, target_count), None),
-    }
-}
+/// Maps the first decomposed event's kind and relational direction to
+/// [`EventFeatureInput`] fields. Falls back to neutral defaults when the
+/// decomposition is empty.
+pub fn decomposition_to_event_features(decomposition: &EventDecomposition) -> EventFeatureInput {
+    let first_event = decomposition.events.first();
 
-/// Convert ML classification output to character prediction features.
-///
-/// Maps EventKind labels → EventType, infers EmotionalRegister,
-/// counts entity targets. The highest-confidence event kind wins.
-fn classification_to_event_features(
-    output: &ClassificationOutput,
-    target_count: usize,
-) -> EventFeatureInput {
-    // Find the highest-confidence event kind
-    let top_kind = output
-        .event_kinds
+    let event_type = first_event
+        .map(|e| decomposed_kind_to_event_type(&e.kind))
+        .unwrap_or(EventType::Interaction);
+
+    let emotional_register = first_event
+        .map(|e| infer_register_from_decomposition(&e.kind, &e.relational_direction))
+        .unwrap_or(EmotionalRegister::Neutral);
+
+    // Count CHARACTER entities excluding the actor
+    let target_count = decomposition
+        .entities
         .iter()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    let (event_type, confidence) = match top_kind {
-        Some((label, conf)) => (event_kind_label_to_event_type(label), *conf),
-        None => (EventType::Interaction, 0.5),
-    };
-
-    let emotional_register = infer_register_from_classification(output);
-
-    EventFeatureInput {
-        event_type,
-        emotional_register,
-        confidence,
-        target_count: target_count as u8,
-    }
-}
-
-/// Map an EVENT_KIND_LABELS string to the EventType enum used by
-/// the character prediction model's feature encoding.
-fn event_kind_label_to_event_type(label: &str) -> EventType {
-    match label {
-        "ActionOccurrence" => EventType::Interaction,
-        "SpeechAct" => EventType::Speech,
-        "SpatialChange" => EventType::Movement,
-        "EmotionalExpression" => EventType::Interaction,
-        "InformationTransfer" => EventType::Speech,
-        "StateAssertion" => EventType::Observation,
-        "EnvironmentalChange" => EventType::Observation,
-        "RelationalShift" => EventType::Interaction,
-        _ => EventType::Interaction,
-    }
-}
-
-/// Infer the emotional register from the ML classification output.
-///
-/// Uses the event kind and entity presence as heuristic signals.
-fn infer_register_from_classification(output: &ClassificationOutput) -> EmotionalRegister {
-    let has_kind = |label: &str| output.event_kinds.iter().any(|(l, _)| l == label);
-
-    if has_kind("EmotionalExpression") {
-        EmotionalRegister::Vulnerable
-    } else if has_kind("SpeechAct") {
-        EmotionalRegister::Inquisitive
-    } else {
-        EmotionalRegister::Neutral
-    }
-}
-
-/// Naive keyword-based event classification for the prototype.
-///
-/// Fallback when no ML classifier is available.
-fn classify_player_input(input: &str, target_count: usize) -> EventFeatureInput {
-    let lower = input.to_lowercase();
-
-    let event_type = if lower.contains("say")
-        || lower.contains("tell")
-        || lower.contains("speak")
-        || lower.contains("ask")
-    {
-        EventType::Speech
-    } else if lower.contains("move")
-        || lower.contains("walk")
-        || lower.contains("approach")
-        || lower.contains("go")
-        || lower.contains("step")
-    {
-        EventType::Movement
-    } else if lower.contains("look") || lower.contains("watch") || lower.contains("examine") {
-        EventType::Observation
-    } else if lower.contains('?') {
-        EventType::Inquiry
-    } else {
-        EventType::Interaction
-    };
-
-    let emotional_register = if lower.contains("angry")
-        || lower.contains("shout")
-        || lower.contains("yell")
-        || lower.contains("demand")
-    {
-        EmotionalRegister::Aggressive
-    } else if lower.contains("cry")
-        || lower.contains("weep")
-        || lower.contains("sad")
-        || lower.contains("plead")
-    {
-        EmotionalRegister::Vulnerable
-    } else if lower.contains("laugh")
-        || lower.contains("joke")
-        || lower.contains("grin")
-        || lower.contains("tease")
-    {
-        EmotionalRegister::Playful
-    } else if lower.contains("careful")
-        || lower.contains("slow")
-        || lower.contains("quiet")
-        || lower.contains("hesitat")
-    {
-        EmotionalRegister::Guarded
-    } else if lower.contains("gentle")
-        || lower.contains("kind")
-        || lower.contains("warm")
-        || lower.contains("soft")
-    {
-        EmotionalRegister::Tender
-    } else if lower.contains("wonder")
-        || lower.contains("curious")
-        || lower.contains("what")
-        || lower.contains("how")
-    {
-        EmotionalRegister::Inquisitive
-    } else {
-        EmotionalRegister::Neutral
-    };
+        .filter(|e| e.category == "CHARACTER")
+        .count()
+        .saturating_sub(1) as u8;
 
     EventFeatureInput {
         event_type,
         emotional_register,
         confidence: 0.8,
-        target_count: target_count as u8,
+        target_count,
+    }
+}
+
+/// Map an LLM decomposition event kind to the [`EventType`] used by
+/// the character prediction model's feature encoding.
+fn decomposed_kind_to_event_type(kind: &str) -> EventType {
+    match kind {
+        "SpeechAct" | "InformationTransfer" => EventType::Speech,
+        "ActionOccurrence" => EventType::Action,
+        "SpatialChange" => EventType::Movement,
+        "StateAssertion" | "EnvironmentalChange" => EventType::Observation,
+        "EmotionalExpression" => EventType::Emote,
+        "RelationalShift" => EventType::Interaction,
+        _ => EventType::Interaction,
+    }
+}
+
+/// Infer the emotional register from the decomposition event kind and
+/// relational direction.
+fn infer_register_from_decomposition(
+    kind: &str,
+    direction: &RelationalDirection,
+) -> EmotionalRegister {
+    match (kind, direction) {
+        ("EmotionalExpression", _) => EmotionalRegister::Vulnerable,
+        ("SpeechAct", RelationalDirection::Directed) => EmotionalRegister::Inquisitive,
+        ("SpeechAct", RelationalDirection::Mutual) => EmotionalRegister::Tender,
+        ("ActionOccurrence", RelationalDirection::Directed) => EmotionalRegister::Aggressive,
+        ("RelationalShift", _) => EmotionalRegister::Guarded,
+        _ => EmotionalRegister::Neutral,
     }
 }
 
@@ -287,11 +186,9 @@ pub fn enrich_prediction(
 ) -> CharacterPrediction {
     // 1. Resolve activated axis indices → axis names
     let axis_names = resolve_axis_names(&raw.frame.activated_axis_indices, character);
-    let activation_reason = generate_activation_reason(&axis_names, scene);
 
     let frame = ActivatedTensorFrame {
         activated_axes: axis_names,
-        activation_reason,
         confidence: raw.frame.confidence,
     };
 
@@ -390,8 +287,6 @@ pub fn render_predictions(predictions: &[CharacterPrediction]) -> String {
             "**Frame**: {} ({:.2} confidence)\n",
             axes_str, pred.frame.confidence
         ));
-        output.push_str(&pred.frame.activation_reason);
-        output.push('\n');
 
         // Actions
         for action in &pred.actions {
@@ -477,22 +372,6 @@ fn resolve_target_name(
         return Some(character.name.clone());
     }
     None
-}
-
-/// Generate a brief reason for the frame's axis activation based on scene context.
-fn generate_activation_reason(axis_names: &[String], scene: &SceneData) -> String {
-    if axis_names.is_empty() {
-        return format!("Entering {}", scene.title);
-    }
-    let stakes_hint = scene
-        .stakes
-        .first()
-        .map(|s| s.as_str())
-        .unwrap_or("the current moment");
-    format!(
-        "Active in the context of {}",
-        truncate_hint(stakes_hint, 80)
-    )
 }
 
 /// Generate a templated action description from raw prediction values.
@@ -718,7 +597,6 @@ mod tests {
         assert_eq!(enriched.character_name, "Bramblehoof");
         assert_eq!(enriched.character_id, bramblehoof.entity_id);
         assert!(!enriched.frame.activated_axes.is_empty());
-        assert!(!enriched.frame.activation_reason.is_empty());
         assert_eq!(enriched.actions.len(), 1);
         assert!(!enriched.actions[0].description.is_empty());
         assert!(enriched.speech.is_some());
@@ -882,135 +760,98 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // classify_and_extract (no ML model — fallback path)
+    // decomposition_to_event_features
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn classify_and_extract_without_classifier_falls_back() {
-        let (features, classification) = classify_and_extract("I walk to the door", None, 2);
-        assert!(classification.is_none());
-        assert_eq!(features.event_type, EventType::Movement);
-        assert_eq!(features.target_count, 2);
-    }
+    mod decomposition_tests {
+        use super::*;
+        use crate::inference::event_decomposition::{DecomposedEntity, DecomposedEvent};
 
-    #[test]
-    fn classify_and_extract_speech_fallback() {
-        let (features, classification) = classify_and_extract("I say hello to Tom", None, 1);
-        assert!(classification.is_none());
-        assert_eq!(features.event_type, EventType::Speech);
-    }
+        fn make_decomposition(kind: &str, direction: RelationalDirection) -> EventDecomposition {
+            EventDecomposition {
+                events: vec![DecomposedEvent {
+                    kind: kind.to_string(),
+                    actor: Some(DecomposedEntity {
+                        mention: "Kael".to_string(),
+                        category: "CHARACTER".to_string(),
+                    }),
+                    action: "test".to_string(),
+                    target: Some(DecomposedEntity {
+                        mention: "Nyx".to_string(),
+                        category: "CHARACTER".to_string(),
+                    }),
+                    relational_direction: direction,
+                    confidence_note: None,
+                }],
+                entities: vec![
+                    DecomposedEntity {
+                        mention: "Kael".to_string(),
+                        category: "CHARACTER".to_string(),
+                    },
+                    DecomposedEntity {
+                        mention: "Nyx".to_string(),
+                        category: "CHARACTER".to_string(),
+                    },
+                ],
+            }
+        }
 
-    // -----------------------------------------------------------------------
-    // classification_to_event_features
-    // -----------------------------------------------------------------------
+        #[test]
+        fn speech_act_maps_to_speech() {
+            let d = make_decomposition("SpeechAct", RelationalDirection::Directed);
+            let features = decomposition_to_event_features(&d);
+            assert_eq!(features.event_type, EventType::Speech);
+            assert_eq!(features.emotional_register, EmotionalRegister::Inquisitive);
+            assert_eq!(features.target_count, 1);
+        }
 
-    #[test]
-    fn classification_to_features_maps_action() {
-        let output = ClassificationOutput {
-            event_kinds: vec![("ActionOccurrence".to_string(), 0.9)],
-            entity_mentions: vec![],
-        };
-        let features = classification_to_event_features(&output, 1);
-        assert_eq!(features.event_type, EventType::Interaction);
-        assert!((features.confidence - 0.9).abs() < f32::EPSILON);
-    }
+        #[test]
+        fn emotional_expression_maps_to_emote() {
+            let d = make_decomposition("EmotionalExpression", RelationalDirection::SelfDirected);
+            let features = decomposition_to_event_features(&d);
+            assert_eq!(features.event_type, EventType::Emote);
+            assert_eq!(features.emotional_register, EmotionalRegister::Vulnerable);
+        }
 
-    #[test]
-    fn classification_to_features_maps_speech() {
-        let output = ClassificationOutput {
-            event_kinds: vec![("SpeechAct".to_string(), 0.85)],
-            entity_mentions: vec![],
-        };
-        let features = classification_to_event_features(&output, 2);
-        assert_eq!(features.event_type, EventType::Speech);
-        assert_eq!(features.emotional_register, EmotionalRegister::Inquisitive);
-    }
+        #[test]
+        fn relational_shift_maps_to_interaction() {
+            let d = make_decomposition("RelationalShift", RelationalDirection::Mutual);
+            let features = decomposition_to_event_features(&d);
+            assert_eq!(features.event_type, EventType::Interaction);
+            assert_eq!(features.emotional_register, EmotionalRegister::Guarded);
+        }
 
-    #[test]
-    fn classification_to_features_maps_spatial() {
-        let output = ClassificationOutput {
-            event_kinds: vec![("SpatialChange".to_string(), 0.75)],
-            entity_mentions: vec![],
-        };
-        let features = classification_to_event_features(&output, 0);
-        assert_eq!(features.event_type, EventType::Movement);
-    }
+        #[test]
+        fn empty_decomposition_uses_defaults() {
+            let d = EventDecomposition {
+                events: vec![],
+                entities: vec![],
+            };
+            let features = decomposition_to_event_features(&d);
+            assert_eq!(features.event_type, EventType::Interaction);
+            assert_eq!(features.emotional_register, EmotionalRegister::Neutral);
+            assert_eq!(features.target_count, 0);
+        }
 
-    #[test]
-    fn classification_to_features_maps_emotional() {
-        let output = ClassificationOutput {
-            event_kinds: vec![("EmotionalExpression".to_string(), 0.8)],
-            entity_mentions: vec![],
-        };
-        let features = classification_to_event_features(&output, 0);
-        assert_eq!(features.event_type, EventType::Interaction);
-        assert_eq!(features.emotional_register, EmotionalRegister::Vulnerable);
-    }
-
-    #[test]
-    fn classification_to_features_uses_highest_confidence() {
-        let output = ClassificationOutput {
-            event_kinds: vec![
-                ("StateAssertion".to_string(), 0.6),
-                ("ActionOccurrence".to_string(), 0.95),
-            ],
-            entity_mentions: vec![],
-        };
-        let features = classification_to_event_features(&output, 1);
-        // ActionOccurrence has higher confidence
-        assert_eq!(features.event_type, EventType::Interaction);
-        assert!((features.confidence - 0.95).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn classification_to_features_empty_kinds_defaults() {
-        let output = ClassificationOutput {
-            event_kinds: vec![],
-            entity_mentions: vec![],
-        };
-        let features = classification_to_event_features(&output, 0);
-        assert_eq!(features.event_type, EventType::Interaction);
-        assert!((features.confidence - 0.5).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn event_kind_label_to_event_type_all_labels() {
-        assert_eq!(
-            event_kind_label_to_event_type("ActionOccurrence"),
-            EventType::Interaction
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("SpeechAct"),
-            EventType::Speech
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("SpatialChange"),
-            EventType::Movement
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("EmotionalExpression"),
-            EventType::Interaction
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("InformationTransfer"),
-            EventType::Speech
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("StateAssertion"),
-            EventType::Observation
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("EnvironmentalChange"),
-            EventType::Observation
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("RelationalShift"),
-            EventType::Interaction
-        );
-        assert_eq!(
-            event_kind_label_to_event_type("unknown_label"),
-            EventType::Interaction
-        );
+        #[test]
+        fn all_event_kinds_map_correctly() {
+            let cases = vec![
+                ("SpeechAct", EventType::Speech),
+                ("InformationTransfer", EventType::Speech),
+                ("ActionOccurrence", EventType::Action),
+                ("SpatialChange", EventType::Movement),
+                ("StateAssertion", EventType::Observation),
+                ("EnvironmentalChange", EventType::Observation),
+                ("EmotionalExpression", EventType::Emote),
+                ("RelationalShift", EventType::Interaction),
+                ("UnknownKind", EventType::Interaction),
+            ];
+            for (kind, expected) in cases {
+                let d = make_decomposition(kind, RelationalDirection::Directed);
+                let features = decomposition_to_event_features(&d);
+                assert_eq!(features.event_type, expected, "failed for kind={kind}");
+            }
+        }
     }
 }
 
@@ -1273,13 +1114,19 @@ mod with_model {
 
         // Turn 1: predict with no history
         let mut history = PredictionHistory::default();
-        let (predictions_first, _) = predict_character_behaviors(
+        let default_features = EventFeatureInput {
+            event_type: EventType::Interaction,
+            emotional_register: EmotionalRegister::Neutral,
+            confidence: 0.5,
+            target_count: 0,
+        };
+        let predictions_first = predict_character_behaviors(
             &predictor,
             &characters,
             &scene,
             "Hello there",
             &grammar,
-            None,
+            default_features,
             &HashMap::new(),
         );
 
@@ -1289,13 +1136,19 @@ mod with_model {
         }
 
         // Turn 2: predict with accumulated history
-        let (predictions_second, _) = predict_character_behaviors(
+        let default_features2 = EventFeatureInput {
+            event_type: EventType::Interaction,
+            emotional_register: EmotionalRegister::Neutral,
+            confidence: 0.5,
+            target_count: 0,
+        };
+        let predictions_second = predict_character_behaviors(
             &predictor,
             &characters,
             &scene,
             "Hello again",
             &grammar,
-            None,
+            default_features2,
             history.as_map(),
         );
 

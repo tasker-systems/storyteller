@@ -8,7 +8,6 @@
 //!
 //! Five synchronous systems live here:
 //! - `commit_previous_system`: archives previous turn, moves PendingInput
-//! - `classify_system`: ML event classification (or keyword fallback)
 //! - `predict_system`: ML character prediction (parallel across cast)
 //! - `resolve_system`: pass-through wrapping predictions into ResolverOutput
 //! - `assemble_context_system`: three-tier Narrator context assembly
@@ -64,43 +63,16 @@ pub fn in_stage(target: TurnCycleStage) -> impl Fn(Res<ActiveTurnStage>) -> bool
 }
 
 // ---------------------------------------------------------------------------
-// Systems — Classification (REAL)
+// Systems — Classification (pass-through)
 // ---------------------------------------------------------------------------
 
-/// Classify player input using ML classifier or keyword fallback.
+/// Classification stage pass-through.
 ///
-/// Reads `TurnContext.player_input`, calls `classify_and_extract()`,
-/// writes classification output and advances to `Predicting`.
-pub fn classify_system(
-    mut stage: ResMut<ActiveTurnStage>,
-    mut turn_ctx: ResMut<TurnContext>,
-    classifier: Option<Res<ClassifierResource>>,
-) {
-    let Some(ref input) = turn_ctx.player_input else {
-        tracing::warn!("classify_system: no player input in TurnContext");
-        stage.0 = stage.0.next();
-        return;
-    };
-
-    let event_classifier = classifier.as_ref().map(|c| &c.0);
-    let (_event_features, classification) =
-        crate::context::prediction::classify_and_extract(input, event_classifier, 0);
-
-    turn_ctx.classification = classification;
+/// DistilBERT-based classification has been removed. Classification now happens
+/// via LLM decomposition in `commit_previous_system`. This system exists only
+/// to advance the pipeline stage from `Classifying` to `Predicting`.
+pub fn classify_system(mut stage: ResMut<ActiveTurnStage>) {
     stage.0 = stage.0.next();
-}
-
-/// Bevy Resource wrapping an optional `EventClassifier`.
-///
-/// Held as a Resource so that systems can access it via `Option<Res<_>>`.
-/// When no ML model is available, this resource is not inserted.
-#[derive(Resource)]
-pub struct ClassifierResource(pub crate::inference::event_classifier::EventClassifier);
-
-impl std::fmt::Debug for ClassifierResource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClassifierResource").finish()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -141,22 +113,23 @@ pub fn predict_system(
     let characters: Vec<&storyteller_core::types::character::CharacterSheet> =
         scene_res.characters.iter().collect();
 
-    let classifier_ref = None::<&crate::inference::event_classifier::EventClassifier>;
-    let (predictions, classification) = crate::context::prediction::predict_character_behaviors(
+    let event_features = storyteller_ml::feature_schema::EventFeatureInput {
+        event_type: storyteller_core::types::prediction::EventType::Interaction,
+        emotional_register: storyteller_core::types::prediction::EmotionalRegister::Neutral,
+        confidence: 0.5,
+        target_count: characters.len().saturating_sub(1) as u8,
+    };
+    let predictions = crate::context::prediction::predict_character_behaviors(
         &predictor.0,
         &characters,
         &scene_res.scene,
         input,
         grammar_res.0.as_ref(),
-        classifier_ref,
+        event_features,
         &std::collections::HashMap::new(),
     );
 
     turn_ctx.predictions = Some(predictions);
-    // Only overwrite classification if we got a new one
-    if classification.is_some() {
-        turn_ctx.classification = classification;
-    }
 
     stage.0 = stage.0.next();
 }
@@ -329,7 +302,6 @@ pub fn commit_previous_system(
     mut pending: ResMut<PendingInput>,
     mut history: ResMut<TurnHistory>,
     journal: Option<ResMut<JournalResource>>,
-    classifier: Option<Res<ClassifierResource>>,
     structured_llm: Option<Res<StructuredLlmResource>>,
     runtime: Option<Res<TokioRuntime>>,
 ) {
@@ -376,39 +348,20 @@ pub fn commit_previous_system(
                         Some(decomp.to_classification_output())
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "commit_previous_system: LLM decomposition failed, \
-                             falling back to DistilBERT: {e}"
-                        );
-                        // Fall through to DistilBERT
-                        let event_classifier = classifier.as_ref().map(|c| &c.0);
-                        let (_event_features, classification) =
-                            crate::context::prediction::classify_and_extract(
-                                &combined_text,
-                                event_classifier,
-                                0,
-                            );
-                        classification
+                        tracing::warn!("commit_previous_system: LLM decomposition failed: {e}");
+                        None
                     }
                 }
             } else {
-                // Fallback: DistilBERT classification
-                let event_classifier = classifier.as_ref().map(|c| &c.0);
-                let (_event_features, classification) =
-                    crate::context::prediction::classify_and_extract(
-                        &combined_text,
-                        event_classifier,
-                        0,
-                    );
-
+                // No structured LLM available — classification will be None.
+                // Task 7 will reorder the pipeline so decomposition feeds prediction.
                 tracing::debug!(
                     turn_number,
-                    has_committed_classification = classification.is_some(),
                     combined_text_len = combined_text.len(),
-                    "commit_previous_system: DistilBERT committed-turn classification"
+                    "commit_previous_system: no structured LLM, skipping classification"
                 );
 
-                classification
+                None
             }
         });
 
@@ -505,7 +458,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // classify_system
+    // classify_system (pass-through)
     // -----------------------------------------------------------------------
 
     #[test]
@@ -967,14 +920,13 @@ mod tests {
         }
         app.world_mut().resource_mut::<PendingInput>().0 = Some("next input".to_string());
 
-        // No ClassifierResource → keyword fallback → committed_classification is None
-        // (keyword fallback returns None for ClassificationOutput)
+        // No StructuredLlmResource → committed_classification is None
         app.add_systems(Update, commit_previous_system);
         app.update();
 
         let history = app.world().resource::<TurnHistory>();
         assert_eq!(history.turns.len(), 1);
-        // Without ML classifier, committed_classification is None (keyword fallback)
+        // Without StructuredLlmResource, committed_classification is None
         assert!(history.turns[0].committed_classification.is_none());
         // Per-input classification should still be None (wasn't set on TurnContext)
         assert!(history.turns[0].classification.is_none());
@@ -1075,7 +1027,7 @@ mod tests {
     #[test]
     fn committed_classification_without_classifier() {
         let mut app = test_app();
-        // No ClassifierResource inserted
+        // No StructuredLlmResource inserted — committed_classification stays None
         app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::CommittingPrevious;
         {
             let mut ctx = app.world_mut().resource_mut::<TurnContext>();
@@ -1092,14 +1044,14 @@ mod tests {
 
         let history = app.world().resource::<TurnHistory>();
         assert_eq!(history.turns.len(), 1);
-        // Without ClassifierResource, keyword fallback → None for ClassificationOutput
+        // Without StructuredLlmResource, committed_classification is None
         assert!(history.turns[0].committed_classification.is_none());
     }
 
     #[test]
     fn commit_previous_works_without_structured_llm() {
         // Verifies backward compatibility — the system works without
-        // StructuredLlmResource, falling back to DistilBERT/keyword.
+        // StructuredLlmResource; committed_classification will be None.
         let mut app = App::new();
         app.init_resource::<ActiveTurnStage>();
         app.init_resource::<TurnContext>();

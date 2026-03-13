@@ -8,8 +8,9 @@ use storyteller_core::traits::structured_llm::StructuredLlmProvider;
 use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::SceneJournal;
-use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_engine::inference::intention_generation::GeneratedIntentions;
+use storyteller_engine::scene_composer::ComposedGoals;
 use storyteller_ml::prediction_history::PredictionHistory;
 
 use crate::session_log::SessionLog;
@@ -30,8 +31,6 @@ pub struct EngineState {
     pub llm: Arc<dyn LlmProvider>,
     /// ML character predictor (optional — graceful fallback).
     pub predictor: Option<CharacterPredictor>,
-    /// ML event classifier (optional — graceful fallback).
-    pub event_classifier: Option<EventClassifier>,
     /// Structured LLM provider for event decomposition (optional).
     pub structured_llm: Option<Arc<dyn StructuredLlmProvider>>,
     /// Intent synthesis LLM provider — plain completion, same 3b model (optional).
@@ -48,4 +47,9 @@ pub struct EngineState {
     pub player_entity_id: Option<EntityId>,
     /// Accumulated prediction history for turn-over-turn ML context.
     pub prediction_history: PredictionHistory,
+    /// Composition-time intentions (scene direction + character drives).
+    /// Persists across turns for preamble injection and intent synthesis context.
+    pub generated_intentions: Option<GeneratedIntentions>,
+    /// Composed scene/character goals for player context re-derivation.
+    pub composed_goals: Option<ComposedGoals>,
 }

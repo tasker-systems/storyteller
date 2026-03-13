@@ -380,29 +380,24 @@ describe("phaseStatus", () => {
     });
   });
 
-  describe("Events tab (compound status)", () => {
-    it("returns pending when both pending", () => {
+  describe("Events tab (tracks decomposition phase)", () => {
+    it("returns pending when decomposition not started", () => {
       expect(phaseStatus("Events", emptyState, null, false)).toBe("pending");
     });
 
-    it("returns error if either is error", () => {
-      const state = { ...emptyState, phases: { events: "complete" as const, decomposition: "error" as const } };
+    it("returns error when decomposition errors", () => {
+      const state = { ...emptyState, phases: { decomposition: "error" as const } };
       expect(phaseStatus("Events", state, null, false)).toBe("error");
     });
 
-    it("returns processing if either is processing", () => {
-      const state = { ...emptyState, phases: { events: "complete" as const, decomposition: "processing" as const } };
+    it("returns processing when decomposition in progress", () => {
+      const state = { ...emptyState, phases: { decomposition: "processing" as const } };
       expect(phaseStatus("Events", state, null, false)).toBe("processing");
     });
 
-    it("returns complete only when both complete", () => {
-      const state = { ...emptyState, phases: { events: "complete" as const, decomposition: "complete" as const } };
+    it("returns complete when decomposition complete", () => {
+      const state = { ...emptyState, phases: { decomposition: "complete" as const } };
       expect(phaseStatus("Events", state, null, false)).toBe("complete");
-    });
-
-    it("returns processing when one complete and other pending", () => {
-      const state = { ...emptyState, phases: { events: "complete" as const } };
-      expect(phaseStatus("Events", state, null, false)).toBe("processing");
     });
   });
 
@@ -490,5 +485,42 @@ describe("applyDebugEvent", () => {
     const next = applyDebugEvent(state, event);
     expect(next.phases["intent_synthesis"]).toBe("complete");
     expect(next.intent_synthesis?.intent_statements).toBe("**Arthur** should respond reluctantly.");
+  });
+
+  it("handles goals_generated event", () => {
+    const state = freshDebugState(1);
+    const event: DebugEvent = {
+      type: "goals_generated", turn: 1,
+      scene_goals: ["reveal_secret (revelation)", "build_trust (bonding)"],
+      character_goals: ["Arthur → get_letter (revelation, Overt)", "Margaret → guard_secret (protection, Hidden)"],
+      scene_direction: "Arthur seeks a letter hidden on the mantel.",
+      character_drives: ["Arthur: Get the letter [constraint: Margaret is near] [stance: Polite deflection]"],
+      player_context: "get letter; explore room",
+      timing_ms: 1500,
+    };
+    const next = applyDebugEvent(state, event);
+    expect(next.phases["goals"]).toBe("complete");
+    expect(next.goals?.scene_goals).toHaveLength(2);
+    expect(next.goals?.character_goals).toHaveLength(2);
+    expect(next.goals?.scene_direction).toBe("Arthur seeks a letter hidden on the mantel.");
+    expect(next.goals?.character_drives).toHaveLength(1);
+    expect(next.goals?.player_context).toBe("get letter; explore room");
+  });
+
+  it("handles goals_generated with null scene_direction", () => {
+    const state = freshDebugState(1);
+    const event: DebugEvent = {
+      type: "goals_generated", turn: 1,
+      scene_goals: [],
+      character_goals: [],
+      scene_direction: null,
+      character_drives: [],
+      player_context: null,
+      timing_ms: 0,
+    };
+    const next = applyDebugEvent(state, event);
+    expect(next.phases["goals"]).toBe("complete");
+    expect(next.goals?.scene_direction).toBeNull();
+    expect(next.goals?.player_context).toBeNull();
   });
 });

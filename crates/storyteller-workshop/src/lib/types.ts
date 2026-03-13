@@ -192,13 +192,6 @@ export interface CharactersUpdatedEvent {
   emotional_markers: string[];
 }
 
-export interface EventsClassifiedEvent {
-  type: "events_classified";
-  turn: number;
-  classifications: string[];
-  classifier_loaded: boolean;
-}
-
 export interface NarratorCompleteEvent {
   type: "narrator_complete";
   turn: number;
@@ -262,6 +255,17 @@ export interface IntentSynthesizedEvent {
   timing_ms: number;
 }
 
+export interface GoalsGeneratedEvent {
+  type: "goals_generated";
+  turn: number;
+  scene_goals: string[];
+  character_goals: string[];
+  scene_direction: string | null;
+  character_drives: string[];
+  player_context: string | null;
+  timing_ms: number;
+}
+
 export interface ErrorEvent {
   type: "error";
   turn: number;
@@ -274,10 +278,10 @@ export type DebugEvent =
   | PredictionCompleteEvent
   | ContextAssembledEvent
   | CharactersUpdatedEvent
-  | EventsClassifiedEvent
   | EventDecomposedEvent
   | ActionArbitratedEvent
   | IntentSynthesizedEvent
+  | GoalsGeneratedEvent
   | NarratorCompleteEvent
   | ErrorEvent;
 
@@ -289,10 +293,10 @@ export interface DebugState {
   prediction: PredictionCompleteEvent | null;
   context: ContextAssembledEvent | null;
   characters: CharactersUpdatedEvent | null;
-  events: EventsClassifiedEvent | null;
   decomposition: EventDecomposedEvent | null;
   arbitration: ActionArbitratedEvent | null;
   intent_synthesis: IntentSynthesizedEvent | null;
+  goals: GoalsGeneratedEvent | null;
   narrator: NarratorCompleteEvent | null;
   error: ErrorEvent | null;
 }

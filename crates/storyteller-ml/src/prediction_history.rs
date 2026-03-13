@@ -98,7 +98,6 @@ mod tests {
             character_name: "TestChar".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec!["trust".to_string()],
-                activation_reason: "test".to_string(),
                 confidence: 0.8,
             },
             actions: vec![ActionPrediction {

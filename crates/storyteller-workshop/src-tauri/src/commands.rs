@@ -15,22 +15,27 @@ use storyteller_core::traits::structured_llm::StructuredLlmConfig;
 use storyteller_core::traits::NoopObserver;
 use storyteller_core::types::capability_lexicon::CapabilityLexicon;
 use storyteller_core::types::character::{CharacterSheet, SceneData};
-use storyteller_core::types::narrator_context::SceneJournal;
+use storyteller_core::types::entity::EntityId;
+use storyteller_core::types::narrator_context::{PersistentPreamble, SceneJournal};
 use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::scene::SceneId;
 use storyteller_engine::agents::narrator::NarratorAgent;
 use storyteller_engine::context::journal::add_turn;
-use storyteller_engine::context::prediction::predict_character_behaviors;
+use storyteller_engine::context::prediction::{
+    decomposition_to_event_features, predict_character_behaviors,
+};
 use storyteller_engine::context::{assemble_narrator_context, DEFAULT_TOTAL_TOKEN_BUDGET};
-use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::event_decomposition::{
     event_decomposition_schema, event_decomposition_system_prompt, EventDecomposition,
 };
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
 use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_engine::inference::intention_generation::{
+    intentions_to_preamble, GeneratedIntentions,
+};
 use storyteller_engine::inference::structured::OllamaStructuredProvider;
 use storyteller_engine::scene_composer::{
-    ComposedGoals, ComposedScene, SceneComposer, SceneSelections,
+    ComposedGoals, ComposedScene, GoalVisibility, SceneComposer, SceneSelections,
 };
 use storyteller_engine::systems::arbitration::check_action_possibility;
 use storyteller_ml::prediction_history::PredictionHistory;
@@ -343,6 +348,65 @@ pub async fn resume_session(
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
+    // Load generated intentions from session (if available)
+    let loaded_intentions = session_store
+        .load_intentions(&session_id)
+        .map_err(|e| e.to_string())?;
+    if let Some(ref intentions_json) = loaded_intentions {
+        tracing::info!("Loaded persisted intentions for session {session_id}");
+        // Emit GoalsGenerated debug event so the inspector shows goal data on resume
+        use storyteller_engine::inference::intention_generation::GeneratedIntentions;
+        if let Ok(intentions) =
+            serde_json::from_value::<GeneratedIntentions>(intentions_json.clone())
+        {
+            emit_debug(
+                &app,
+                DebugEvent::GoalsGenerated {
+                    turn: 0,
+                    scene_goals: composed_goals
+                        .scene_goals
+                        .iter()
+                        .map(|g| format!("{} ({})", g.goal_id, g.category))
+                        .collect(),
+                    character_goals: composed_goals
+                        .character_goals
+                        .iter()
+                        .flat_map(|(eid, goals)| {
+                            let name = characters
+                                .iter()
+                                .find(|c| c.entity_id == *eid)
+                                .map(|c| c.name.as_str())
+                                .unwrap_or("unknown");
+                            goals.iter().map(move |g| {
+                                format!(
+                                    "{} → {} ({}, {:?})",
+                                    name, g.goal_id, g.category, g.visibility
+                                )
+                            })
+                        })
+                        .collect(),
+                    scene_direction: Some(format!(
+                        "{} {}",
+                        intentions.scene_intention.dramatic_tension,
+                        intentions.scene_intention.trajectory,
+                    )),
+                    character_drives: intentions
+                        .character_intentions
+                        .iter()
+                        .map(|d| {
+                            format!(
+                                "{}: {} [constraint: {}] [stance: {}]",
+                                d.character, d.objective, d.constraint, d.behavioral_stance
+                            )
+                        })
+                        .collect(),
+                    player_context: None,
+                    timing_ms: 0,
+                },
+            );
+        }
+    }
+
     if turns.is_empty() {
         // Legacy session or no turns.jsonl — fall back to fresh opening render
         let scene_info = setup_and_render_opening(
@@ -418,14 +482,6 @@ pub async fn resume_session(
             .ok()
     });
 
-    // Load event classifier (optional)
-    let event_classifier = resolve_event_classifier_path().and_then(|path| {
-        EventClassifier::load(&path)
-            .inspect(|_| tracing::info!("Event classifier loaded: {}", path.display()))
-            .inspect_err(|e| tracing::warn!("Event classifier failed to load: {e}"))
-            .ok()
-    });
-
     // Create structured LLM provider for event decomposition
     let structured_llm: Option<
         Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
@@ -467,13 +523,18 @@ pub async fn resume_session(
         .find(|c| c.role.to_lowercase().contains("protagonist"))
         .map(|c| c.entity_id);
 
+    // Hydrate generated intentions from the already-loaded intentions JSON
+    let resume_generated_intentions = loaded_intentions.and_then(|v| {
+        use storyteller_engine::inference::intention_generation::GeneratedIntentions;
+        serde_json::from_value::<GeneratedIntentions>(v).ok()
+    });
+
     let engine_state = EngineState {
         scene,
         characters,
         journal,
         llm,
         predictor,
-        event_classifier,
         structured_llm,
         intent_llm,
         grammar,
@@ -482,6 +543,8 @@ pub async fn resume_session(
         session_id: Some(session_id),
         player_entity_id,
         prediction_history: PredictionHistory::default(),
+        generated_intentions: resume_generated_intentions,
+        composed_goals: Some(composed_goals),
     };
 
     let mut guard = state.lock().await;
@@ -512,6 +575,109 @@ pub async fn submit_input(
     let characters_refs: Vec<&_> = engine.characters.iter().collect();
     let entity_ids: Vec<_> = engine.characters.iter().map(|c| c.entity_id).collect();
 
+    // --- Phase: Event Decomposition (LLM) ---
+    // Runs first so decomposition-derived features can inform ML prediction.
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "decomposition".to_string(),
+        },
+    );
+
+    let decomp_start = Instant::now();
+    let mut persisted_decomposition: Option<serde_json::Value> = None;
+    let mut event_decomposition: Option<EventDecomposition> = None;
+
+    if let Some(ref structured_llm) = engine.structured_llm {
+        // Include the last narrator prose so the 3b model can resolve pronouns
+        // and ground the player's actions against established scene context.
+        let decomp_input = if let Some(last_entry) = engine.journal.entries.last() {
+            format!("[Narrator]\n{}\n\n[Player]\n{}", last_entry.content, input)
+        } else {
+            input.clone()
+        };
+
+        // Call provider directly so we capture raw JSON for debugging
+        let request = storyteller_core::traits::structured_llm::StructuredRequest {
+            system: event_decomposition_system_prompt(),
+            input: decomp_input,
+            output_schema: event_decomposition_schema(),
+            temperature: 0.1,
+        };
+        match structured_llm.extract(request).await {
+            Ok(raw_json) => {
+                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                tracing::info!(
+                    raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
+                    "Event decomposition raw LLM response"
+                );
+                persisted_decomposition = Some(raw_json.clone());
+                // Try to parse the raw JSON into our typed decomposition
+                let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
+                    Ok(d) => (Some(d), None),
+                    Err(e) => {
+                        tracing::warn!("Event decomposition parse failed: {e}");
+                        (None, Some(format!("{e}")))
+                    }
+                };
+                event_decomposition = decomposition.clone();
+                emit_debug(
+                    &app,
+                    DebugEvent::EventDecomposed {
+                        turn,
+                        decomposition,
+                        raw_llm_json: Some(raw_json),
+                        timing_ms: decomp_ms,
+                        model: "qwen2.5:3b-instruct".to_string(),
+                        error,
+                    },
+                );
+            }
+            Err(e) => {
+                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                tracing::warn!("Event decomposition LLM call failed: {e}");
+                emit_debug(
+                    &app,
+                    DebugEvent::EventDecomposed {
+                        turn,
+                        decomposition: None,
+                        raw_llm_json: None,
+                        timing_ms: decomp_ms,
+                        model: "qwen2.5:3b-instruct".to_string(),
+                        error: Some(format!("{e}")),
+                    },
+                );
+            }
+        }
+    } else {
+        emit_debug(
+            &app,
+            DebugEvent::EventDecomposed {
+                turn,
+                decomposition: None,
+                raw_llm_json: None,
+                timing_ms: 0,
+                model: "none".to_string(),
+                error: Some("No structured LLM provider configured".to_string()),
+            },
+        );
+    }
+    let decomposition_ms = decomp_start.elapsed().as_millis() as u64;
+
+    // Derive event features from decomposition for ML prediction input.
+    let event_features = if let Some(ref decomposition) = event_decomposition {
+        decomposition_to_event_features(decomposition)
+    } else {
+        // Fallback when no structured LLM available — safe defaults
+        storyteller_ml::feature_schema::EventFeatureInput {
+            event_type: storyteller_core::types::prediction::EventType::Interaction,
+            emotional_register: storyteller_core::types::prediction::EmotionalRegister::Neutral,
+            confidence: 0.5,
+            target_count: (characters_refs.len().saturating_sub(1)) as u8,
+        }
+    };
+
     // --- Phase: ML Predictions ---
     emit_debug(
         &app,
@@ -523,13 +689,13 @@ pub async fn submit_input(
 
     let predict_start = Instant::now();
     let mut resolver_output = if let Some(ref predictor) = engine.predictor {
-        let (predictions, _classification) = predict_character_behaviors(
+        let predictions = predict_character_behaviors(
             predictor,
             &characters_refs,
             &engine.scene,
             &input,
             &engine.grammar,
-            engine.event_classifier.as_ref(),
+            event_features,
             engine.prediction_history.as_map(),
         );
         ResolverOutput {
@@ -584,122 +750,6 @@ pub async fn submit_input(
             emotional_markers: emotional_markers.clone(),
         },
     );
-
-    // --- Phase: Event Classification ---
-    emit_debug(
-        &app,
-        DebugEvent::PhaseStarted {
-            turn,
-            phase: "events".to_string(),
-        },
-    );
-
-    let classifications: Vec<String> = if let Some(ref classifier) = engine.event_classifier {
-        match classifier.classify_text(&input) {
-            Ok(output) => output
-                .event_kinds
-                .iter()
-                .map(|(label, score)| format!("{label}: {score:.2}"))
-                .collect(),
-            Err(e) => vec![format!("Classification error: {e}")],
-        }
-    } else {
-        vec![]
-    };
-
-    emit_debug(
-        &app,
-        DebugEvent::EventsClassified {
-            turn,
-            classifications: classifications.clone(),
-            classifier_loaded: engine.event_classifier.is_some(),
-        },
-    );
-
-    // --- Phase: Event Decomposition (LLM) ---
-    emit_debug(
-        &app,
-        DebugEvent::PhaseStarted {
-            turn,
-            phase: "decomposition".to_string(),
-        },
-    );
-
-    let decomp_start = Instant::now();
-    let mut persisted_decomposition: Option<serde_json::Value> = None;
-    if let Some(ref structured_llm) = engine.structured_llm {
-        // Include the last narrator prose so the 3b model can resolve pronouns
-        // and ground the player's actions against established scene context.
-        let decomp_input = if let Some(last_entry) = engine.journal.entries.last() {
-            format!("[Narrator]\n{}\n\n[Player]\n{}", last_entry.content, input)
-        } else {
-            input.clone()
-        };
-
-        // Call provider directly so we capture raw JSON for debugging
-        let request = storyteller_core::traits::structured_llm::StructuredRequest {
-            system: event_decomposition_system_prompt(),
-            input: decomp_input,
-            output_schema: event_decomposition_schema(),
-            temperature: 0.1,
-        };
-        match structured_llm.extract(request).await {
-            Ok(raw_json) => {
-                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
-                tracing::info!(
-                    raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
-                    "Event decomposition raw LLM response"
-                );
-                persisted_decomposition = Some(raw_json.clone());
-                // Try to parse the raw JSON into our typed decomposition
-                let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
-                    Ok(d) => (Some(d), None),
-                    Err(e) => {
-                        tracing::warn!("Event decomposition parse failed: {e}");
-                        (None, Some(format!("{e}")))
-                    }
-                };
-                emit_debug(
-                    &app,
-                    DebugEvent::EventDecomposed {
-                        turn,
-                        decomposition,
-                        raw_llm_json: Some(raw_json),
-                        timing_ms: decomp_ms,
-                        model: "qwen2.5:3b-instruct".to_string(),
-                        error,
-                    },
-                );
-            }
-            Err(e) => {
-                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
-                tracing::warn!("Event decomposition LLM call failed: {e}");
-                emit_debug(
-                    &app,
-                    DebugEvent::EventDecomposed {
-                        turn,
-                        decomposition: None,
-                        raw_llm_json: None,
-                        timing_ms: decomp_ms,
-                        model: "qwen2.5:3b-instruct".to_string(),
-                        error: Some(format!("{e}")),
-                    },
-                );
-            }
-        }
-    } else {
-        emit_debug(
-            &app,
-            DebugEvent::EventDecomposed {
-                turn,
-                decomposition: None,
-                raw_llm_json: None,
-                timing_ms: 0,
-                model: "none".to_string(),
-                error: Some("No structured LLM provider configured".to_string()),
-            },
-        );
-    }
 
     // --- Phase: Action Arbitration ---
     emit_debug(
@@ -762,6 +812,7 @@ pub async fn submit_input(
             &input,
             &engine.scene,
             engine.player_entity_id,
+            engine.generated_intentions.as_ref(),
         )
         .await
     } else {
@@ -793,7 +844,7 @@ pub async fn submit_input(
 
     let observer = CollectingObserver::new();
     let assembly_start = Instant::now();
-    let context = assemble_narrator_context(
+    let mut context = assemble_narrator_context(
         &engine.scene,
         &characters_refs,
         &engine.journal,
@@ -805,6 +856,14 @@ pub async fn submit_input(
         engine.player_entity_id,
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
+
+    // Re-inject composition-time goal intentions every turn to prevent preamble token drop
+    inject_goals_into_preamble(
+        &mut context.preamble,
+        engine.generated_intentions.as_ref(),
+        engine.composed_goals.as_ref(),
+        engine.player_entity_id,
+    );
 
     let token_counts = extract_token_counts(&observer);
 
@@ -940,7 +999,6 @@ pub async fn submit_input(
             narrator_output: rendering.text.clone(),
             predictions: serde_json::to_value(&resolver_output.original_predictions).ok(),
             intent_statements: resolver_output.intent_statements.clone(),
-            classifications: Some(classifications),
             decomposition: persisted_decomposition,
             arbitration: Some(arbitration_json),
             context_assembly: Some(serde_json::json!({
@@ -950,6 +1008,7 @@ pub async fn submit_input(
                 "total_tokens": token_counts.3,
             })),
             timing: Some(serde_json::json!({
+                "decomposition_ms": decomposition_ms,
                 "prediction_ms": prediction_ms,
                 "intent_ms": intent_ms,
                 "assembly_ms": assembly_ms,
@@ -1030,14 +1089,6 @@ async fn setup_and_render_opening(
             .ok()
     });
 
-    // Load event classifier (optional)
-    let event_classifier = resolve_event_classifier_path().and_then(|path| {
-        EventClassifier::load(&path)
-            .inspect(|_| tracing::info!("Event classifier loaded: {}", path.display()))
-            .inspect_err(|e| tracing::warn!("Event classifier failed to load: {e}"))
-            .ok()
-    });
-
     // Create structured LLM provider for event decomposition (qwen2.5:3b-instruct)
     let structured_llm: Option<
         Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
@@ -1064,19 +1115,37 @@ async fn setup_and_render_opening(
     };
 
     // Intention generation (composition-time LLM call)
+    let intention_start = Instant::now();
     let generated_intentions = if !composed_goals.scene_goals.is_empty() {
         use storyteller_engine::inference::intention_generation::generate_intentions;
         let characters_refs_for_ig: Vec<&CharacterSheet> = characters.iter().collect();
-        generate_intentions(
+        tracing::info!(
+            "Generating intentions for {} scene goals, {} characters",
+            composed_goals.scene_goals.len(),
+            characters_refs_for_ig.len()
+        );
+        let result = generate_intentions(
             llm.as_ref(),
             &scene,
             &characters_refs_for_ig,
             &composed_goals,
         )
-        .await
+        .await;
+        match &result {
+            Some(intentions) => tracing::info!(
+                "Intention generation succeeded: {} character intentions",
+                intentions.character_intentions.len()
+            ),
+            None => tracing::warn!(
+                "Intention generation returned None — LLM call or JSON parsing failed"
+            ),
+        }
+        result
     } else {
+        tracing::info!("No scene goals — skipping intention generation");
         None
     };
+    let intention_ms = intention_start.elapsed().as_millis() as u64;
 
     let grammar = PlutchikWestern::new();
 
@@ -1110,16 +1179,6 @@ async fn setup_and_render_opening(
             turn,
             characters: characters.clone(),
             emotional_markers: vec![],
-        },
-    );
-
-    // --- Phase: Events (opening — no input to classify) ---
-    emit_debug(
-        app,
-        DebugEvent::EventsClassified {
-            turn,
-            classifications: vec![],
-            classifier_loaded: event_classifier.is_some(),
         },
     );
 
@@ -1164,51 +1223,77 @@ async fn setup_and_render_opening(
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
-    // Inject goal intentions into preamble
-    use storyteller_engine::inference::intention_generation::intentions_to_preamble;
-    use storyteller_engine::scene_composer::GoalVisibility;
+    // Inject composition-time goal intentions into preamble
+    inject_goals_into_preamble(
+        &mut context.preamble,
+        generated_intentions.as_ref(),
+        Some(&composed_goals),
+        player_entity_id,
+    );
 
-    if let Some(ref intentions) = generated_intentions {
-        let (scene_direction, character_drives) = intentions_to_preamble(intentions);
-        context.preamble.scene_direction = Some(scene_direction);
-        context.preamble.character_drives = character_drives;
-    }
-
-    // Player context based on player's character goals
-    context.preamble.player_context = player_entity_id
-        .and_then(|pid| composed_goals.character_goals.get(&pid))
-        .map(|goals| {
-            goals
+    // Emit goals debug event
+    emit_debug(
+        app,
+        DebugEvent::GoalsGenerated {
+            turn,
+            scene_goals: composed_goals
+                .scene_goals
                 .iter()
-                .filter(|g| {
-                    matches!(
-                        g.visibility,
-                        GoalVisibility::Overt | GoalVisibility::Signaled
+                .map(|g| format!("{} ({})", g.goal_id, g.category))
+                .collect(),
+            character_goals: composed_goals
+                .character_goals
+                .iter()
+                .flat_map(|(eid, goals)| {
+                    let name = characters
+                        .iter()
+                        .find(|c| c.entity_id == *eid)
+                        .map(|c| c.name.as_str())
+                        .unwrap_or("unknown");
+                    goals.iter().map(move |g| {
+                        format!(
+                            "{} → {} ({}, {:?})",
+                            name, g.goal_id, g.category, g.visibility
+                        )
+                    })
+                })
+                .collect(),
+            scene_direction: context
+                .preamble
+                .scene_direction
+                .as_ref()
+                .map(|d| format!("{} {}", d.dramatic_tension, d.trajectory)),
+            character_drives: context
+                .preamble
+                .character_drives
+                .iter()
+                .map(|d| {
+                    format!(
+                        "{}: {} [constraint: {}] [stance: {}]",
+                        d.name, d.objective, d.constraint, d.behavioral_stance
                     )
                 })
-                .map(|g| g.goal_id.replace('_', " "))
-                .collect::<Vec<_>>()
-                .join("; ")
-        })
-        .filter(|s| !s.is_empty());
+                .collect(),
+            player_context: context.preamble.player_context.clone(),
+            timing_ms: intention_ms,
+        },
+    );
 
-    // Extract token counts from observer
-    let token_counts = extract_token_counts(&observer);
+    // Re-estimate token counts after goal injection
+    let preamble_tokens =
+        storyteller_engine::context::preamble::estimate_preamble_tokens(&context.preamble);
+    let base_token_counts = extract_token_counts(&observer);
+    let token_counts = (
+        preamble_tokens,
+        base_token_counts.1,
+        base_token_counts.2,
+        preamble_tokens + base_token_counts.1 + base_token_counts.2,
+    );
 
     // Render context tiers as text for the debug inspector
-    let opening_preamble_text = format!(
-        "Narrator: {}\nSetting: {}\nCast: {}\nBoundaries: {}",
-        context.preamble.narrator_identity,
-        context.preamble.setting_description,
-        context
-            .preamble
-            .cast_descriptions
-            .iter()
-            .map(|c| format!("{} ({})", c.name, c.role))
-            .collect::<Vec<_>>()
-            .join(", "),
-        context.preamble.boundaries.join("; "),
-    );
+    // Use the full render_preamble so the inspector shows exactly what the narrator sees
+    let opening_preamble_text =
+        storyteller_engine::context::preamble::render_preamble(&context.preamble);
 
     emit_debug(
         app,
@@ -1310,7 +1395,6 @@ async fn setup_and_render_opening(
             narrator_output: opening.text.clone(),
             predictions: None,
             intent_statements: None,
-            classifications: None,
             decomposition: None,
             arbitration: None,
             context_assembly: Some(serde_json::json!({
@@ -1328,6 +1412,20 @@ async fn setup_and_render_opening(
         if let Err(e) = store.append_turn(sid, &turn0) {
             tracing::warn!(error = %e, "Failed to persist turn 0");
         }
+
+        // Persist generated intentions (scene direction + character drives)
+        if let Some(ref intentions) = generated_intentions {
+            match serde_json::to_value(intentions) {
+                Ok(intentions_json) => {
+                    if let Err(e) = store.save_intentions(sid, &intentions_json) {
+                        tracing::warn!(error = %e, "Failed to persist intentions.json");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to serialize intentions");
+                }
+            }
+        }
     }
 
     let scene_info = SceneInfo {
@@ -1344,7 +1442,6 @@ async fn setup_and_render_opening(
         journal,
         llm,
         predictor,
-        event_classifier,
         structured_llm,
         intent_llm,
         grammar,
@@ -1353,6 +1450,8 @@ async fn setup_and_render_opening(
         session_id,
         player_entity_id,
         prediction_history: PredictionHistory::default(),
+        generated_intentions,
+        composed_goals: Some(composed_goals),
     };
 
     let mut guard = state.lock().await;
@@ -1365,6 +1464,41 @@ async fn setup_and_render_opening(
 /// debug events are best-effort observability, never blocking.
 fn emit_debug(app: &tauri::AppHandle, event: DebugEvent) {
     let _ = app.emit(DEBUG_EVENT_CHANNEL, &event);
+}
+
+/// Inject composition-time goals into the narrator preamble.
+///
+/// Populates `scene_direction`, `character_drives`, and `player_context`
+/// from generated intentions and composed goals. Called after
+/// `assemble_narrator_context()` returns.
+fn inject_goals_into_preamble(
+    preamble: &mut PersistentPreamble,
+    intentions: Option<&GeneratedIntentions>,
+    composed_goals: Option<&ComposedGoals>,
+    player_entity_id: Option<EntityId>,
+) {
+    if let Some(intentions) = intentions {
+        let (scene_direction, character_drives) = intentions_to_preamble(intentions);
+        preamble.scene_direction = Some(scene_direction);
+        preamble.character_drives = character_drives;
+    }
+
+    preamble.player_context = player_entity_id
+        .and_then(|pid| composed_goals.and_then(|goals| goals.character_goals.get(&pid)))
+        .map(|goals| {
+            goals
+                .iter()
+                .filter(|g| {
+                    matches!(
+                        g.visibility,
+                        GoalVisibility::Overt | GoalVisibility::Signaled
+                    )
+                })
+                .map(|g| g.goal_id.replace('_', " "))
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+        .filter(|s| !s.is_empty());
 }
 
 /// Extract rough emotional markers from player input.
@@ -1443,23 +1577,6 @@ fn resolve_model_path() -> Option<PathBuf> {
     None
 }
 
-/// Resolve the path to the event classifier model directory.
-fn resolve_event_classifier_path() -> Option<PathBuf> {
-    if let Ok(model_dir) = std::env::var("STORYTELLER_MODEL_PATH") {
-        let path = PathBuf::from(model_dir).join("event_classifier");
-        if path.join("event_classifier.onnx").exists() {
-            return Some(path);
-        }
-    }
-    if let Ok(data_path) = std::env::var("STORYTELLER_DATA_PATH") {
-        let path = PathBuf::from(data_path).join("models/event_classifier");
-        if path.join("event_classifier.onnx").exists() {
-            return Some(path);
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1525,6 +1642,140 @@ mod tests {
         let json = serde_json::to_value(&info).expect("serialize");
         assert_eq!(json["title"], "The Fair and the Dead");
         assert_eq!(json["cast"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn inject_goals_populates_preamble_from_intentions() {
+        use storyteller_engine::inference::intention_generation::{
+            CharacterIntention, GeneratedIntentions, SceneIntention,
+        };
+
+        let mut preamble = PersistentPreamble {
+            narrator_identity: String::new(),
+            anti_patterns: vec![],
+            setting_description: String::new(),
+            cast_descriptions: vec![],
+            boundaries: vec![],
+            scene_direction: None,
+            character_drives: vec![],
+            player_context: None,
+        };
+
+        let intentions = GeneratedIntentions {
+            scene_intention: SceneIntention {
+                dramatic_tension: "Arthur seeks a letter.".to_string(),
+                trajectory: "Toward confrontation.".to_string(),
+            },
+            character_intentions: vec![CharacterIntention {
+                character: "Arthur".to_string(),
+                objective: "Get the letter.".to_string(),
+                constraint: "Margaret guards it.".to_string(),
+                behavioral_stance: "Polite deflection.".to_string(),
+            }],
+        };
+
+        inject_goals_into_preamble(&mut preamble, Some(&intentions), None, None);
+
+        assert!(preamble.scene_direction.is_some());
+        assert_eq!(
+            preamble.scene_direction.as_ref().unwrap().dramatic_tension,
+            "Arthur seeks a letter."
+        );
+        assert_eq!(preamble.character_drives.len(), 1);
+        assert_eq!(preamble.character_drives[0].name, "Arthur");
+        // No composed goals → player_context remains None
+        assert!(preamble.player_context.is_none());
+    }
+
+    #[test]
+    fn inject_goals_with_none_leaves_preamble_empty() {
+        let mut preamble = PersistentPreamble {
+            narrator_identity: String::new(),
+            anti_patterns: vec![],
+            setting_description: String::new(),
+            cast_descriptions: vec![],
+            boundaries: vec![],
+            scene_direction: None,
+            character_drives: vec![],
+            player_context: None,
+        };
+
+        inject_goals_into_preamble(&mut preamble, None, None, None);
+
+        assert!(preamble.scene_direction.is_none());
+        assert!(preamble.character_drives.is_empty());
+        assert!(preamble.player_context.is_none());
+    }
+
+    #[test]
+    fn inject_goals_filters_player_context_by_visibility() {
+        use storyteller_engine::inference::intention_generation::{
+            GeneratedIntentions, SceneIntention,
+        };
+        use storyteller_engine::scene_composer::{CharacterGoal, ComposedGoals, GoalVisibility};
+
+        let player_id = storyteller_core::types::entity::EntityId::new();
+
+        let mut preamble = PersistentPreamble {
+            narrator_identity: String::new(),
+            anti_patterns: vec![],
+            setting_description: String::new(),
+            cast_descriptions: vec![],
+            boundaries: vec![],
+            scene_direction: None,
+            character_drives: vec![],
+            player_context: None,
+        };
+
+        let intentions = GeneratedIntentions {
+            scene_intention: SceneIntention {
+                dramatic_tension: "Test.".to_string(),
+                trajectory: "Test.".to_string(),
+            },
+            character_intentions: vec![],
+        };
+
+        let mut character_goals = std::collections::HashMap::new();
+        character_goals.insert(
+            player_id,
+            vec![
+                CharacterGoal {
+                    goal_id: "find_artifact".to_string(),
+                    visibility: GoalVisibility::Overt,
+                    category: "discovery".to_string(),
+                    fragments: vec![],
+                },
+                CharacterGoal {
+                    goal_id: "hidden_agenda".to_string(),
+                    visibility: GoalVisibility::Hidden,
+                    category: "revelation".to_string(),
+                    fragments: vec![],
+                },
+                CharacterGoal {
+                    goal_id: "build_trust".to_string(),
+                    visibility: GoalVisibility::Signaled,
+                    category: "bonding".to_string(),
+                    fragments: vec![],
+                },
+            ],
+        );
+        let composed = ComposedGoals {
+            scene_goals: vec![],
+            character_goals,
+        };
+
+        inject_goals_into_preamble(
+            &mut preamble,
+            Some(&intentions),
+            Some(&composed),
+            Some(player_id),
+        );
+
+        // Only Overt and Signaled goals should appear, Hidden filtered out
+        let ctx = preamble.player_context.expect("should have player context");
+        assert!(ctx.contains("find artifact")); // underscores replaced with spaces
+        assert!(ctx.contains("build trust"));
+        assert!(!ctx.contains("hidden"));
     }
 
     #[test]

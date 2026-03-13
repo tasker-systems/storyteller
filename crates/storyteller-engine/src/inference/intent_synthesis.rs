@@ -12,6 +12,33 @@ use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::prediction::{ActionType, CharacterPrediction, SpeechRegister};
 
+use super::intention_generation::GeneratedIntentions;
+
+/// Format composition-time intentions as a prompt section for the intent synthesizer.
+pub fn format_scene_objectives(intentions: &GeneratedIntentions) -> String {
+    let mut text = String::from("## Scene Objectives\n");
+    text.push_str(&format!(
+        "Dramatic tension: {}\n",
+        intentions.scene_intention.dramatic_tension
+    ));
+    text.push_str(&format!(
+        "Trajectory: {}\n",
+        intentions.scene_intention.trajectory
+    ));
+
+    if !intentions.character_intentions.is_empty() {
+        text.push_str("\n## Character Objectives\n");
+        for ci in &intentions.character_intentions {
+            text.push_str(&format!(
+                "{}: Objective: {} | Constraint: {} | Stance: {}\n",
+                ci.character, ci.objective, ci.constraint, ci.behavioral_stance
+            ));
+        }
+    }
+
+    text
+}
+
 /// Returns the system prompt for the intent synthesizer.
 pub fn intent_synthesis_system_prompt() -> String {
     "\
@@ -20,30 +47,39 @@ You are the Intent Synthesizer — a dramaturgical assistant preparing a briefin
 You receive:
 - Character data: personality traits, emotional state, relationships
 - ML predictions: what a behavior model predicts each character will do
+- Scene objectives: dramatic tension and per-character objectives for this scene
 - Recent scene history: what just happened
 - Player input: what the player character just did or said
 
-Your job: Write a brief directive for each character. For non-player characters, describe what they WANT to do this turn and WHY. For the player character, describe how the character's nature relates to the directed action.
+Your job: Write a brief directive for each character.
 
-Rules for non-player characters:
+For non-player characters:
+- Describe what they WANT to do this turn and WHY, grounded in their scene objective
 - Be directive: \"Arthur should respond\" not \"Arthur might respond\"
 - Be specific about emotional subtext: \"reluctantly, deflecting with humor\" not \"with some emotion\"
 - Include speech direction when a character should speak: \"should say something about...\" not prescribing exact words
 - Ground in physical behavior: \"his shoulders drop\" not \"he feels sad\"
-- One paragraph per character, 2-4 sentences each
+
+For the player character:
+- The player has directed this character's action. Do NOT override it.
+- Describe how this character's personality and emotional state relate to the directed action — whether their nature resists it, inflects it, or suits it
+- Ground in physical behavior the narrator can render
+- If the directed action is in tension with the character's nature, call this out — this is how the system surfaces authentic characterization
+
+Rules:
+- One paragraph per character, 2-3 sentences each
 - Do NOT write dialogue. The narrator writes all dialogue.
 - Do NOT narrate the scene. You are briefing the narrator, not writing prose.
+- Do NOT name personality traits directly. Show them through behavior.
+- Use **CharacterName** headers for all characters (no other labels or markers)
 
-Rules for the player character (marked [PLAYER CHARACTER]):
-- The player has directed this character's action. Do NOT override it.
-- Describe how this character's personality and emotional state relate to the directed action — whether their nature resists it, inflects it, or suits it. Ground in physical behavior the narrator can render.
-- If the directed action is in tension with the character's nature, call this out explicitly — this is how the system nudges players toward authentic characterization without forcing their hand.
-- This is advisory — the narrator decides how to weigh it.
+Examples of good directives:
 
-Format:
+**Nyx**
+Should find an excuse to handle a component Kael just placed, displacing it subtly. Her body language reads as helpful — leaning in, fingers hovering — but her timing consistently disrupts his progress. Undercurrent of anticipation, watching for his reaction.
 
-**CharacterName**
-[Your directive paragraph for this character.]"
+**Kael**
+His attention is split between the work and Nyx's proximity. Shoulders tense when she reaches near his workspace. Should complete the current assembly step with deliberate focus, grounding himself in the task against the distraction."
         .to_string()
 }
 
@@ -54,8 +90,9 @@ pub fn build_intent_user_prompt(
     journal_tail: &str,
     player_input: &str,
     scene_context: &str,
+    scene_objectives: Option<&str>,
 ) -> String {
-    format!(
+    let mut prompt = format!(
         "\
 ## Characters
 {character_summary}
@@ -71,7 +108,14 @@ pub fn build_intent_user_prompt(
 
 ## Scene Context
 {scene_context}"
-    )
+    );
+
+    if let Some(objectives) = scene_objectives {
+        prompt.push_str("\n\n");
+        prompt.push_str(objectives);
+    }
+
+    prompt
 }
 
 /// Formats the top `count` tensor axes by central_tendency magnitude as
@@ -270,8 +314,8 @@ pub fn build_summaries(
             let action_text = player_input.unwrap_or("(no action specified)");
             let traits = format_dominant_axes(character, 5);
             let mut player_block = format!(
-                "[PLAYER CHARACTER — directed action: \"{action_text}\"]\n\
-                 {} | {} | Dominant traits (0-1 scale): {}",
+                "**{}** (player's action: \"{action_text}\")\n\
+                 {} | Dominant traits (0-1 scale): {}",
                 character.name, character.performance_notes, traits,
             );
 
@@ -353,6 +397,7 @@ pub async fn synthesize_intents(
     player_input: &str,
     scene: &SceneData,
     player_entity_id: Option<EntityId>,
+    intentions: Option<&GeneratedIntentions>,
 ) -> Option<String> {
     let (char_summary, pred_summary) = build_summaries(
         characters,
@@ -361,6 +406,7 @@ pub async fn synthesize_intents(
         Some(player_input),
     );
     let scene_context = build_scene_context(scene);
+    let scene_objectives = intentions.map(format_scene_objectives);
 
     let user_prompt = build_intent_user_prompt(
         &char_summary,
@@ -368,6 +414,7 @@ pub async fn synthesize_intents(
         journal_tail,
         player_input,
         &scene_context,
+        scene_objectives.as_deref(),
     );
 
     let request = CompletionRequest {
@@ -405,7 +452,7 @@ mod tests {
     fn system_prompt_includes_player_character_rules() {
         let prompt = intent_synthesis_system_prompt();
         assert!(
-            prompt.contains("PLAYER CHARACTER"),
+            prompt.contains("player character"),
             "Should mention player character: {prompt}"
         );
         assert!(
@@ -413,8 +460,12 @@ mod tests {
             "Should instruct not to override player action: {prompt}"
         );
         assert!(
-            prompt.contains("advisory"),
-            "Should note this is advisory: {prompt}"
+            prompt.contains("Examples of good directives"),
+            "Should include few-shot examples: {prompt}"
+        );
+        assert!(
+            prompt.contains("Use **CharacterName** headers"),
+            "Should specify header format: {prompt}"
         );
     }
 
@@ -432,6 +483,7 @@ mod tests {
             journal_tail,
             player_input,
             scene_context,
+            None,
         );
 
         assert!(prompt.contains("Arthur"));
@@ -440,6 +492,27 @@ mod tests {
         assert!(prompt.contains("Margaret arrived"));
         assert!(prompt.contains("holding up"));
         assert!(prompt.contains("Speech (Tender)"));
+    }
+
+    #[test]
+    fn user_prompt_includes_scene_objectives_when_provided() {
+        let prompt = build_intent_user_prompt(
+            "chars",
+            "preds",
+            "journal",
+            "input",
+            "context",
+            Some("## Scene Objectives\nDramatic tension: test tension"),
+        );
+        assert!(prompt.contains("## Scene Objectives"));
+        assert!(prompt.contains("test tension"));
+    }
+
+    #[test]
+    fn user_prompt_omits_objectives_when_none() {
+        let prompt =
+            build_intent_user_prompt("chars", "preds", "journal", "input", "context", None);
+        assert!(!prompt.contains("Scene Objectives"));
     }
 
     #[test]
@@ -456,8 +529,8 @@ mod tests {
             Some("I approach the fence"),
         );
         assert!(
-            char_summary.contains("[PLAYER CHARACTER"),
-            "Player should have marker"
+            char_summary.contains("**Bramblehoof** (player's action:"),
+            "Player should have bold name and action marker"
         );
         assert!(
             char_summary.contains("Bramblehoof"),
@@ -483,15 +556,15 @@ mod tests {
             Some("I charge at the intruder"),
         );
         assert!(
-            char_summary.contains("[PLAYER CHARACTER"),
-            "Should contain player character marker: {char_summary}"
+            char_summary.contains("**Bramblehoof** (player's action:"),
+            "Should contain player character bold name and action marker: {char_summary}"
         );
         assert!(
             char_summary.contains("Bramblehoof"),
             "Player character name should appear: {char_summary}"
         );
         assert!(
-            char_summary.contains("directed action"),
+            char_summary.contains("player's action"),
             "Should include directed action label: {char_summary}"
         );
         assert!(
@@ -531,8 +604,8 @@ mod tests {
         let predictions = vec![];
         let (char_summary, _) = build_summaries(&characters, &predictions, None, None);
         assert!(
-            !char_summary.contains("[PLAYER CHARACTER"),
-            "Should not have player marker when no player_entity_id"
+            !char_summary.contains("player's action"),
+            "Should not have player action marker when no player_entity_id"
         );
         assert!(char_summary.contains("Bramblehoof"));
         assert!(char_summary.contains("Pyotir"));
@@ -560,7 +633,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec!["grief".to_string()],
-                activation_reason: "loss context".to_string(),
                 confidence: 0.8,
             },
             actions: vec![ActionPrediction {
@@ -650,7 +722,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec!["grief".to_string()],
-                activation_reason: "loss context".to_string(),
                 confidence: 0.8,
             },
             actions: vec![ActionPrediction {
@@ -689,7 +760,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec![],
-                activation_reason: "test".to_string(),
                 confidence: 0.8,
             },
             actions: vec![ActionPrediction {
@@ -733,7 +803,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec![],
-                activation_reason: "test".to_string(),
                 confidence: 0.8,
             },
             actions: vec![
