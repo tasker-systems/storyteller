@@ -15,7 +15,8 @@ use storyteller_core::traits::structured_llm::StructuredLlmConfig;
 use storyteller_core::traits::NoopObserver;
 use storyteller_core::types::capability_lexicon::CapabilityLexicon;
 use storyteller_core::types::character::{CharacterSheet, SceneData};
-use storyteller_core::types::narrator_context::SceneJournal;
+use storyteller_core::types::entity::EntityId;
+use storyteller_core::types::narrator_context::{PersistentPreamble, SceneJournal};
 use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::scene::SceneId;
 use storyteller_engine::agents::narrator::NarratorAgent;
@@ -29,9 +30,12 @@ use storyteller_engine::inference::event_decomposition::{
 };
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
 use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_engine::inference::intention_generation::{
+    intentions_to_preamble, GeneratedIntentions,
+};
 use storyteller_engine::inference::structured::OllamaStructuredProvider;
 use storyteller_engine::scene_composer::{
-    ComposedGoals, ComposedScene, SceneComposer, SceneSelections,
+    ComposedGoals, ComposedScene, GoalVisibility, SceneComposer, SceneSelections,
 };
 use storyteller_engine::systems::arbitration::check_action_possibility;
 use storyteller_ml::prediction_history::PredictionHistory;
@@ -843,7 +847,7 @@ pub async fn submit_input(
 
     let observer = CollectingObserver::new();
     let assembly_start = Instant::now();
-    let context = assemble_narrator_context(
+    let mut context = assemble_narrator_context(
         &engine.scene,
         &characters_refs,
         &engine.journal,
@@ -855,6 +859,14 @@ pub async fn submit_input(
         engine.player_entity_id,
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
+
+    // Re-inject composition-time goal intentions every turn to prevent preamble token drop
+    inject_goals_into_preamble(
+        &mut context.preamble,
+        engine.generated_intentions.as_ref(),
+        engine.composed_goals.as_ref(),
+        engine.player_entity_id,
+    );
 
     let token_counts = extract_token_counts(&observer);
 
@@ -1214,33 +1226,13 @@ async fn setup_and_render_opening(
     );
     let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
-    // Inject goal intentions into preamble
-    use storyteller_engine::inference::intention_generation::intentions_to_preamble;
-    use storyteller_engine::scene_composer::GoalVisibility;
-
-    if let Some(ref intentions) = generated_intentions {
-        let (scene_direction, character_drives) = intentions_to_preamble(intentions);
-        context.preamble.scene_direction = Some(scene_direction);
-        context.preamble.character_drives = character_drives;
-    }
-
-    // Player context based on player's character goals
-    context.preamble.player_context = player_entity_id
-        .and_then(|pid| composed_goals.character_goals.get(&pid))
-        .map(|goals| {
-            goals
-                .iter()
-                .filter(|g| {
-                    matches!(
-                        g.visibility,
-                        GoalVisibility::Overt | GoalVisibility::Signaled
-                    )
-                })
-                .map(|g| g.goal_id.replace('_', " "))
-                .collect::<Vec<_>>()
-                .join("; ")
-        })
-        .filter(|s| !s.is_empty());
+    // Inject composition-time goal intentions into preamble
+    inject_goals_into_preamble(
+        &mut context.preamble,
+        generated_intentions.as_ref(),
+        Some(&composed_goals),
+        player_entity_id,
+    );
 
     // Emit goals debug event
     emit_debug(
@@ -1475,6 +1467,41 @@ async fn setup_and_render_opening(
 /// debug events are best-effort observability, never blocking.
 fn emit_debug(app: &tauri::AppHandle, event: DebugEvent) {
     let _ = app.emit(DEBUG_EVENT_CHANNEL, &event);
+}
+
+/// Inject composition-time goals into the narrator preamble.
+///
+/// Populates `scene_direction`, `character_drives`, and `player_context`
+/// from generated intentions and composed goals. Called after
+/// `assemble_narrator_context()` returns.
+fn inject_goals_into_preamble(
+    preamble: &mut PersistentPreamble,
+    intentions: Option<&GeneratedIntentions>,
+    composed_goals: Option<&ComposedGoals>,
+    player_entity_id: Option<EntityId>,
+) {
+    if let Some(intentions) = intentions {
+        let (scene_direction, character_drives) = intentions_to_preamble(intentions);
+        preamble.scene_direction = Some(scene_direction);
+        preamble.character_drives = character_drives;
+    }
+
+    preamble.player_context = player_entity_id
+        .and_then(|pid| composed_goals.and_then(|goals| goals.character_goals.get(&pid)))
+        .map(|goals| {
+            goals
+                .iter()
+                .filter(|g| {
+                    matches!(
+                        g.visibility,
+                        GoalVisibility::Overt | GoalVisibility::Signaled
+                    )
+                })
+                .map(|g| g.goal_id.replace('_', " "))
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+        .filter(|s| !s.is_empty());
 }
 
 /// Extract rough emotional markers from player input.

@@ -49,15 +49,7 @@ pub struct EngineState {
     pub prediction_history: PredictionHistory,
     /// Composition-time intentions (scene direction + character drives).
     /// Persists across turns for preamble injection and intent synthesis context.
-    #[expect(
-        dead_code,
-        reason = "will be read in Task 10 — intent synthesis context"
-    )]
     pub generated_intentions: Option<GeneratedIntentions>,
     /// Composed scene/character goals for player context re-derivation.
-    #[expect(
-        dead_code,
-        reason = "will be read in Task 10 — intent synthesis context"
-    )]
     pub composed_goals: Option<ComposedGoals>,
 }
