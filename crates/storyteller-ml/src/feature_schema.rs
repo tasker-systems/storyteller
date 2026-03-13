@@ -455,7 +455,14 @@ pub fn decode_outputs(
     // --- Thought head ---
     let awareness_level = argmax_to_awareness_level(&output[offset..offset + NUM_AWARENESS_LEVELS]);
     offset += NUM_AWARENESS_LEVELS;
-    let dominant_emotion_index = output[offset].round() as u8;
+    let raw_index = output[offset].round() as u8;
+    if raw_index > 7 {
+        tracing::warn!(
+            raw_index,
+            "dominant_emotion_index out of Plutchik range, clamping to 7"
+        );
+    }
+    let dominant_emotion_index = raw_index.min(7);
     offset += 1;
 
     // --- Emotion head ---
