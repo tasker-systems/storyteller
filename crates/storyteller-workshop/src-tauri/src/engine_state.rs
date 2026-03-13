@@ -8,7 +8,6 @@ use storyteller_core::traits::structured_llm::StructuredLlmProvider;
 use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::SceneJournal;
-use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::frame::CharacterPredictor;
 use storyteller_ml::prediction_history::PredictionHistory;
 
@@ -30,8 +29,6 @@ pub struct EngineState {
     pub llm: Arc<dyn LlmProvider>,
     /// ML character predictor (optional — graceful fallback).
     pub predictor: Option<CharacterPredictor>,
-    /// ML event classifier (optional — graceful fallback).
-    pub event_classifier: Option<EventClassifier>,
     /// Structured LLM provider for event decomposition (optional).
     pub structured_llm: Option<Arc<dyn StructuredLlmProvider>>,
     /// Intent synthesis LLM provider — plain completion, same 3b model (optional).

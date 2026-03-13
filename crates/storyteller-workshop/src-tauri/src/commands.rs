@@ -22,7 +22,6 @@ use storyteller_engine::agents::narrator::NarratorAgent;
 use storyteller_engine::context::journal::add_turn;
 use storyteller_engine::context::prediction::predict_character_behaviors;
 use storyteller_engine::context::{assemble_narrator_context, DEFAULT_TOTAL_TOKEN_BUDGET};
-use storyteller_engine::inference::event_classifier::EventClassifier;
 use storyteller_engine::inference::event_decomposition::{
     event_decomposition_schema, event_decomposition_system_prompt, EventDecomposition,
 };
@@ -477,14 +476,6 @@ pub async fn resume_session(
             .ok()
     });
 
-    // Load event classifier (optional)
-    let event_classifier = resolve_event_classifier_path().and_then(|path| {
-        EventClassifier::load(&path)
-            .inspect(|_| tracing::info!("Event classifier loaded: {}", path.display()))
-            .inspect_err(|e| tracing::warn!("Event classifier failed to load: {e}"))
-            .ok()
-    });
-
     // Create structured LLM provider for event decomposition
     let structured_llm: Option<
         Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
@@ -532,7 +523,6 @@ pub async fn resume_session(
         journal,
         llm,
         predictor,
-        event_classifier,
         structured_llm,
         intent_llm,
         grammar,
@@ -582,13 +572,14 @@ pub async fn submit_input(
 
     let predict_start = Instant::now();
     let mut resolver_output = if let Some(ref predictor) = engine.predictor {
+        // TODO: Task 4 will replace event_classifier.as_ref() with decomposition_to_event_features
         let (predictions, _classification) = predict_character_behaviors(
             predictor,
             &characters_refs,
             &engine.scene,
             &input,
             &engine.grammar,
-            engine.event_classifier.as_ref(),
+            None, // event_classifier removed; Task 4 will pass decomposition features instead
             engine.prediction_history.as_map(),
         );
         ResolverOutput {
@@ -653,25 +644,15 @@ pub async fn submit_input(
         },
     );
 
-    let classifications: Vec<String> = if let Some(ref classifier) = engine.event_classifier {
-        match classifier.classify_text(&input) {
-            Ok(output) => output
-                .event_kinds
-                .iter()
-                .map(|(label, score)| format!("{label}: {score:.2}"))
-                .collect(),
-            Err(e) => vec![format!("Classification error: {e}")],
-        }
-    } else {
-        vec![]
-    };
+    // TODO: Task 5 will populate classifications from LLM decomposition instead of DistilBERT
+    let classifications: Vec<String> = vec![];
 
     emit_debug(
         &app,
         DebugEvent::EventsClassified {
             turn,
             classifications: classifications.clone(),
-            classifier_loaded: engine.event_classifier.is_some(),
+            classifier_loaded: false,
         },
     );
 
@@ -1089,14 +1070,6 @@ async fn setup_and_render_opening(
             .ok()
     });
 
-    // Load event classifier (optional)
-    let event_classifier = resolve_event_classifier_path().and_then(|path| {
-        EventClassifier::load(&path)
-            .inspect(|_| tracing::info!("Event classifier loaded: {}", path.display()))
-            .inspect_err(|e| tracing::warn!("Event classifier failed to load: {e}"))
-            .ok()
-    });
-
     // Create structured LLM provider for event decomposition (qwen2.5:3b-instruct)
     let structured_llm: Option<
         Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
@@ -1196,7 +1169,7 @@ async fn setup_and_render_opening(
         DebugEvent::EventsClassified {
             turn,
             classifications: vec![],
-            classifier_loaded: event_classifier.is_some(),
+            classifier_loaded: false,
         },
     );
 
@@ -1481,7 +1454,6 @@ async fn setup_and_render_opening(
         journal,
         llm,
         predictor,
-        event_classifier,
         structured_llm,
         intent_llm,
         grammar,
@@ -1574,23 +1546,6 @@ fn resolve_model_path() -> Option<PathBuf> {
             .join("models")
             .join("character_predictor.onnx");
         if path.exists() {
-            return Some(path);
-        }
-    }
-    None
-}
-
-/// Resolve the path to the event classifier model directory.
-fn resolve_event_classifier_path() -> Option<PathBuf> {
-    if let Ok(model_dir) = std::env::var("STORYTELLER_MODEL_PATH") {
-        let path = PathBuf::from(model_dir).join("event_classifier");
-        if path.join("event_classifier.onnx").exists() {
-            return Some(path);
-        }
-    }
-    if let Ok(data_path) = std::env::var("STORYTELLER_DATA_PATH") {
-        let path = PathBuf::from(data_path).join("models/event_classifier");
-        if path.join("event_classifier.onnx").exists() {
             return Some(path);
         }
     }
