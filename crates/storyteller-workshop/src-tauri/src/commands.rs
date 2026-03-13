@@ -20,7 +20,9 @@ use storyteller_core::types::resolver::ResolverOutput;
 use storyteller_core::types::scene::SceneId;
 use storyteller_engine::agents::narrator::NarratorAgent;
 use storyteller_engine::context::journal::add_turn;
-use storyteller_engine::context::prediction::predict_character_behaviors;
+use storyteller_engine::context::prediction::{
+    decomposition_to_event_features, predict_character_behaviors,
+};
 use storyteller_engine::context::{assemble_narrator_context, DEFAULT_TOTAL_TOKEN_BUDGET};
 use storyteller_engine::inference::event_decomposition::{
     event_decomposition_schema, event_decomposition_system_prompt, EventDecomposition,
@@ -561,6 +563,109 @@ pub async fn submit_input(
     let characters_refs: Vec<&_> = engine.characters.iter().collect();
     let entity_ids: Vec<_> = engine.characters.iter().map(|c| c.entity_id).collect();
 
+    // --- Phase: Event Decomposition (LLM) ---
+    // Runs first so decomposition-derived features can inform ML prediction.
+    emit_debug(
+        &app,
+        DebugEvent::PhaseStarted {
+            turn,
+            phase: "decomposition".to_string(),
+        },
+    );
+
+    let decomp_start = Instant::now();
+    let mut persisted_decomposition: Option<serde_json::Value> = None;
+    let mut event_decomposition: Option<EventDecomposition> = None;
+
+    if let Some(ref structured_llm) = engine.structured_llm {
+        // Include the last narrator prose so the 3b model can resolve pronouns
+        // and ground the player's actions against established scene context.
+        let decomp_input = if let Some(last_entry) = engine.journal.entries.last() {
+            format!("[Narrator]\n{}\n\n[Player]\n{}", last_entry.content, input)
+        } else {
+            input.clone()
+        };
+
+        // Call provider directly so we capture raw JSON for debugging
+        let request = storyteller_core::traits::structured_llm::StructuredRequest {
+            system: event_decomposition_system_prompt(),
+            input: decomp_input,
+            output_schema: event_decomposition_schema(),
+            temperature: 0.1,
+        };
+        match structured_llm.extract(request).await {
+            Ok(raw_json) => {
+                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                tracing::info!(
+                    raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
+                    "Event decomposition raw LLM response"
+                );
+                persisted_decomposition = Some(raw_json.clone());
+                // Try to parse the raw JSON into our typed decomposition
+                let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
+                    Ok(d) => (Some(d), None),
+                    Err(e) => {
+                        tracing::warn!("Event decomposition parse failed: {e}");
+                        (None, Some(format!("{e}")))
+                    }
+                };
+                event_decomposition = decomposition.clone();
+                emit_debug(
+                    &app,
+                    DebugEvent::EventDecomposed {
+                        turn,
+                        decomposition,
+                        raw_llm_json: Some(raw_json),
+                        timing_ms: decomp_ms,
+                        model: "qwen2.5:3b-instruct".to_string(),
+                        error,
+                    },
+                );
+            }
+            Err(e) => {
+                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
+                tracing::warn!("Event decomposition LLM call failed: {e}");
+                emit_debug(
+                    &app,
+                    DebugEvent::EventDecomposed {
+                        turn,
+                        decomposition: None,
+                        raw_llm_json: None,
+                        timing_ms: decomp_ms,
+                        model: "qwen2.5:3b-instruct".to_string(),
+                        error: Some(format!("{e}")),
+                    },
+                );
+            }
+        }
+    } else {
+        emit_debug(
+            &app,
+            DebugEvent::EventDecomposed {
+                turn,
+                decomposition: None,
+                raw_llm_json: None,
+                timing_ms: 0,
+                model: "none".to_string(),
+                error: Some("No structured LLM provider configured".to_string()),
+            },
+        );
+    }
+    let decomposition_ms = decomp_start.elapsed().as_millis() as u64;
+
+    // Derive event features from decomposition for ML prediction input.
+    let event_features = if let Some(ref decomposition) = event_decomposition {
+        decomposition_to_event_features(decomposition)
+    } else {
+        // Fallback when no structured LLM available — safe defaults
+        storyteller_ml::feature_schema::EventFeatureInput {
+            event_type: storyteller_core::types::prediction::EventType::Interaction,
+            emotional_register: storyteller_core::types::prediction::EmotionalRegister::Neutral,
+            confidence: 0.5,
+            target_count: (characters_refs.len().saturating_sub(1)) as u8,
+        }
+    };
+
     // --- Phase: ML Predictions ---
     emit_debug(
         &app,
@@ -572,12 +677,6 @@ pub async fn submit_input(
 
     let predict_start = Instant::now();
     let mut resolver_output = if let Some(ref predictor) = engine.predictor {
-        let event_features = storyteller_ml::feature_schema::EventFeatureInput {
-            event_type: storyteller_core::types::prediction::EventType::Interaction,
-            emotional_register: storyteller_core::types::prediction::EmotionalRegister::Neutral,
-            confidence: 0.5,
-            target_count: (characters_refs.len().saturating_sub(1)) as u8,
-        };
         let predictions = predict_character_behaviors(
             predictor,
             &characters_refs,
@@ -639,91 +738,6 @@ pub async fn submit_input(
             emotional_markers: emotional_markers.clone(),
         },
     );
-
-    // --- Phase: Event Decomposition (LLM) ---
-    emit_debug(
-        &app,
-        DebugEvent::PhaseStarted {
-            turn,
-            phase: "decomposition".to_string(),
-        },
-    );
-
-    let decomp_start = Instant::now();
-    let mut persisted_decomposition: Option<serde_json::Value> = None;
-    if let Some(ref structured_llm) = engine.structured_llm {
-        // Include the last narrator prose so the 3b model can resolve pronouns
-        // and ground the player's actions against established scene context.
-        let decomp_input = if let Some(last_entry) = engine.journal.entries.last() {
-            format!("[Narrator]\n{}\n\n[Player]\n{}", last_entry.content, input)
-        } else {
-            input.clone()
-        };
-
-        // Call provider directly so we capture raw JSON for debugging
-        let request = storyteller_core::traits::structured_llm::StructuredRequest {
-            system: event_decomposition_system_prompt(),
-            input: decomp_input,
-            output_schema: event_decomposition_schema(),
-            temperature: 0.1,
-        };
-        match structured_llm.extract(request).await {
-            Ok(raw_json) => {
-                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
-                tracing::info!(
-                    raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
-                    "Event decomposition raw LLM response"
-                );
-                persisted_decomposition = Some(raw_json.clone());
-                // Try to parse the raw JSON into our typed decomposition
-                let (decomposition, error) = match EventDecomposition::from_json(&raw_json) {
-                    Ok(d) => (Some(d), None),
-                    Err(e) => {
-                        tracing::warn!("Event decomposition parse failed: {e}");
-                        (None, Some(format!("{e}")))
-                    }
-                };
-                emit_debug(
-                    &app,
-                    DebugEvent::EventDecomposed {
-                        turn,
-                        decomposition,
-                        raw_llm_json: Some(raw_json),
-                        timing_ms: decomp_ms,
-                        model: "qwen2.5:3b-instruct".to_string(),
-                        error,
-                    },
-                );
-            }
-            Err(e) => {
-                let decomp_ms = decomp_start.elapsed().as_millis() as u64;
-                tracing::warn!("Event decomposition LLM call failed: {e}");
-                emit_debug(
-                    &app,
-                    DebugEvent::EventDecomposed {
-                        turn,
-                        decomposition: None,
-                        raw_llm_json: None,
-                        timing_ms: decomp_ms,
-                        model: "qwen2.5:3b-instruct".to_string(),
-                        error: Some(format!("{e}")),
-                    },
-                );
-            }
-        }
-    } else {
-        emit_debug(
-            &app,
-            DebugEvent::EventDecomposed {
-                turn,
-                decomposition: None,
-                raw_llm_json: None,
-                timing_ms: 0,
-                model: "none".to_string(),
-                error: Some("No structured LLM provider configured".to_string()),
-            },
-        );
-    }
 
     // --- Phase: Action Arbitration ---
     emit_debug(
@@ -973,6 +987,7 @@ pub async fn submit_input(
                 "total_tokens": token_counts.3,
             })),
             timing: Some(serde_json::json!({
+                "decomposition_ms": decomposition_ms,
                 "prediction_ms": prediction_ms,
                 "intent_ms": intent_ms,
                 "assembly_ms": assembly_ms,
