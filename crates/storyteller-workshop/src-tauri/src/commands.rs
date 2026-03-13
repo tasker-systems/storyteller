@@ -1645,6 +1645,140 @@ mod tests {
     }
 
     #[test]
+    fn inject_goals_populates_preamble_from_intentions() {
+        use storyteller_engine::inference::intention_generation::{
+            CharacterIntention, GeneratedIntentions, SceneIntention,
+        };
+
+        let mut preamble = PersistentPreamble {
+            narrator_identity: String::new(),
+            anti_patterns: vec![],
+            setting_description: String::new(),
+            cast_descriptions: vec![],
+            boundaries: vec![],
+            scene_direction: None,
+            character_drives: vec![],
+            player_context: None,
+        };
+
+        let intentions = GeneratedIntentions {
+            scene_intention: SceneIntention {
+                dramatic_tension: "Arthur seeks a letter.".to_string(),
+                trajectory: "Toward confrontation.".to_string(),
+            },
+            character_intentions: vec![CharacterIntention {
+                character: "Arthur".to_string(),
+                objective: "Get the letter.".to_string(),
+                constraint: "Margaret guards it.".to_string(),
+                behavioral_stance: "Polite deflection.".to_string(),
+            }],
+        };
+
+        inject_goals_into_preamble(&mut preamble, Some(&intentions), None, None);
+
+        assert!(preamble.scene_direction.is_some());
+        assert_eq!(
+            preamble.scene_direction.as_ref().unwrap().dramatic_tension,
+            "Arthur seeks a letter."
+        );
+        assert_eq!(preamble.character_drives.len(), 1);
+        assert_eq!(preamble.character_drives[0].name, "Arthur");
+        // No composed goals → player_context remains None
+        assert!(preamble.player_context.is_none());
+    }
+
+    #[test]
+    fn inject_goals_with_none_leaves_preamble_empty() {
+        let mut preamble = PersistentPreamble {
+            narrator_identity: String::new(),
+            anti_patterns: vec![],
+            setting_description: String::new(),
+            cast_descriptions: vec![],
+            boundaries: vec![],
+            scene_direction: None,
+            character_drives: vec![],
+            player_context: None,
+        };
+
+        inject_goals_into_preamble(&mut preamble, None, None, None);
+
+        assert!(preamble.scene_direction.is_none());
+        assert!(preamble.character_drives.is_empty());
+        assert!(preamble.player_context.is_none());
+    }
+
+    #[test]
+    fn inject_goals_filters_player_context_by_visibility() {
+        use storyteller_engine::inference::intention_generation::{
+            GeneratedIntentions, SceneIntention,
+        };
+        use storyteller_engine::scene_composer::{CharacterGoal, ComposedGoals, GoalVisibility};
+
+        let player_id = storyteller_core::types::entity::EntityId::new();
+
+        let mut preamble = PersistentPreamble {
+            narrator_identity: String::new(),
+            anti_patterns: vec![],
+            setting_description: String::new(),
+            cast_descriptions: vec![],
+            boundaries: vec![],
+            scene_direction: None,
+            character_drives: vec![],
+            player_context: None,
+        };
+
+        let intentions = GeneratedIntentions {
+            scene_intention: SceneIntention {
+                dramatic_tension: "Test.".to_string(),
+                trajectory: "Test.".to_string(),
+            },
+            character_intentions: vec![],
+        };
+
+        let mut character_goals = std::collections::HashMap::new();
+        character_goals.insert(
+            player_id,
+            vec![
+                CharacterGoal {
+                    goal_id: "find_artifact".to_string(),
+                    visibility: GoalVisibility::Overt,
+                    category: "discovery".to_string(),
+                    fragments: vec![],
+                },
+                CharacterGoal {
+                    goal_id: "hidden_agenda".to_string(),
+                    visibility: GoalVisibility::Hidden,
+                    category: "revelation".to_string(),
+                    fragments: vec![],
+                },
+                CharacterGoal {
+                    goal_id: "build_trust".to_string(),
+                    visibility: GoalVisibility::Signaled,
+                    category: "bonding".to_string(),
+                    fragments: vec![],
+                },
+            ],
+        );
+        let composed = ComposedGoals {
+            scene_goals: vec![],
+            character_goals,
+        };
+
+        inject_goals_into_preamble(
+            &mut preamble,
+            Some(&intentions),
+            Some(&composed),
+            Some(player_id),
+        );
+
+        // Only Overt and Signaled goals should appear, Hidden filtered out
+        let ctx = preamble.player_context.expect("should have player context");
+        assert!(ctx.contains("find artifact")); // underscores replaced with spaces
+        assert!(ctx.contains("build trust"));
+        assert!(!ctx.contains("hidden"));
+    }
+
+    #[test]
     fn turn_result_serializes_nested_structs() {
         let result = TurnResult {
             turn: 3,
