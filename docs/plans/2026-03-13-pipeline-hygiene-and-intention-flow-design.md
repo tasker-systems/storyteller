@@ -53,13 +53,42 @@ Player input
 
 Each stage feeds accurate data to the next. No keyword heuristics as permanent infrastructure.
 
+#### Latency Trade-off
+
+The current pipeline runs DistilBERT (~50ms) and ONNX prediction concurrently with the 3b decomposition call. With the reorder, ONNX prediction waits for the 3b call to complete (~2-5s). However, the 3b decomposition already runs every turn in the current pipeline — the work is just reordered, not added. Total wall-clock time should be roughly the same since the 3b call was previously blocking context assembly anyway. The trade-off is acceptable: slightly later ONNX prediction start in exchange for accurate event features and removal of the DistilBERT overhead.
+
 #### EventFeatureInput Derivation
 
-New function `decomposition_to_event_features()` maps 3b decomposition output to ONNX model input:
+New function `decomposition_to_event_features()` in `prediction.rs` maps 3b decomposition output to ONNX model input (`EventFeatureInput`). When the decomposition produces multiple events, use the first (highest-priority) event for the mapping.
 
-- `DecomposedEvent.kind` (`SpeechAct`, `ActionOccurrence`, `RelationalShift`, etc.) → `EventType` enum
-- Entity count from `DecomposedEntity` list → target count
-- `RelationalDirection` + event kind → infer `EmotionalRegister`
+**Event kind → EventType mapping:**
+
+| DecomposedEvent.kind | EventType |
+|---|---|
+| `SpeechAct` | `Speech` |
+| `InformationTransfer` | `Speech` |
+| `ActionOccurrence` | `Action` |
+| `SpatialChange` | `Movement` |
+| `StateAssertion` | `Observation` |
+| `EnvironmentalChange` | `Observation` |
+| `EmotionalExpression` | `Emote` |
+| `RelationalShift` | `Interaction` |
+| (unknown/missing) | `Interaction` (safe default) |
+
+**Entity count → target_count:** Count `DecomposedEntity` items with `category == "CHARACTER"`, excluding the actor. This maps to the number of characters the input is directed at.
+
+**EmotionalRegister derivation from event kind + relational direction:**
+
+| Condition | EmotionalRegister |
+|---|---|
+| `EmotionalExpression` | `Vulnerable` |
+| `SpeechAct` + `RelationalDirection::Directed` | `Inquisitive` |
+| `SpeechAct` + `RelationalDirection::Mutual` | `Tender` |
+| `ActionOccurrence` + `RelationalDirection::Directed` | `Aggressive` |
+| `RelationalShift` | `Guarded` |
+| (default) | `Neutral` |
+
+These mappings mirror the existing `event_kind_label_to_event_type()` and `infer_register_from_classification()` logic, adapted for the decomposition output structure. Confidence is set to `0.8` (fixed) since the 3b model's structured output doesn't produce per-field confidence scores.
 
 This replaces both `classify_and_extract()` and the keyword fallback `classify_player_input()`.
 
@@ -69,7 +98,7 @@ Clean removal across six areas:
 
 **Model loading**: Remove `resolve_event_classifier_path()` and `EventClassifier::load()` calls in both `start_scene()` and `resume_session()`. Remove `event_classifier: Option<EventClassifier>` from `EngineState`.
 
-**Turn cycle**: Remove `classify_system()` and `ClassifierResource` from Bevy systems. The `Classifying` stage either becomes a no-op that advances, or is renamed to reflect the decomposition step.
+**Turn cycle**: Remove `classify_system()` and `ClassifierResource` from Bevy systems. The `Classifying` variant in `TurnPhase` becomes a no-op that immediately advances to the next stage. The workshop (`commands.rs`) doesn't use the Bevy turn cycle systems — it calls functions directly — so this only affects the non-workshop Bevy runtime path, which is not actively used. A rename to `Decomposing` could happen later if the Bevy path is activated.
 
 **Prediction pipeline**: Remove `event_classifier` parameter from `predict_character_behaviors()`. Remove `classify_and_extract()` and `classification_to_event_features()`. Replace with `decomposition_to_event_features()`.
 
@@ -103,7 +132,7 @@ Remove entirely rather than attempting to compute accurately. The field was a lo
 
 **prediction.rs**: Delete `generate_activation_reason()` and `truncate_hint()`. Remove `activation_reason` from frame construction.
 
-**Core types**: Remove `activation_reason: String` from the frame struct.
+**Core types**: Remove `activation_reason: String` from `ActivatedTensorFrame` in `storyteller_core::types::prediction`.
 
 **Debug inspector**: Remove activation_reason line from ML Predictions tab rendering.
 
@@ -131,7 +160,9 @@ fn inject_goals_into_preamble(
 )
 ```
 
-Called from both `setup_and_render_opening()` and `submit_input()` after `assemble_narrator_context()`. Restores the ~239 tokens that currently drop after turn 0 — scene direction (dramatic tension + trajectory), character drives (per-character objectives/constraints/stances), and player context (overt/signaled goal names).
+Called from both `setup_and_render_opening()` and `submit_input()`. In both cases, called after `assemble_narrator_context()` returns, mutating the `PersistentPreamble` fields on the returned `NarratorContext` struct — matching the existing pattern at lines ~1248-1270 of `commands.rs`. Restores the ~239 tokens that currently drop after turn 0 — scene direction (dramatic tension + trajectory), character drives (per-character objectives/constraints/stances), and player context (overt/signaled goal names).
+
+`resume_session()` must also hydrate both `generated_intentions` and `composed_goals` into `EngineState` from their persisted JSON files (`intentions.json` and `goals.json`). The persistence layer already exists — `save_intentions()` and `load_intentions()` in `session.rs` — so this is wiring the load path into `EngineState` population.
 
 #### 5b. Intent Synthesis Context
 
@@ -156,7 +187,7 @@ Three changes to the system prompt:
 
 Remove the `[PLAYER CHARACTER]` visible label from output. All characters rendered as `**Name**` with identical formatting. The system prompt still distinguishes behavior — for the player character, the directive describes how the character's nature relates to the player's directed action (friction, alignment, inflection) — but the narrator sees uniform formatting.
 
-The current "Rules for the player character (marked [PLAYER CHARACTER])" section becomes rules that reference "the player character" without a visible marker. The synthesizer knows which character is the player via `player_entity_id` but doesn't label it in output.
+The system prompt's "Rules for the player character" section still identifies which character is the player, but instructs the model not to label it in output. The input-side formatting in `build_summaries()` (which currently uses `[PLAYER CHARACTER — directed action: "..."]`) changes to include the player's directed action as context without the meta-label — e.g., `**Kael** (player's action: "...")`. The synthesizer uses this to write a friction-aware directive that reads identically to NPC directives in the output.
 
 This preserves the valuable tension-surfacing behavior (the character's nature may resist or inflect the player's action) while keeping the output diegetic — no trait names, no meta-commentary.
 
@@ -180,7 +211,7 @@ These demonstrate: directive not prose, 2-3 sentences, physical grounding, no di
 
 #### 6c. Configurable Model
 
-Make the intent synthesis model name configurable (env var or config) rather than hardcoded. Default to 3b-instruct with the tightened prompt. If playtesting shows 3b still produces prose instead of directives, swap to 7b without code changes.
+Make the intent synthesis model name configurable via `STORYTELLER_INTENT_MODEL` env var, read in the workshop's LLM provider setup where `intent_llm` (`ExternalServerProvider`) is constructed. Default to `qwen2.5:3b-instruct` with the tightened prompt. If playtesting shows 3b still produces prose instead of directives, swap to 7b by setting `STORYTELLER_INTENT_MODEL=qwen2.5:7b-instruct` without code changes.
 
 Model tier summary:
 - **3b-instruct**: event decomposition (structured JSON extraction)
@@ -189,10 +220,11 @@ Model tier summary:
 
 ## Testing Strategy
 
-- **decomposition_to_event_features()**: Unit tests mapping known decomposition outputs to expected EventFeatureInput values
+- **decomposition_to_event_features()**: Unit tests mapping known decomposition outputs to expected EventFeatureInput values, covering all 8 event kinds and the missing/unknown fallback
 - **Emotion index clamp**: Unit test confirming indices 0-7 pass through, 8+ clamp to 7 with warning
 - **inject_goals_into_preamble()**: Unit test confirming preamble fields populated from intentions, and empty when None
 - **Intent synthesis with objectives**: Unit test confirming scene objectives section appears in user prompt when intentions provided, absent when None
+- **Existing test updates**: Tests referencing `activation_reason` on `ActivatedTensorFrame` (e.g., in `intent_synthesis.rs` test fixtures) must be updated to remove the field. Tests asserting on `[PLAYER CHARACTER` markers in `build_summaries()` output must be updated for the new format.
 - **Pipeline integration**: Playtest via workshop to validate end-to-end narrative quality (followup: automated playtest harness)
 
 ## Followup Work (Out of Scope)
