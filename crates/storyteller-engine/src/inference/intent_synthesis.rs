@@ -12,6 +12,33 @@ use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::prediction::{ActionType, CharacterPrediction, SpeechRegister};
 
+use super::intention_generation::GeneratedIntentions;
+
+/// Format composition-time intentions as a prompt section for the intent synthesizer.
+pub fn format_scene_objectives(intentions: &GeneratedIntentions) -> String {
+    let mut text = String::from("## Scene Objectives\n");
+    text.push_str(&format!(
+        "Dramatic tension: {}\n",
+        intentions.scene_intention.dramatic_tension
+    ));
+    text.push_str(&format!(
+        "Trajectory: {}\n",
+        intentions.scene_intention.trajectory
+    ));
+
+    if !intentions.character_intentions.is_empty() {
+        text.push_str("\n## Character Objectives\n");
+        for ci in &intentions.character_intentions {
+            text.push_str(&format!(
+                "{}: Objective: {} | Constraint: {} | Stance: {}\n",
+                ci.character, ci.objective, ci.constraint, ci.behavioral_stance
+            ));
+        }
+    }
+
+    text
+}
+
 /// Returns the system prompt for the intent synthesizer.
 pub fn intent_synthesis_system_prompt() -> String {
     "\
@@ -54,8 +81,9 @@ pub fn build_intent_user_prompt(
     journal_tail: &str,
     player_input: &str,
     scene_context: &str,
+    scene_objectives: Option<&str>,
 ) -> String {
-    format!(
+    let mut prompt = format!(
         "\
 ## Characters
 {character_summary}
@@ -71,7 +99,14 @@ pub fn build_intent_user_prompt(
 
 ## Scene Context
 {scene_context}"
-    )
+    );
+
+    if let Some(objectives) = scene_objectives {
+        prompt.push_str("\n\n");
+        prompt.push_str(objectives);
+    }
+
+    prompt
 }
 
 /// Formats the top `count` tensor axes by central_tendency magnitude as
@@ -353,6 +388,7 @@ pub async fn synthesize_intents(
     player_input: &str,
     scene: &SceneData,
     player_entity_id: Option<EntityId>,
+    intentions: Option<&GeneratedIntentions>,
 ) -> Option<String> {
     let (char_summary, pred_summary) = build_summaries(
         characters,
@@ -361,6 +397,7 @@ pub async fn synthesize_intents(
         Some(player_input),
     );
     let scene_context = build_scene_context(scene);
+    let scene_objectives = intentions.map(format_scene_objectives);
 
     let user_prompt = build_intent_user_prompt(
         &char_summary,
@@ -368,6 +405,7 @@ pub async fn synthesize_intents(
         journal_tail,
         player_input,
         &scene_context,
+        scene_objectives.as_deref(),
     );
 
     let request = CompletionRequest {
@@ -432,6 +470,7 @@ mod tests {
             journal_tail,
             player_input,
             scene_context,
+            None,
         );
 
         assert!(prompt.contains("Arthur"));
@@ -440,6 +479,27 @@ mod tests {
         assert!(prompt.contains("Margaret arrived"));
         assert!(prompt.contains("holding up"));
         assert!(prompt.contains("Speech (Tender)"));
+    }
+
+    #[test]
+    fn user_prompt_includes_scene_objectives_when_provided() {
+        let prompt = build_intent_user_prompt(
+            "chars",
+            "preds",
+            "journal",
+            "input",
+            "context",
+            Some("## Scene Objectives\nDramatic tension: test tension"),
+        );
+        assert!(prompt.contains("## Scene Objectives"));
+        assert!(prompt.contains("test tension"));
+    }
+
+    #[test]
+    fn user_prompt_omits_objectives_when_none() {
+        let prompt =
+            build_intent_user_prompt("chars", "preds", "journal", "input", "context", None);
+        assert!(!prompt.contains("Scene Objectives"));
     }
 
     #[test]

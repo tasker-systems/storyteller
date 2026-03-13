@@ -816,6 +816,7 @@ pub async fn submit_input(
             &input,
             &engine.scene,
             engine.player_entity_id,
+            engine.generated_intentions.as_ref(),
         )
         .await
     } else {
