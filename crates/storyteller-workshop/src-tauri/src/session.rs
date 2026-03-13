@@ -39,8 +39,6 @@ pub struct TurnRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intent_statements: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub classifications: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub decomposition: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arbitration: Option<serde_json::Value>,
@@ -433,7 +431,6 @@ mod tests {
             narrator_output: "The old rectory stands quiet.".to_string(),
             predictions: None,
             intent_statements: None,
-            classifications: None,
             decomposition: None,
             arbitration: None,
             context_assembly: None,
@@ -447,7 +444,6 @@ mod tests {
             narrator_output: "Margaret steps through the door.".to_string(),
             predictions: Some(serde_json::json!([{"character_name": "Arthur"}])),
             intent_statements: Some("**Arthur** should look up warily.".to_string()),
-            classifications: Some(vec!["SpeechAct: 0.62".to_string()]),
             decomposition: None,
             arbitration: Some(serde_json::json!({"verdict": "Permitted"})),
             context_assembly: None,
@@ -487,7 +483,6 @@ mod tests {
             narrator_output: "Opening narration.".to_string(),
             predictions: None,
             intent_statements: None,
-            classifications: None,
             decomposition: None,
             arbitration: None,
             context_assembly: None,
@@ -514,10 +509,6 @@ mod tests {
             "intent_statements should be skipped when None"
         );
         assert!(
-            !obj.contains_key("classifications"),
-            "classifications should be skipped when None"
-        );
-        assert!(
             !obj.contains_key("decomposition"),
             "decomposition should be skipped when None"
         );
@@ -541,7 +532,6 @@ mod tests {
             narrator_output: "You see a room.".to_string(),
             predictions: Some(serde_json::json!([{"character": "Arthur"}])),
             intent_statements: Some("**Arthur** watches carefully.".to_string()),
-            classifications: Some(vec!["Observation: 0.85".to_string()]),
             decomposition: Some(serde_json::json!({"events": []})),
             arbitration: Some(serde_json::json!({"verdict": "Permitted"})),
             context_assembly: Some(serde_json::json!({"total_tokens": 500})),
@@ -555,7 +545,6 @@ mod tests {
 
         assert!(obj1.contains_key("predictions"));
         assert!(obj1.contains_key("intent_statements"));
-        assert!(obj1.contains_key("classifications"));
         assert!(obj1.contains_key("decomposition"));
         assert!(obj1.contains_key("arbitration"));
         assert!(obj1.contains_key("context_assembly"));
@@ -582,7 +571,6 @@ mod tests {
                 narrator_output: format!("Output {i}"),
                 predictions: None,
                 intent_statements: None,
-                classifications: None,
                 decomposition: None,
                 arbitration: None,
                 context_assembly: None,
@@ -681,7 +669,6 @@ mod tests {
                 narrator_output: format!("Output {i}"),
                 predictions: None,
                 intent_statements: None,
-                classifications: None,
                 decomposition: None,
                 arbitration: None,
                 context_assembly: None,

@@ -51,14 +51,6 @@ pub enum DebugEvent {
         emotional_markers: Vec<String>,
     },
 
-    /// Event classification results.
-    #[serde(rename = "events_classified")]
-    EventsClassified {
-        turn: u32,
-        classifications: Vec<String>,
-        classifier_loaded: bool,
-    },
-
     /// Narrator LLM call completed — raw prompt and response.
     #[serde(rename = "narrator_complete")]
     NarratorComplete {

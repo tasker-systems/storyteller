@@ -640,27 +640,6 @@ pub async fn submit_input(
         },
     );
 
-    // --- Phase: Event Classification ---
-    emit_debug(
-        &app,
-        DebugEvent::PhaseStarted {
-            turn,
-            phase: "events".to_string(),
-        },
-    );
-
-    // TODO: Task 5 will populate classifications from LLM decomposition instead of DistilBERT
-    let classifications: Vec<String> = vec![];
-
-    emit_debug(
-        &app,
-        DebugEvent::EventsClassified {
-            turn,
-            classifications: classifications.clone(),
-            classifier_loaded: false,
-        },
-    );
-
     // --- Phase: Event Decomposition (LLM) ---
     emit_debug(
         &app,
@@ -985,7 +964,6 @@ pub async fn submit_input(
             narrator_output: rendering.text.clone(),
             predictions: serde_json::to_value(&resolver_output.original_predictions).ok(),
             intent_statements: resolver_output.intent_statements.clone(),
-            classifications: Some(classifications),
             decomposition: persisted_decomposition,
             arbitration: Some(arbitration_json),
             context_assembly: Some(serde_json::json!({
@@ -1165,16 +1143,6 @@ async fn setup_and_render_opening(
             turn,
             characters: characters.clone(),
             emotional_markers: vec![],
-        },
-    );
-
-    // --- Phase: Events (opening — no input to classify) ---
-    emit_debug(
-        app,
-        DebugEvent::EventsClassified {
-            turn,
-            classifications: vec![],
-            classifier_loaded: false,
         },
     );
 
@@ -1411,7 +1379,6 @@ async fn setup_and_render_opening(
             narrator_output: opening.text.clone(),
             predictions: None,
             intent_statements: None,
-            classifications: None,
             decomposition: None,
             arbitration: None,
             context_assembly: Some(serde_json::json!({
