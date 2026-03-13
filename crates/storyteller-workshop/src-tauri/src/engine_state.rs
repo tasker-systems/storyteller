@@ -9,6 +9,8 @@ use storyteller_core::types::character::{CharacterSheet, SceneData};
 use storyteller_core::types::entity::EntityId;
 use storyteller_core::types::narrator_context::SceneJournal;
 use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_engine::inference::intention_generation::GeneratedIntentions;
+use storyteller_engine::scene_composer::ComposedGoals;
 use storyteller_ml::prediction_history::PredictionHistory;
 
 use crate::session_log::SessionLog;
@@ -45,4 +47,17 @@ pub struct EngineState {
     pub player_entity_id: Option<EntityId>,
     /// Accumulated prediction history for turn-over-turn ML context.
     pub prediction_history: PredictionHistory,
+    /// Composition-time intentions (scene direction + character drives).
+    /// Persists across turns for preamble injection and intent synthesis context.
+    #[expect(
+        dead_code,
+        reason = "will be read in Task 10 — intent synthesis context"
+    )]
+    pub generated_intentions: Option<GeneratedIntentions>,
+    /// Composed scene/character goals for player context re-derivation.
+    #[expect(
+        dead_code,
+        reason = "will be read in Task 10 — intent synthesis context"
+    )]
+    pub composed_goals: Option<ComposedGoals>,
 }

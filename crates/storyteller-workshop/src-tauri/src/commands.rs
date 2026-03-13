@@ -519,6 +519,16 @@ pub async fn resume_session(
         .find(|c| c.role.to_lowercase().contains("protagonist"))
         .map(|c| c.entity_id);
 
+    // Hydrate generated intentions from persisted file
+    let resume_generated_intentions = session_store
+        .load_intentions(&session_id)
+        .ok()
+        .flatten()
+        .and_then(|v| {
+            use storyteller_engine::inference::intention_generation::GeneratedIntentions;
+            serde_json::from_value::<GeneratedIntentions>(v).ok()
+        });
+
     let engine_state = EngineState {
         scene,
         characters,
@@ -533,6 +543,8 @@ pub async fn resume_session(
         session_id: Some(session_id),
         player_entity_id,
         prediction_history: PredictionHistory::default(),
+        generated_intentions: resume_generated_intentions,
+        composed_goals: Some(composed_goals),
     };
 
     let mut guard = state.lock().await;
@@ -1449,6 +1461,8 @@ async fn setup_and_render_opening(
         session_id,
         player_entity_id,
         prediction_history: PredictionHistory::default(),
+        generated_intentions,
+        composed_goals: Some(composed_goals),
     };
 
     let mut guard = state.lock().await;
