@@ -172,9 +172,7 @@
     </div>
   </div>
 
-  {#if view === "playing"}
-    <DebugPanel visible={debugVisible} />
-  {/if}
+  <DebugPanel visible={debugVisible && view === "playing"} />
 </div>
 
 <style>

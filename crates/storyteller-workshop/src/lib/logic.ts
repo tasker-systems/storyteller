@@ -17,6 +17,7 @@ import type {
   LlmStatus,
   EventDecomposedEvent,
   ActionArbitratedEvent,
+  GoalsGeneratedEvent,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -186,6 +187,7 @@ export function phaseStatus(
     Characters: "characters",
     Events: "events",
     Arbitration: "arbitration",
+    Goals: "goals",
     Narrator: "narrator",
     Logs: "logs",
   };
@@ -224,6 +226,7 @@ export function freshDebugState(turn: number): DebugState {
     decomposition: null,
     arbitration: null,
     intent_synthesis: null,
+    goals: null,
     narrator: null,
     error: null,
   };
@@ -267,6 +270,10 @@ export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugStat
     case "intent_synthesized":
       next.intent_synthesis = event;
       next.phases["intent_synthesis"] = "complete";
+      break;
+    case "goals_generated":
+      next.goals = event as GoalsGeneratedEvent;
+      next.phases["goals"] = "complete";
       break;
     case "narrator_complete":
       next.narrator = event;

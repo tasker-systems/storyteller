@@ -101,6 +101,18 @@ pub enum DebugEvent {
         timing_ms: u64,
     },
 
+    /// Scene goals and generated intentions at scene setup.
+    #[serde(rename = "goals_generated")]
+    GoalsGenerated {
+        turn: u32,
+        scene_goals: Vec<String>,
+        character_goals: Vec<String>,
+        scene_direction: Option<String>,
+        character_drives: Vec<String>,
+        player_context: Option<String>,
+        timing_ms: u64,
+    },
+
     /// An error occurred during a pipeline phase.
     #[serde(rename = "error")]
     Error {

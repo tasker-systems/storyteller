@@ -271,6 +271,31 @@ impl SessionStore {
         std::fs::write(&path, json).map_err(|e| format!("Failed to write goals.json: {e}"))
     }
 
+    /// Save generated intentions to the session directory.
+    pub fn save_intentions(
+        &self,
+        session_id: &str,
+        intentions: &serde_json::Value,
+    ) -> Result<(), String> {
+        let path = self.base_dir.join(session_id).join("intentions.json");
+        let json = serde_json::to_string_pretty(intentions).map_err(|e| e.to_string())?;
+        std::fs::write(&path, json).map_err(|e| format!("Failed to write intentions.json: {e}"))
+    }
+
+    /// Load generated intentions from the session directory. Returns None if
+    /// intentions.json doesn't exist (backward compatibility).
+    pub fn load_intentions(&self, session_id: &str) -> Result<Option<serde_json::Value>, String> {
+        let path = self.base_dir.join(session_id).join("intentions.json");
+        if !path.exists() {
+            return Ok(None);
+        }
+        let json = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read intentions.json: {e}"))?;
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse intentions.json: {e}"))?;
+        Ok(Some(value))
+    }
+
     /// Load composed goals from the session directory. Returns None if goals.json doesn't exist
     /// (backward compatibility with pre-goal sessions).
     pub fn load_goals(&self, session_id: &str) -> Result<Option<serde_json::Value>, String> {

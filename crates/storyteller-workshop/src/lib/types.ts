@@ -262,6 +262,17 @@ export interface IntentSynthesizedEvent {
   timing_ms: number;
 }
 
+export interface GoalsGeneratedEvent {
+  type: "goals_generated";
+  turn: number;
+  scene_goals: string[];
+  character_goals: string[];
+  scene_direction: string | null;
+  character_drives: string[];
+  player_context: string | null;
+  timing_ms: number;
+}
+
 export interface ErrorEvent {
   type: "error";
   turn: number;
@@ -278,6 +289,7 @@ export type DebugEvent =
   | EventDecomposedEvent
   | ActionArbitratedEvent
   | IntentSynthesizedEvent
+  | GoalsGeneratedEvent
   | NarratorCompleteEvent
   | ErrorEvent;
 
@@ -293,6 +305,7 @@ export interface DebugState {
   decomposition: EventDecomposedEvent | null;
   arbitration: ActionArbitratedEvent | null;
   intent_synthesis: IntentSynthesizedEvent | null;
+  goals: GoalsGeneratedEvent | null;
   narrator: NarratorCompleteEvent | null;
   error: ErrorEvent | null;
 }

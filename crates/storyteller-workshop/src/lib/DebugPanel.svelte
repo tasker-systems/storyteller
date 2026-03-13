@@ -9,7 +9,7 @@
 
   let { visible }: { visible: boolean } = $props();
 
-  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Arbitration", "Narrator", "Logs"] as const;
+  const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Arbitration", "Goals", "Narrator", "Logs"] as const;
   type TabName = (typeof TABS)[number];
   const TAB_PHASE_MAP: Record<TabName, string> = {
     LLM: "llm",
@@ -18,6 +18,7 @@
     Characters: "characters",
     Events: "events",
     Arbitration: "arbitration",
+    Goals: "goals",
     Narrator: "narrator",
     Logs: "logs",
   };
@@ -40,6 +41,7 @@
     decomposition: null,
     arbitration: null,
     intent_synthesis: null,
+    goals: null,
     narrator: null,
     error: null,
   });
@@ -415,6 +417,57 @@ Model:    {llmStatus.model}</pre>
             </div>
           {:else}
             <p class="debug-empty">Waiting for turn data...</p>
+          {/if}
+        </div>
+      {:else if activeTab === "Goals"}
+        <div class="debug-tab-content">
+          {#if debugState.goals}
+            {#if debugState.goals.scene_direction}
+              <div class="debug-section">
+                <h4>Scene Direction</h4>
+                <pre>{debugState.goals.scene_direction}</pre>
+              </div>
+            {/if}
+            {#if debugState.goals.character_drives.length > 0}
+              <div class="debug-section">
+                <h4>Character Drives</h4>
+                {#each debugState.goals.character_drives as drive}
+                  <pre class="goals-drive">{drive}</pre>
+                {/each}
+              </div>
+            {/if}
+            {#if debugState.goals.player_context}
+              <div class="debug-section">
+                <h4>Player Context</h4>
+                <pre>{debugState.goals.player_context}</pre>
+              </div>
+            {/if}
+            <div class="events-divider"></div>
+            {#if debugState.goals.scene_goals.length > 0}
+              <div class="debug-section">
+                <h4>Scene Goals</h4>
+                <div class="classification-chips">
+                  {#each debugState.goals.scene_goals as goal}
+                    <span class="classification-chip">{goal}</span>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            {#if debugState.goals.character_goals.length > 0}
+              <div class="debug-section">
+                <h4>Character Goals</h4>
+                <div class="classification-chips">
+                  {#each debugState.goals.character_goals as goal}
+                    <span class="classification-chip">{goal}</span>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            <div class="debug-section">
+              <h4>Intention Generation: {debugState.goals.timing_ms}ms</h4>
+            </div>
+          {:else}
+            <p class="debug-empty">Waiting for scene setup...</p>
           {/if}
         </div>
       {:else if activeTab === "Narrator"}
@@ -882,6 +935,10 @@ Model:    {llmStatus.model}</pre>
     font-size: 0.65rem;
     font-style: italic;
     margin-top: 0.2rem;
+  }
+
+  .goals-drive {
+    margin-bottom: 0.3rem;
   }
 
   .arb-permitted {

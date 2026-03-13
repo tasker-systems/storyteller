@@ -140,7 +140,8 @@ pub fn intersect_character_goals(
 
     let scene_categories: Vec<&str> = scene_goals.iter().map(|sg| sg.category.as_str()).collect();
 
-    member
+    // Primary path: pursuable ∩ enabled - blocked, coherence-filtered.
+    let primary: Vec<CharacterGoal> = member
         .archetype
         .pursuable_goals
         .iter()
@@ -148,8 +149,6 @@ pub fn intersect_character_goals(
         .filter(|pg| !blocked.contains(pg.as_str()))
         .filter_map(|pg| goals.iter().find(|g| g.id == *pg))
         .filter(|g| {
-            // Coherence: character goal category must be affine with at least one scene goal category.
-            // If no scene goals, skip coherence check (graceful degradation).
             scene_categories.is_empty()
                 || scene_categories
                     .iter()
@@ -159,7 +158,34 @@ pub fn intersect_character_goals(
             goal_id: g.id.clone(),
             visibility: parse_visibility(&g.visibility),
             category: g.category.clone(),
-            fragments: Vec::new(), // populated by likeness pass
+            fragments: Vec::new(),
+        })
+        .collect();
+
+    if !primary.is_empty() {
+        return primary;
+    }
+
+    // Fallback: when dynamics don't enable any pursuable goals, use pursuable
+    // goals directly (minus blocked), coherence-filtered. Better to have some
+    // goal direction than none — felt agency over silence.
+    member
+        .archetype
+        .pursuable_goals
+        .iter()
+        .filter(|pg| !blocked.contains(pg.as_str()))
+        .filter_map(|pg| goals.iter().find(|g| g.id == *pg))
+        .filter(|g| {
+            scene_categories.is_empty()
+                || scene_categories
+                    .iter()
+                    .any(|sc| category_affinity(&g.category, sc))
+        })
+        .map(|g| CharacterGoal {
+            goal_id: g.id.clone(),
+            visibility: parse_visibility(&g.visibility),
+            category: g.category.clone(),
+            fragments: Vec::new(),
         })
         .collect()
 }
@@ -353,6 +379,67 @@ mod tests {
 
         let result = intersect_character_goals(&member, &scene_goals, &goals);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn character_goals_fallback_when_no_enabled_overlap() {
+        // When dynamics don't enable any of the character's pursuable goals,
+        // fallback to pursuable goals filtered by coherence only.
+        let goals = vec![
+            test_goal("test_loyalty", "relational_shift", "Hidden"),
+            test_goal("maintain_deception", "protection", "Signaled"),
+        ];
+        let scene_goals = vec![SceneGoal {
+            goal_id: "test_loyalty".to_string(),
+            visibility: GoalVisibility::Hidden,
+            category: "relational_shift".to_string(),
+            fragments: Vec::new(),
+        }];
+        // Archetype pursues test_loyalty and maintain_deception, but the dynamic
+        // only enables "unrelated_goal" — zero overlap with pursuable.
+        let member = CastMember {
+            entity_id: EntityId::new(),
+            archetype: test_archetype("trickster", vec!["test_loyalty", "maintain_deception"]),
+            dynamics: vec![test_dynamic(vec!["unrelated_goal"], Vec::new())],
+        };
+
+        let result = intersect_character_goals(&member, &scene_goals, &goals);
+        // Fallback should give us test_loyalty (coherent with scene goal category)
+        assert!(
+            !result.is_empty(),
+            "fallback should produce goals when primary intersection is empty"
+        );
+        let ids: Vec<&str> = result.iter().map(|g| g.goal_id.as_str()).collect();
+        assert!(ids.contains(&"test_loyalty"));
+    }
+
+    #[test]
+    fn character_goals_fallback_respects_blocked() {
+        let goals = vec![
+            test_goal("test_loyalty", "relational_shift", "Hidden"),
+            test_goal("maintain_deception", "protection", "Signaled"),
+        ];
+        let scene_goals = vec![SceneGoal {
+            goal_id: "test_loyalty".to_string(),
+            visibility: GoalVisibility::Hidden,
+            category: "relational_shift".to_string(),
+            fragments: Vec::new(),
+        }];
+        let member = CastMember {
+            entity_id: EntityId::new(),
+            archetype: test_archetype("trickster", vec!["test_loyalty", "maintain_deception"]),
+            dynamics: vec![test_dynamic(
+                vec!["unrelated_goal"],
+                vec!["test_loyalty"], // blocked!
+            )],
+        };
+
+        let result = intersect_character_goals(&member, &scene_goals, &goals);
+        let ids: Vec<&str> = result.iter().map(|g| g.goal_id.as_str()).collect();
+        assert!(
+            !ids.contains(&"test_loyalty"),
+            "blocked goals should stay blocked in fallback"
+        );
     }
 
     #[test]

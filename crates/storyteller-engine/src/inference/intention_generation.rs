@@ -172,7 +172,16 @@ fn parse_intentions(text: &str) -> Option<GeneratedIntentions> {
 
     // Try extracting JSON from markdown code blocks
     let json_str = extract_json_block(text)?;
-    serde_json::from_str::<GeneratedIntentions>(json_str).ok()
+    match serde_json::from_str::<GeneratedIntentions>(json_str) {
+        Ok(intentions) => Some(intentions),
+        Err(e) => {
+            tracing::warn!(
+                "Failed to parse intention JSON: {e}\nRaw LLM output (first 500 chars): {}",
+                &text[..text.len().min(500)]
+            );
+            None
+        }
+    }
 }
 
 /// Extract JSON from markdown code fences if present.

@@ -343,6 +343,65 @@ pub async fn resume_session(
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
+    // Load generated intentions from session (if available)
+    let loaded_intentions = session_store
+        .load_intentions(&session_id)
+        .map_err(|e| e.to_string())?;
+    if let Some(ref intentions_json) = loaded_intentions {
+        tracing::info!("Loaded persisted intentions for session {session_id}");
+        // Emit GoalsGenerated debug event so the inspector shows goal data on resume
+        use storyteller_engine::inference::intention_generation::GeneratedIntentions;
+        if let Ok(intentions) =
+            serde_json::from_value::<GeneratedIntentions>(intentions_json.clone())
+        {
+            emit_debug(
+                &app,
+                DebugEvent::GoalsGenerated {
+                    turn: 0,
+                    scene_goals: composed_goals
+                        .scene_goals
+                        .iter()
+                        .map(|g| format!("{} ({})", g.goal_id, g.category))
+                        .collect(),
+                    character_goals: composed_goals
+                        .character_goals
+                        .iter()
+                        .flat_map(|(eid, goals)| {
+                            let name = characters
+                                .iter()
+                                .find(|c| c.entity_id == *eid)
+                                .map(|c| c.name.as_str())
+                                .unwrap_or("unknown");
+                            goals.iter().map(move |g| {
+                                format!(
+                                    "{} → {} ({}, {:?})",
+                                    name, g.goal_id, g.category, g.visibility
+                                )
+                            })
+                        })
+                        .collect(),
+                    scene_direction: Some(format!(
+                        "{} {}",
+                        intentions.scene_intention.dramatic_tension,
+                        intentions.scene_intention.trajectory,
+                    )),
+                    character_drives: intentions
+                        .character_intentions
+                        .iter()
+                        .map(|d| {
+                            format!(
+                                "{}: {} [constraint: {}] [stance: {}]",
+                                d.character, d.objective, d.constraint, d.behavioral_stance
+                            )
+                        })
+                        .collect(),
+                    player_context: None,
+                    timing_ms: 0,
+                },
+            );
+        }
+    }
+
     if turns.is_empty() {
         // Legacy session or no turns.jsonl — fall back to fresh opening render
         let scene_info = setup_and_render_opening(
@@ -1064,19 +1123,37 @@ async fn setup_and_render_opening(
     };
 
     // Intention generation (composition-time LLM call)
+    let intention_start = Instant::now();
     let generated_intentions = if !composed_goals.scene_goals.is_empty() {
         use storyteller_engine::inference::intention_generation::generate_intentions;
         let characters_refs_for_ig: Vec<&CharacterSheet> = characters.iter().collect();
-        generate_intentions(
+        tracing::info!(
+            "Generating intentions for {} scene goals, {} characters",
+            composed_goals.scene_goals.len(),
+            characters_refs_for_ig.len()
+        );
+        let result = generate_intentions(
             llm.as_ref(),
             &scene,
             &characters_refs_for_ig,
             &composed_goals,
         )
-        .await
+        .await;
+        match &result {
+            Some(intentions) => tracing::info!(
+                "Intention generation succeeded: {} character intentions",
+                intentions.character_intentions.len()
+            ),
+            None => tracing::warn!(
+                "Intention generation returned None — LLM call or JSON parsing failed"
+            ),
+        }
+        result
     } else {
+        tracing::info!("No scene goals — skipping intention generation");
         None
     };
+    let intention_ms = intention_start.elapsed().as_millis() as u64;
 
     let grammar = PlutchikWestern::new();
 
@@ -1192,23 +1269,69 @@ async fn setup_and_render_opening(
         })
         .filter(|s| !s.is_empty());
 
-    // Extract token counts from observer
-    let token_counts = extract_token_counts(&observer);
+    // Emit goals debug event
+    emit_debug(
+        app,
+        DebugEvent::GoalsGenerated {
+            turn,
+            scene_goals: composed_goals
+                .scene_goals
+                .iter()
+                .map(|g| format!("{} ({})", g.goal_id, g.category))
+                .collect(),
+            character_goals: composed_goals
+                .character_goals
+                .iter()
+                .flat_map(|(eid, goals)| {
+                    let name = characters
+                        .iter()
+                        .find(|c| c.entity_id == *eid)
+                        .map(|c| c.name.as_str())
+                        .unwrap_or("unknown");
+                    goals.iter().map(move |g| {
+                        format!(
+                            "{} → {} ({}, {:?})",
+                            name, g.goal_id, g.category, g.visibility
+                        )
+                    })
+                })
+                .collect(),
+            scene_direction: context
+                .preamble
+                .scene_direction
+                .as_ref()
+                .map(|d| format!("{} {}", d.dramatic_tension, d.trajectory)),
+            character_drives: context
+                .preamble
+                .character_drives
+                .iter()
+                .map(|d| {
+                    format!(
+                        "{}: {} [constraint: {}] [stance: {}]",
+                        d.name, d.objective, d.constraint, d.behavioral_stance
+                    )
+                })
+                .collect(),
+            player_context: context.preamble.player_context.clone(),
+            timing_ms: intention_ms,
+        },
+    );
+
+    // Re-estimate token counts after goal injection
+    let preamble_tokens =
+        storyteller_engine::context::preamble::estimate_preamble_tokens(&context.preamble);
+    let base_token_counts = extract_token_counts(&observer);
+    let token_counts = (
+        preamble_tokens,
+        base_token_counts.1,
+        base_token_counts.2,
+        preamble_tokens + base_token_counts.1 + base_token_counts.2,
+    );
 
     // Render context tiers as text for the debug inspector
-    let opening_preamble_text = format!(
-        "Narrator: {}\nSetting: {}\nCast: {}\nBoundaries: {}",
-        context.preamble.narrator_identity,
-        context.preamble.setting_description,
-        context
-            .preamble
-            .cast_descriptions
-            .iter()
-            .map(|c| format!("{} ({})", c.name, c.role))
-            .collect::<Vec<_>>()
-            .join(", "),
-        context.preamble.boundaries.join("; "),
-    );
+    // Use the full render_preamble so the inspector shows exactly what the narrator sees
+    let opening_preamble_text =
+        storyteller_engine::context::preamble::render_preamble(&context.preamble);
 
     emit_debug(
         app,
@@ -1327,6 +1450,20 @@ async fn setup_and_render_opening(
         };
         if let Err(e) = store.append_turn(sid, &turn0) {
             tracing::warn!(error = %e, "Failed to persist turn 0");
+        }
+
+        // Persist generated intentions (scene direction + character drives)
+        if let Some(ref intentions) = generated_intentions {
+            match serde_json::to_value(intentions) {
+                Ok(intentions_json) => {
+                    if let Err(e) = store.save_intentions(sid, &intentions_json) {
+                        tracing::warn!(error = %e, "Failed to persist intentions.json");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to serialize intentions");
+                }
+            }
         }
     }
 
