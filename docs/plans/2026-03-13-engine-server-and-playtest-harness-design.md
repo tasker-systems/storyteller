@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-The storyteller engine's turn pipeline is tightly coupled to the Tauri workshop frontend. All orchestration logic — LLM provider construction, scene composition, turn pipeline execution, session persistence — lives in `commands.rs` (~1700 lines). This creates three problems:
+The storyteller engine's turn pipeline is tightly coupled to the Tauri workshop frontend. All orchestration logic — LLM provider construction, scene composition, turn pipeline execution, session persistence — lives in `commands.rs` (~1550 lines). This creates three problems:
 
 1. **No programmatic access.** The only way to run a scene is through the Tauri UI. Validating pipeline changes requires manual playthroughs.
 2. **Deployment blocker.** End users downloading Storyteller can't be expected to run Ollama, ONNX models, and PostgreSQL locally. The engine must run server-side.
@@ -46,12 +46,20 @@ The storyteller engine's turn pipeline is tightly coupled to the Tauri workshop 
 **Dependency graph:**
 ```
 storyteller-cli ──→ storyteller-client ──→ storyteller-core (shared types)
+               ──→ storyteller-composer (local composition generation)
 
 storyteller-workshop ──→ storyteller-client
 
 storyteller-api ──→ storyteller-engine ──→ storyteller-core
                ──→ storyteller-composer ──→ storyteller-core
+               ──→ storyteller-ml (ONNX inference, CharacterPredictor)
+               ──→ storyteller-storykeeper (event ledger, graph queries)
+
+storyteller-engine ──→ storyteller-ml
+                   ──→ storyteller-composer (shared types: ComposedGoals, SceneSelections)
 ```
+
+After extraction, `storyteller-engine` depends on `storyteller-composer` for shared composition types (`ComposedGoals`, `SceneSelections`, `ComposedScene`). The composer owns these types; the engine consumes them. Types that are used across the full stack (e.g., `CharacterSheet`, `SceneData`) remain in `storyteller-core`.
 
 ### gRPC Service Definition
 
@@ -68,6 +76,7 @@ Composer RPCs (unary, read-only):
 - `GetArchetypesForGenre(genre_id) → ArchetypeList`
 - `GetDynamicsForGenre(genre_id, selected_archetypes) → DynamicsList`
 - `GetNamesForGenre(genre_id) → NameList`
+- `GetSettingsForGenre(genre_id) → SettingList`
 
 Query RPCs (unary):
 - `ListSessions() → SessionList`
@@ -80,6 +89,20 @@ Event replay:
 
 Continuous push:
 - `StreamLogs(LogFilter) → stream LogEntry` — tracing subscriber piped to gRPC
+
+### Protobuf and Build Integration
+
+Proto definitions live in `proto/` at the workspace root:
+
+```
+proto/
+└── storyteller/
+    └── v1/
+        ├── engine.proto        # StorytellerEngine service + EngineEvent
+        └── composer.proto      # ComposerService RPCs
+```
+
+`storyteller-api` runs `tonic-build` via `build.rs` to generate server-side types. `storyteller-client` runs its own `tonic-build` via `build.rs` to generate client stubs. Both reference the same `.proto` files via relative path (`../../proto`). Generated code is not checked in — it is produced at build time. Shared message types (e.g., `EngineEvent`) are defined once in `engine.proto` and generated independently in each crate.
 
 ### EngineEvent Envelope
 
@@ -132,6 +155,8 @@ Session directory:
 
 The `.json` file is write-once-read-many. The `.jsonl` files are append-only streams. Clean separation between structural data and temporal event data.
 
+**Breaking change**: This replaces the existing session format. The current `events.jsonl` stores one enriched line per turn (player_input, narrator_output, classifications, etc.) and `turns.jsonl` stores full `TurnRecord` structs. The new format is incompatible — `events.jsonl` becomes many lines per turn (one per engine event) and `turns.jsonl` becomes a thin index. Existing sessions created under the old format will not be resumable via `ResumeSession`. This is acceptable at pre-alpha with no external users and no data worth preserving.
+
 ### Server-Side Engine State
 
 **`EngineStateManager`** — Manages all active sessions with lock-free reads using `ArcSwap`.
@@ -180,7 +205,7 @@ LLM providers and the ONNX model are stateless — shared across sessions. Multi
 
 ### Tauri Client Conversion
 
-**`commands.rs` transforms from ~1700 lines of orchestration to thin gRPC wrappers:**
+**`commands.rs` transforms from ~1550 lines of orchestration to thin gRPC wrappers:**
 
 Each Tauri command:
 1. Calls the gRPC client method via `storyteller-client`
@@ -218,7 +243,7 @@ storyteller-cli generate composition \
   > composition.json
 ```
 
-Calls the composer service to build a complete `composition.json`. Pure function — descriptors in, composition out.
+Uses `storyteller-composer` directly (no running server required). Pure function — descriptors in, composition out. The CLI depends on both `storyteller-client` (for playtest) and `storyteller-composer` (for local composition generation).
 
 **Run a playtest:**
 ```bash
@@ -269,7 +294,7 @@ This is designed as one coherent architecture but implemented in phases. Each ph
 
 **Phase 3: Workshop Conversion** — Slim Tauri's `commands.rs` to gRPC client wrappers. Wire wizard data hydration through composer RPCs. Debug inspector receives events from gRPC stream instead of in-process emission. Frontend TypeScript/Svelte stays largely unchanged.
 
-The system is in a non-viable state between Phase 1 start and Phase 3 completion (Tauri stops working when `commands.rs` orchestration is removed but not yet replaced with gRPC calls). This is acceptable at pre-alpha with no external users.
+Phases 1 and 2 are purely additive — they build new crates and services alongside the existing workshop without modifying `commands.rs`. The workshop continues to function throughout. Phase 3 is the breaking change that replaces `commands.rs` orchestration with gRPC client wrappers, after which the workshop requires a running server. This is acceptable at pre-alpha with no external users.
 
 ### Testing Strategy
 
@@ -287,3 +312,5 @@ The system is in a non-viable state between Phase 1 start and Phase 3 completion
 - **Authentication**: `storyteller-client` handles auth tokens. Server validates. Multi-user session isolation.
 - **Warm cache intentions**: Pre-generated `GeneratedIntentions` stored in the composer's descriptor database, selected at composition time instead of generated via LLM.
 - **Playtest analysis tooling**: Python scripts or notebooks that read `events.jsonl` and compute metrics (token drift, emotion trajectories, intent coherence).
+- **Graceful shutdown**: Drain in-flight turns and flush `RuntimeSnapshot`s on server shutdown.
+- **`ComposeScene` partial failure recovery**: Define error semantics when composition succeeds but intention generation or opening narration fails mid-stream.
