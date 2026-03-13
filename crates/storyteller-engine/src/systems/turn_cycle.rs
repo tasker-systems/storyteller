@@ -67,26 +67,19 @@ pub fn in_stage(target: TurnCycleStage) -> impl Fn(Res<ActiveTurnStage>) -> bool
 // Systems — Classification (REAL)
 // ---------------------------------------------------------------------------
 
-/// Classify player input using ML classifier or keyword fallback.
+/// Classification pass-through (pending Task 5 removal).
 ///
-/// Reads `TurnContext.player_input`, calls `classify_and_extract()`,
-/// writes classification output and advances to `Predicting`.
+/// Previously classified player input via DistilBERT. Classification now
+/// happens via LLM decomposition in `commit_previous_system`. This system
+/// advances to `Predicting` without modifying classification state.
 pub fn classify_system(
     mut stage: ResMut<ActiveTurnStage>,
-    mut turn_ctx: ResMut<TurnContext>,
+    turn_ctx: ResMut<TurnContext>,
     classifier: Option<Res<ClassifierResource>>,
 ) {
-    let Some(ref input) = turn_ctx.player_input else {
-        tracing::warn!("classify_system: no player input in TurnContext");
-        stage.0 = stage.0.next();
-        return;
-    };
-
-    let event_classifier = classifier.as_ref().map(|c| &c.0);
-    let (_event_features, classification) =
-        crate::context::prediction::classify_and_extract(input, event_classifier, 0);
-
-    turn_ctx.classification = classification;
+    // Classification now happens via LLM decomposition in commit_previous_system.
+    // This system is a no-op pass-through pending Task 5 removal.
+    let _ = (&turn_ctx, classifier);
     stage.0 = stage.0.next();
 }
 
@@ -141,22 +134,23 @@ pub fn predict_system(
     let characters: Vec<&storyteller_core::types::character::CharacterSheet> =
         scene_res.characters.iter().collect();
 
-    let classifier_ref = None::<&crate::inference::event_classifier::EventClassifier>;
-    let (predictions, classification) = crate::context::prediction::predict_character_behaviors(
+    let event_features = storyteller_ml::feature_schema::EventFeatureInput {
+        event_type: storyteller_core::types::prediction::EventType::Interaction,
+        emotional_register: storyteller_core::types::prediction::EmotionalRegister::Neutral,
+        confidence: 0.5,
+        target_count: characters.len().saturating_sub(1) as u8,
+    };
+    let predictions = crate::context::prediction::predict_character_behaviors(
         &predictor.0,
         &characters,
         &scene_res.scene,
         input,
         grammar_res.0.as_ref(),
-        classifier_ref,
+        event_features,
         &std::collections::HashMap::new(),
     );
 
     turn_ctx.predictions = Some(predictions);
-    // Only overwrite classification if we got a new one
-    if classification.is_some() {
-        turn_ctx.classification = classification;
-    }
 
     stage.0 = stage.0.next();
 }
@@ -333,6 +327,8 @@ pub fn commit_previous_system(
     structured_llm: Option<Res<StructuredLlmResource>>,
     runtime: Option<Res<TokioRuntime>>,
 ) {
+    // ClassifierResource is pending removal in Task 5; suppress unused warning.
+    let _ = classifier;
     let has_previous_data = turn_ctx.rendering.is_some() || turn_ctx.classification.is_some();
 
     if has_previous_data {
@@ -376,39 +372,20 @@ pub fn commit_previous_system(
                         Some(decomp.to_classification_output())
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "commit_previous_system: LLM decomposition failed, \
-                             falling back to DistilBERT: {e}"
-                        );
-                        // Fall through to DistilBERT
-                        let event_classifier = classifier.as_ref().map(|c| &c.0);
-                        let (_event_features, classification) =
-                            crate::context::prediction::classify_and_extract(
-                                &combined_text,
-                                event_classifier,
-                                0,
-                            );
-                        classification
+                        tracing::warn!("commit_previous_system: LLM decomposition failed: {e}");
+                        None
                     }
                 }
             } else {
-                // Fallback: DistilBERT classification
-                let event_classifier = classifier.as_ref().map(|c| &c.0);
-                let (_event_features, classification) =
-                    crate::context::prediction::classify_and_extract(
-                        &combined_text,
-                        event_classifier,
-                        0,
-                    );
-
+                // No structured LLM available — classification will be None.
+                // Task 7 will reorder the pipeline so decomposition feeds prediction.
                 tracing::debug!(
                     turn_number,
-                    has_committed_classification = classification.is_some(),
                     combined_text_len = combined_text.len(),
-                    "commit_previous_system: DistilBERT committed-turn classification"
+                    "commit_previous_system: no structured LLM, skipping classification"
                 );
 
-                classification
+                None
             }
         });
 

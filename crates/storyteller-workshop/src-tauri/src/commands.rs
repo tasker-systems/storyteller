@@ -572,14 +572,19 @@ pub async fn submit_input(
 
     let predict_start = Instant::now();
     let mut resolver_output = if let Some(ref predictor) = engine.predictor {
-        // TODO: Task 4 will replace event_classifier.as_ref() with decomposition_to_event_features
-        let (predictions, _classification) = predict_character_behaviors(
+        let event_features = storyteller_ml::feature_schema::EventFeatureInput {
+            event_type: storyteller_core::types::prediction::EventType::Interaction,
+            emotional_register: storyteller_core::types::prediction::EmotionalRegister::Neutral,
+            confidence: 0.5,
+            target_count: (characters_refs.len().saturating_sub(1)) as u8,
+        };
+        let predictions = predict_character_behaviors(
             predictor,
             &characters_refs,
             &engine.scene,
             &input,
             &engine.grammar,
-            None, // event_classifier removed; Task 4 will pass decomposition features instead
+            event_features,
             engine.prediction_history.as_map(),
         );
         ResolverOutput {
