@@ -231,3 +231,4 @@ Model tier summary:
 
 - **Automated playtest harness**: Run scenes programmatically, produce `turns.jsonl` for analysis without manual UI interaction. Would enable validating pipeline changes without manual playthroughs.
 - **Dynamics descriptor enrichment**: Expand `enabled_goals` in dynamics descriptors to reduce reliance on the goal fallback path, improving narrative coherence when goals are well-aligned with scene/archetype/dynamics affordances.
+- **Warm cache intentions generation**: Generate intentions for warm cache scenarios to avoid cold start issues. Python script in training/ against Ollama model, likely qwen2.5 14b or 32b, following existing patterns.
