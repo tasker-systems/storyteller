@@ -192,13 +192,6 @@ export interface CharactersUpdatedEvent {
   emotional_markers: string[];
 }
 
-export interface EventsClassifiedEvent {
-  type: "events_classified";
-  turn: number;
-  classifications: string[];
-  classifier_loaded: boolean;
-}
-
 export interface NarratorCompleteEvent {
   type: "narrator_complete";
   turn: number;
@@ -285,7 +278,6 @@ export type DebugEvent =
   | PredictionCompleteEvent
   | ContextAssembledEvent
   | CharactersUpdatedEvent
-  | EventsClassifiedEvent
   | EventDecomposedEvent
   | ActionArbitratedEvent
   | IntentSynthesizedEvent
@@ -301,7 +293,6 @@ export interface DebugState {
   prediction: PredictionCompleteEvent | null;
   context: ContextAssembledEvent | null;
   characters: CharactersUpdatedEvent | null;
-  events: EventsClassifiedEvent | null;
   decomposition: EventDecomposedEvent | null;
   arbitration: ActionArbitratedEvent | null;
   intent_synthesis: IntentSynthesizedEvent | null;

@@ -170,9 +170,6 @@ export function castPairs(
 
 /**
  * Compute the phase status indicator for a debug panel tab.
- *
- * The Events tab is special: it combines classification + decomposition
- * phases with error > processing > complete > pending precedence.
  */
 export function phaseStatus(
   tab: string,
@@ -185,7 +182,7 @@ export function phaseStatus(
     Context: "context",
     "ML Predictions": "prediction",
     Characters: "characters",
-    Events: "events",
+    Events: "decomposition",
     Arbitration: "arbitration",
     Goals: "goals",
     Narrator: "narrator",
@@ -196,16 +193,6 @@ export function phaseStatus(
     if (llmChecking) return "processing";
     if (!llmStatus) return "pending";
     return llmStatus.reachable ? "complete" : "error";
-  }
-
-  if (tab === "Events") {
-    const evtStatus = debugState.phases["events"] ?? "pending";
-    const decStatus = debugState.phases["decomposition"] ?? "pending";
-    if (evtStatus === "error" || decStatus === "error") return "error";
-    if (evtStatus === "processing" || decStatus === "processing") return "processing";
-    if (evtStatus === "complete" && decStatus === "complete") return "complete";
-    if (evtStatus === "complete" || decStatus === "complete") return "processing";
-    return "pending";
   }
 
   const phase = TAB_PHASE_MAP[tab];
@@ -222,7 +209,6 @@ export function freshDebugState(turn: number): DebugState {
     prediction: null,
     context: null,
     characters: null,
-    events: null,
     decomposition: null,
     arbitration: null,
     intent_synthesis: null,
@@ -254,10 +240,6 @@ export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugStat
     case "characters_updated":
       next.characters = event;
       next.phases["characters"] = "complete";
-      break;
-    case "events_classified":
-      next.events = event;
-      next.phases["events"] = "complete";
       break;
     case "event_decomposed":
       next.decomposition = event as EventDecomposedEvent;
