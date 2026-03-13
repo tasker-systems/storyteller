@@ -35,7 +35,7 @@ use super::tokens::estimate_tokens;
 /// 1. Build scene features from scene data
 /// 2. Build prediction input for each character using provided event features
 /// 3. Run batch inference via the ONNX model
-/// 5. Enrich each raw prediction with narrative descriptions
+/// 4. Enrich each raw prediction with narrative descriptions
 ///
 /// Returns assembled predictions and optionally the ML classification output.
 /// Logs warnings for any individual character prediction failures.

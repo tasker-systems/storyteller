@@ -523,15 +523,11 @@ pub async fn resume_session(
         .find(|c| c.role.to_lowercase().contains("protagonist"))
         .map(|c| c.entity_id);
 
-    // Hydrate generated intentions from persisted file
-    let resume_generated_intentions = session_store
-        .load_intentions(&session_id)
-        .ok()
-        .flatten()
-        .and_then(|v| {
-            use storyteller_engine::inference::intention_generation::GeneratedIntentions;
-            serde_json::from_value::<GeneratedIntentions>(v).ok()
-        });
+    // Hydrate generated intentions from the already-loaded intentions JSON
+    let resume_generated_intentions = loaded_intentions.and_then(|v| {
+        use storyteller_engine::inference::intention_generation::GeneratedIntentions;
+        serde_json::from_value::<GeneratedIntentions>(v).ok()
+    });
 
     let engine_state = EngineState {
         scene,
