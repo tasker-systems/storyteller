@@ -90,6 +90,25 @@ Event replay:
 Continuous push:
 - `StreamLogs(LogFilter) → stream LogEntry` — tracing subscriber piped to gRPC
 
+### Descriptor Identity Model
+
+All descriptors (genres, archetypes, dynamics, profiles, settings, names, goals) currently use human-readable string keys (`"id": "low_fantasy_folklore"`). The gRPC proto and `storyteller-composer` will use UUIDv7 entity identifiers to match the future database-backed model.
+
+**Migration**: A one-time Python script adds an `entity_id` (UUIDv7) field to every descriptor object and converts cross-references (`valid_archetypes`, `valid_dynamics`, `valid_profiles`, etc.) from string slugs to UUIDv7 arrays. The original string `id` is retained as a human-readable slug for CLI ergonomics and authoring. The script runs against `storyteller-data/training-data/descriptors/` and commits the result.
+
+**Proto identifiers**: All RPC request/response messages use `string` typed as UUIDv7 for entity references (`genre_id`, `archetype_id`, etc.). The composer provides slug→UUID resolution so CLI commands like `--genre dark_fantasy` still work.
+
+**Descriptor files after migration:**
+```json
+{
+  "id": "low_fantasy_folklore",
+  "entity_id": "019ce4c3-...",
+  "display_name": "Low Fantasy / Folklore",
+  "valid_archetypes": ["019ce4c3-...", "019ce4c3-..."],
+  ...
+}
+```
+
 ### Protobuf and Build Integration
 
 Proto definitions live in `proto/` at the workspace root:
