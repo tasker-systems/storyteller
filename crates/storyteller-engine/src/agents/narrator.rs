@@ -587,7 +587,6 @@ mod tests {
             character_name: "Pyotir".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec!["stoicism".to_string()],
-                activation_reason: "Active in context".to_string(),
                 confidence: 0.8,
             },
             actions: vec![],

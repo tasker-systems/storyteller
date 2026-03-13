@@ -560,7 +560,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec!["grief".to_string()],
-                activation_reason: "loss context".to_string(),
                 confidence: 0.8,
             },
             actions: vec![ActionPrediction {
@@ -650,7 +649,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec!["grief".to_string()],
-                activation_reason: "loss context".to_string(),
                 confidence: 0.8,
             },
             actions: vec![ActionPrediction {
@@ -689,7 +687,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec![],
-                activation_reason: "test".to_string(),
                 confidence: 0.8,
             },
             actions: vec![ActionPrediction {
@@ -733,7 +730,6 @@ mod tests {
             character_name: "Arthur".to_string(),
             frame: ActivatedTensorFrame {
                 activated_axes: vec![],
-                activation_reason: "test".to_string(),
                 confidence: 0.8,
             },
             actions: vec![

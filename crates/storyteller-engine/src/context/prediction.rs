@@ -287,11 +287,9 @@ pub fn enrich_prediction(
 ) -> CharacterPrediction {
     // 1. Resolve activated axis indices → axis names
     let axis_names = resolve_axis_names(&raw.frame.activated_axis_indices, character);
-    let activation_reason = generate_activation_reason(&axis_names, scene);
 
     let frame = ActivatedTensorFrame {
         activated_axes: axis_names,
-        activation_reason,
         confidence: raw.frame.confidence,
     };
 
@@ -390,8 +388,6 @@ pub fn render_predictions(predictions: &[CharacterPrediction]) -> String {
             "**Frame**: {} ({:.2} confidence)\n",
             axes_str, pred.frame.confidence
         ));
-        output.push_str(&pred.frame.activation_reason);
-        output.push('\n');
 
         // Actions
         for action in &pred.actions {
@@ -477,22 +473,6 @@ fn resolve_target_name(
         return Some(character.name.clone());
     }
     None
-}
-
-/// Generate a brief reason for the frame's axis activation based on scene context.
-fn generate_activation_reason(axis_names: &[String], scene: &SceneData) -> String {
-    if axis_names.is_empty() {
-        return format!("Entering {}", scene.title);
-    }
-    let stakes_hint = scene
-        .stakes
-        .first()
-        .map(|s| s.as_str())
-        .unwrap_or("the current moment");
-    format!(
-        "Active in the context of {}",
-        truncate_hint(stakes_hint, 80)
-    )
 }
 
 /// Generate a templated action description from raw prediction values.
@@ -718,7 +698,6 @@ mod tests {
         assert_eq!(enriched.character_name, "Bramblehoof");
         assert_eq!(enriched.character_id, bramblehoof.entity_id);
         assert!(!enriched.frame.activated_axes.is_empty());
-        assert!(!enriched.frame.activation_reason.is_empty());
         assert_eq!(enriched.actions.len(), 1);
         assert!(!enriched.actions[0].description.is_empty());
         assert!(enriched.speech.is_some());
