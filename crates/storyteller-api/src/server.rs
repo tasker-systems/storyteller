@@ -54,7 +54,7 @@ impl ServerConfig {
 
 /// Start the gRPC server.
 ///
-/// Serves both [`ComposerService`] and [`StorytellerEngine`] with real LLM
+/// Serves both [`ComposerServiceImpl`] and [`EngineServiceImpl`] with real LLM
 /// providers constructed from [`ServerConfig`].
 pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading descriptors from {}", config.data_path);
