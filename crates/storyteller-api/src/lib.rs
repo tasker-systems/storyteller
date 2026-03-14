@@ -21,6 +21,7 @@
 //! - [`persistence`] — Three-file session persistence (composition, events, turns)
 
 pub mod engine;
+pub mod grpc;
 pub mod middleware;
 pub mod persistence;
 pub mod proto;

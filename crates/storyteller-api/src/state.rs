@@ -4,26 +4,38 @@
 //! handlers need. It is constructed by the deployment layer and passed into
 //! [`crate::router()`].
 
-/// Shared state available to all API handlers.
+use std::sync::Arc;
+
+use storyteller_composer::SceneComposer;
+
+use crate::engine::{EngineProviders, EngineStateManager};
+use crate::persistence::SessionStore;
+
+/// Shared state available to all API handlers and gRPC services.
 ///
 /// Constructed by the deployment crate (cli, shuttle, etc.) and threaded
 /// through axum's state extraction.
 #[derive(Debug, Clone)]
 pub struct AppState {
-    // Engine references, database pools, and configuration will be added here
-    // as the implementation progresses. For now, this is a valid empty state.
-    _private: (),
+    pub composer: Arc<SceneComposer>,
+    pub state_manager: Arc<EngineStateManager>,
+    pub session_store: Arc<SessionStore>,
+    pub providers: Arc<EngineProviders>,
 }
 
 impl AppState {
     /// Create a new application state.
-    pub fn new() -> Self {
-        Self { _private: () }
-    }
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self::new()
+    pub fn new(
+        composer: Arc<SceneComposer>,
+        state_manager: Arc<EngineStateManager>,
+        session_store: Arc<SessionStore>,
+        providers: Arc<EngineProviders>,
+    ) -> Self {
+        Self {
+            composer,
+            state_manager,
+            session_store,
+            providers,
+        }
     }
 }

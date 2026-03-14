@@ -19,6 +19,7 @@ use crate::descriptors::{Archetype, DescriptorSet, Dynamic, Genre, Profile};
 /// Lightweight genre summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct GenreSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -30,6 +31,7 @@ pub struct GenreSummary {
 /// Lightweight profile summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct ProfileSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -43,6 +45,7 @@ pub struct ProfileSummary {
 /// Lightweight archetype summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct ArchetypeSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -51,6 +54,7 @@ pub struct ArchetypeSummary {
 /// Lightweight dynamic summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct DynamicSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -87,6 +91,7 @@ impl SceneComposer {
             .genres
             .iter()
             .map(|g| GenreSummary {
+                entity_id: g.entity_id.clone(),
                 id: g.id.clone(),
                 display_name: g.display_name.clone(),
                 description: g.description.clone(),
@@ -108,6 +113,7 @@ impl SceneComposer {
             .iter()
             .filter_map(|pid| self.find_profile(pid))
             .map(|p| ProfileSummary {
+                entity_id: p.entity_id.clone(),
                 id: p.id.clone(),
                 display_name: p.display_name.clone(),
                 description: p.description.clone(),
@@ -131,6 +137,7 @@ impl SceneComposer {
             .iter()
             .filter_map(|aid| self.find_archetype(aid))
             .map(|a| ArchetypeSummary {
+                entity_id: a.entity_id.clone(),
                 id: a.id.clone(),
                 display_name: a.display_name.clone(),
                 description: a.description.clone(),
@@ -173,6 +180,7 @@ impl SceneComposer {
             .filter(|did| !excluded_dynamic_ids.contains(did.as_str()))
             .filter_map(|did| self.find_dynamic(did))
             .map(|d| DynamicSummary {
+                entity_id: d.entity_id.clone(),
                 id: d.id.clone(),
                 display_name: d.display_name.clone(),
                 description: d.description.clone(),
