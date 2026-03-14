@@ -1,10 +1,19 @@
 //! Server-side engine state types.
 //!
-//! Uses `serde_json::Value` for dynamic fields while the turn pipeline matures.
-//! As integration deepens, these will be replaced with strongly-typed domain
-//! objects from `storyteller-core`.
+//! `Composition` uses `serde_json::Value` for scene/character data to avoid
+//! coupling to domain types at the state layer — deserialized on demand by the
+//! pipeline. `RuntimeSnapshot` uses typed domain objects so the pipeline can
+//! work directly without per-turn deserialization overhead.
+
+use storyteller_core::types::entity::EntityId;
+use storyteller_core::types::narrator_context::SceneJournal;
+use storyteller_core::types::scene::SceneId;
+use storyteller_ml::prediction_history::PredictionHistory;
 
 /// Immutable composition data — created once per session.
+///
+/// Uses `serde_json::Value` for scene/character/goals/intentions while the
+/// composition API stabilises. Deserialized to domain types by the pipeline.
 #[derive(Debug, Clone)]
 pub struct Composition {
     pub scene: serde_json::Value,
@@ -18,12 +27,27 @@ pub struct Composition {
 ///
 /// Readers get a cheap `Arc` clone; writers publish a new `Arc` at each
 /// pipeline phase boundary. No reader ever blocks a writer.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
-    pub journal_entries: Vec<String>,
+    /// Current turn number (0 = opening, incremented each player turn).
     pub turn_count: u32,
-    pub player_entity_id: Option<String>,
-    pub prediction_history: Vec<serde_json::Value>,
+    /// Entity ID of the player's character in this scene, if any.
+    pub player_entity_id: Option<EntityId>,
+    /// Progressive scene journal — carries compressed turn history for the narrator.
+    pub journal: SceneJournal,
+    /// Per-character prediction history — ring buffer for ML feature Region 7.
+    pub prediction_history: PredictionHistory,
+}
+
+impl Default for RuntimeSnapshot {
+    fn default() -> Self {
+        Self {
+            turn_count: 0,
+            player_entity_id: None,
+            journal: SceneJournal::new(SceneId::default(), 1200),
+            prediction_history: PredictionHistory::default(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -34,9 +58,9 @@ mod tests {
     fn runtime_snapshot_default_is_empty() {
         let snap = RuntimeSnapshot::default();
         assert_eq!(snap.turn_count, 0);
-        assert!(snap.journal_entries.is_empty());
+        assert!(snap.journal.entries.is_empty());
         assert!(snap.player_entity_id.is_none());
-        assert!(snap.prediction_history.is_empty());
+        assert!(snap.prediction_history.as_map().is_empty());
     }
 
     #[test]

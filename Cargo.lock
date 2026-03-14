@@ -6264,6 +6264,7 @@ dependencies = [
  "storyteller-composer",
  "storyteller-core",
  "storyteller-engine",
+ "storyteller-ml",
  "tempfile",
  "tokio",
  "tokio-stream",

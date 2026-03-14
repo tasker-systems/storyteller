@@ -18,7 +18,7 @@ use crate::feature_schema::{HistoryEntry, HISTORY_DEPTH};
 /// entries in most-recent-first order. Uses `Vec` with `insert(0, ..)` instead
 /// of `VecDeque` — with max 3 entries the shift cost is negligible and we get
 /// a contiguous `&[HistoryEntry]` slice from `.as_slice()`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PredictionHistory {
     entries: HashMap<EntityId, Vec<HistoryEntry>>,
 }

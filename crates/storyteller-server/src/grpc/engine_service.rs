@@ -1,6 +1,7 @@
 //! gRPC EngineService implementation.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use chrono::Utc;
 use tokio::sync::mpsc;
@@ -8,15 +9,46 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::engine::{Composition, EngineProviders, EngineStateManager};
+use crate::engine::{Composition, EngineProviders, EngineStateManager, RuntimeSnapshot};
 use crate::persistence::SessionStore;
 use crate::proto::storyteller_engine_server::StorytellerEngine;
 use crate::proto::*;
 
 use storyteller_composer::{
     compose::{CastSelection, DynamicSelection, SceneSelections},
+    goals::ComposedGoals,
     SceneComposer,
 };
+use storyteller_core::{
+    traits::{
+        phase_observer::{CollectingObserver, PhaseEventDetail},
+        NoopObserver,
+    },
+    types::{
+        capability_lexicon::CapabilityLexicon,
+        character::{CharacterSheet, SceneData},
+        entity::EntityId,
+        prediction::{EmotionalRegister, EventType},
+    },
+};
+use storyteller_engine::{
+    agents::narrator::NarratorAgent,
+    context::{
+        assemble_narrator_context,
+        journal::add_turn,
+        prediction::{decomposition_to_event_features, predict_character_behaviors},
+        DEFAULT_TOTAL_TOKEN_BUDGET,
+    },
+    inference::{
+        event_decomposition::{
+            event_decomposition_schema, event_decomposition_system_prompt, EventDecomposition,
+        },
+        intent_synthesis::synthesize_intents,
+        intention_generation::{intentions_to_preamble, GeneratedIntentions},
+    },
+    systems::arbitration::check_action_possibility,
+};
+use storyteller_ml::feature_schema::EventFeatureInput;
 
 /// gRPC implementation of the `StorytellerEngine` proto service.
 pub struct EngineServiceImpl {
@@ -276,15 +308,83 @@ impl StorytellerEngine for EngineServiceImpl {
         let (tx, rx) = mpsc::channel(32);
         let state_manager = self.state_manager.clone();
         let session_store = self.session_store.clone();
-        // providers cloned for future LLM wiring
-        let _providers = self.providers.clone();
+        let providers = self.providers.clone();
 
         tokio::spawn(async move {
+            let total_start = Instant::now();
             let mut event_ids: Vec<String> = Vec::new();
-            let snapshot = state_manager.get_runtime_snapshot(&session_id);
-            let turn = snapshot.as_ref().map(|s| s.turn_count + 1).unwrap_or(1);
 
-            // Phase 1: Event Decomposition
+            // --- Load composition (immutable) ---
+            let composition = match state_manager.get_composition(&session_id) {
+                Some(c) => c,
+                None => {
+                    let _ = tx
+                        .send(Err(Status::not_found("session composition not found")))
+                        .await;
+                    return;
+                }
+            };
+
+            // Deserialize typed domain objects from JSON
+            let scene: SceneData = match serde_json::from_value(composition.scene.clone()) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = tx
+                        .send(Err(Status::internal(format!("Invalid scene data: {e}"))))
+                        .await;
+                    return;
+                }
+            };
+            let characters: Vec<CharacterSheet> = match composition
+                .characters
+                .iter()
+                .map(|v| serde_json::from_value(v.clone()))
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(cs) => cs,
+                Err(e) => {
+                    let _ = tx
+                        .send(Err(Status::internal(format!(
+                            "Invalid character data: {e}"
+                        ))))
+                        .await;
+                    return;
+                }
+            };
+            let characters_refs: Vec<&CharacterSheet> = characters.iter().collect();
+            let entity_ids: Vec<EntityId> = characters.iter().map(|c| c.entity_id).collect();
+
+            // Optional goal types (graceful degradation if missing/malformed)
+            let composed_goals: Option<ComposedGoals> = composition
+                .goals
+                .as_ref()
+                .and_then(|v| serde_json::from_value(v.clone()).ok());
+            let generated_intentions: Option<GeneratedIntentions> = composition
+                .intentions
+                .as_ref()
+                .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+            // --- Load runtime snapshot ---
+            let snapshot = match state_manager.get_runtime_snapshot(&session_id) {
+                Some(s) => s,
+                None => {
+                    let _ = tx
+                        .send(Err(Status::not_found("session snapshot not found")))
+                        .await;
+                    return;
+                }
+            };
+            let turn = snapshot.turn_count + 1;
+
+            // Derive player entity ID from scene cast (protagonist role)
+            let player_entity_id = scene
+                .cast
+                .iter()
+                .find(|c| c.role.to_lowercase().contains("protagonist"))
+                .map(|c| c.entity_id)
+                .or(snapshot.player_entity_id);
+
+            // --- Phase 1: Event Decomposition ---
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
@@ -295,13 +395,48 @@ impl StorytellerEngine for EngineServiceImpl {
                 )))
                 .await;
 
-            // TODO: Call decompose_events() with structured LLM
-            if let Ok(eid) = session_store.events.append(
-                &session_id,
-                "decomposition",
-                Some(turn),
-                &serde_json::json!({"input": input, "status": "placeholder"}),
-            ) {
+            let decomp_start = Instant::now();
+            let mut persisted_decomposition: Option<serde_json::Value> = None;
+            let mut event_decomposition: Option<EventDecomposition> = None;
+
+            if let Some(ref structured_llm) = providers.structured_llm {
+                // Include last narrator prose so the model can resolve pronouns
+                let decomp_input = if let Some(last_entry) = snapshot.journal.entries.last() {
+                    format!("[Narrator]\n{}\n\n[Player]\n{}", last_entry.content, input)
+                } else {
+                    input.clone()
+                };
+
+                let request = storyteller_core::traits::structured_llm::StructuredRequest {
+                    system: event_decomposition_system_prompt(),
+                    input: decomp_input,
+                    output_schema: event_decomposition_schema(),
+                    temperature: 0.1,
+                };
+                match structured_llm.extract(request).await {
+                    Ok(raw_json) => {
+                        tracing::debug!(
+                            raw = %serde_json::to_string(&raw_json).unwrap_or_default(),
+                            "Event decomposition raw response"
+                        );
+                        persisted_decomposition = Some(raw_json.clone());
+                        event_decomposition = EventDecomposition::from_json(&raw_json).ok();
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Event decomposition LLM call failed");
+                    }
+                }
+            }
+            let _decomposition_ms = decomp_start.elapsed().as_millis() as u64;
+
+            let decomp_json = persisted_decomposition
+                .clone()
+                .unwrap_or_else(|| serde_json::json!({"status": "skipped"}));
+            if let Ok(eid) =
+                session_store
+                    .events
+                    .append(&session_id, "decomposition", Some(turn), &decomp_json)
+            {
                 event_ids.push(eid);
             }
 
@@ -310,12 +445,24 @@ impl StorytellerEngine for EngineServiceImpl {
                     &session_id,
                     Some(turn),
                     engine_event::Payload::Decomposition(DecompositionComplete {
-                        raw_json: serde_json::json!({"status": "placeholder"}).to_string(),
+                        raw_json: serde_json::to_string(&decomp_json).unwrap_or_default(),
                     }),
                 )))
                 .await;
 
-            // Phase 2: ML Prediction
+            // Derive event features from decomposition for ML prediction
+            let event_features = if let Some(ref decomposition) = event_decomposition {
+                decomposition_to_event_features(decomposition)
+            } else {
+                EventFeatureInput {
+                    event_type: EventType::Interaction,
+                    emotional_register: EmotionalRegister::Neutral,
+                    confidence: 0.5,
+                    target_count: characters.len().saturating_sub(1) as u8,
+                }
+            };
+
+            // --- Phase 2: ML Prediction ---
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
@@ -326,54 +473,173 @@ impl StorytellerEngine for EngineServiceImpl {
                 )))
                 .await;
 
+            let predict_start = Instant::now();
+            let mut resolver_output = if let Some(ref predictor) = providers.predictor {
+                let predictions = predict_character_behaviors(
+                    predictor,
+                    &characters_refs,
+                    &scene,
+                    &input,
+                    &*providers.grammar,
+                    event_features,
+                    snapshot.prediction_history.as_map(),
+                );
+                storyteller_core::types::resolver::ResolverOutput {
+                    sequenced_actions: vec![],
+                    original_predictions: predictions,
+                    scene_dynamics: "ML-predicted character behavior".to_string(),
+                    conflicts: vec![],
+                    intent_statements: None,
+                }
+            } else {
+                storyteller_core::types::resolver::ResolverOutput {
+                    sequenced_actions: vec![],
+                    original_predictions: vec![],
+                    scene_dynamics: "Character behavior (ML predictor not available)".to_string(),
+                    conflicts: vec![],
+                    intent_statements: None,
+                }
+            };
+            let _prediction_ms = predict_start.elapsed().as_millis() as u64;
+
+            // Build updated prediction history from this turn's predictions
+            let mut new_prediction_history = snapshot.prediction_history.clone();
+            for pred in &resolver_output.original_predictions {
+                new_prediction_history.push_from_prediction(pred);
+            }
+
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
                     Some(turn),
                     engine_event::Payload::Prediction(PredictionComplete {
-                        raw_json: serde_json::json!({"status": "placeholder"}).to_string(),
+                        raw_json: serde_json::to_string(&resolver_output.original_predictions)
+                            .unwrap_or_default(),
                     }),
                 )))
                 .await;
 
-            // Phase 3: Arbitration
+            // --- Phase 3: Action Arbitration ---
+            let arb_start = Instant::now();
+            let arbitration_result =
+                check_action_possibility(&input, &[], &CapabilityLexicon::new(), None);
+            let arb_ms = arb_start.elapsed().as_millis() as u64;
+
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
                     Some(turn),
                     engine_event::Payload::Arbitration(ArbitrationComplete {
-                        verdict: "Permitted".to_string(),
-                        details: "placeholder".to_string(),
+                        verdict: format!("{:?}", arbitration_result),
+                        details: format!("Arbitration completed in {arb_ms}ms"),
                     }),
                 )))
                 .await;
 
-            // Phase 4: Intent Synthesis
+            // --- Phase 4: Intent Synthesis ---
+            let intent_start = Instant::now();
+            let journal_tail = snapshot
+                .journal
+                .entries
+                .iter()
+                .rev()
+                .take(2)
+                .rev()
+                .map(|e| e.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+
+            let intent_statements = if let Some(ref intent_llm) = providers.intent_llm {
+                synthesize_intents(
+                    intent_llm.as_ref(),
+                    &characters_refs,
+                    &resolver_output.original_predictions,
+                    &journal_tail,
+                    &input,
+                    &scene,
+                    player_entity_id,
+                    generated_intentions.as_ref(),
+                )
+                .await
+            } else {
+                None
+            };
+            let _intent_ms = intent_start.elapsed().as_millis() as u64;
+
+            resolver_output.intent_statements = intent_statements.clone();
+
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
                     Some(turn),
                     engine_event::Payload::IntentSynthesis(IntentSynthesisComplete {
-                        intent_statements: String::new(),
+                        intent_statements: intent_statements.unwrap_or_default(),
                     }),
                 )))
                 .await;
 
-            // Phase 5: Context Assembly
+            // --- Phase 5: Context Assembly ---
+            let observer = CollectingObserver::new();
+            let assembly_start = Instant::now();
+            let emotional_markers = extract_emotional_markers(&input);
+
+            let mut context = assemble_narrator_context(
+                &scene,
+                &characters_refs,
+                &snapshot.journal,
+                &resolver_output,
+                &input,
+                &entity_ids,
+                DEFAULT_TOTAL_TOKEN_BUDGET,
+                &observer,
+                player_entity_id,
+            );
+            let _assembly_ms = assembly_start.elapsed().as_millis() as u64;
+
+            // Inject composition-time goal intentions into preamble
+            if let Some(ref intentions) = generated_intentions {
+                let (scene_direction, character_drives) = intentions_to_preamble(intentions);
+                context.preamble.scene_direction = Some(scene_direction);
+                context.preamble.character_drives = character_drives;
+            }
+            // Inject player context from composed goals
+            if let Some(ref goals) = composed_goals {
+                use storyteller_composer::goals::GoalVisibility;
+                context.preamble.player_context = player_entity_id
+                    .and_then(|pid| goals.character_goals.get(&pid))
+                    .map(|player_goals| {
+                        player_goals
+                            .iter()
+                            .filter(|g| {
+                                matches!(
+                                    g.visibility,
+                                    GoalVisibility::Overt | GoalVisibility::Signaled
+                                )
+                            })
+                            .map(|g| g.goal_id.replace('_', " "))
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    })
+                    .filter(|s| !s.is_empty());
+            }
+
+            // Extract token counts from observer (drains events)
+            let token_counts = extract_token_counts_from_observer(&observer);
+
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
                     Some(turn),
                     engine_event::Payload::Context(ContextAssembled {
-                        preamble_tokens: 0,
-                        journal_tokens: 0,
-                        retrieved_tokens: 0,
-                        total_tokens: 0,
+                        preamble_tokens: token_counts.0,
+                        journal_tokens: token_counts.1,
+                        retrieved_tokens: token_counts.2,
+                        total_tokens: token_counts.3,
                     }),
                 )))
                 .await;
 
-            // Phase 6: Narrator
+            // --- Phase 6: Narrator Rendering ---
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
@@ -384,14 +650,31 @@ impl StorytellerEngine for EngineServiceImpl {
                 )))
                 .await;
 
-            // TODO: Call narrator LLM with assembled context
-            let narrator_output = "[Narrator pipeline integration pending]".to_string();
+            let narrator = NarratorAgent::new(&context, Arc::clone(&providers.narrator_llm))
+                .with_temperature(0.8);
+            let noop = NoopObserver;
+            let llm_start = Instant::now();
+            let rendering = match narrator.render(&context, &noop).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        session = %session_id,
+                        "Narrator render failed"
+                    );
+                    let _ = tx
+                        .send(Err(Status::internal(format!("Narrator failed: {e}"))))
+                        .await;
+                    return;
+                }
+            };
+            let narrator_ms = llm_start.elapsed().as_millis() as u64;
 
             if let Ok(eid) = session_store.events.append(
                 &session_id,
                 "narrator_complete",
                 Some(turn),
-                &serde_json::json!({"prose": narrator_output}),
+                &serde_json::json!({"prose": rendering.text}),
             ) {
                 event_ids.push(eid);
             }
@@ -401,23 +684,35 @@ impl StorytellerEngine for EngineServiceImpl {
                     &session_id,
                     Some(turn),
                     engine_event::Payload::NarratorComplete(NarratorComplete {
-                        prose: narrator_output.clone(),
-                        generation_ms: 0,
+                        prose: rendering.text.clone(),
+                        generation_ms: narrator_ms,
                     }),
                 )))
                 .await;
 
-            // Update state
+            // --- Update journal (clone from snapshot, add new turn) ---
+            let noop_journal = NoopObserver;
+            let mut new_journal = snapshot.journal.clone();
+            add_turn(
+                &mut new_journal,
+                turn,
+                &rendering.text,
+                entity_ids,
+                emotional_markers,
+                &noop_journal,
+            );
+
+            // --- Update runtime snapshot ---
             state_manager
-                .update_runtime_snapshot(&session_id, |snap| {
-                    let mut new = snap.clone();
-                    new.turn_count = turn;
-                    new.journal_entries.push(narrator_output.clone());
-                    new
+                .update_runtime_snapshot(&session_id, move |_snap| RuntimeSnapshot {
+                    turn_count: turn,
+                    player_entity_id,
+                    journal: new_journal,
+                    prediction_history: new_prediction_history,
                 })
                 .await;
 
-            // Persist turn
+            // --- Persist turn ---
             let turn_entry = crate::persistence::TurnEntry {
                 turn,
                 timestamp: Utc::now().to_rfc3339(),
@@ -426,11 +721,12 @@ impl StorytellerEngine for EngineServiceImpl {
             };
             let _ = session_store.turns.append(&session_id, &turn_entry);
 
+            let total_ms = total_start.elapsed().as_millis() as u64;
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
                     Some(turn),
-                    engine_event::Payload::TurnComplete(TurnComplete { turn, total_ms: 0 }),
+                    engine_event::Payload::TurnComplete(TurnComplete { turn, total_ms }),
                 )))
                 .await;
         });
@@ -748,4 +1044,66 @@ impl StorytellerEngine for EngineServiceImpl {
     ) -> Result<Response<Self::StreamLogsStream>, Status> {
         Err(Status::unimplemented("StreamLogs not yet implemented"))
     }
+}
+
+// ---------------------------------------------------------------------------
+// Private pipeline helpers
+// ---------------------------------------------------------------------------
+
+/// Extract rough emotional markers from player input.
+///
+/// Naive prototype implementation — looks for emotionally charged words.
+/// Mirrors the workshop `extract_emotional_markers`.
+fn extract_emotional_markers(input: &str) -> Vec<String> {
+    let lower = input.to_lowercase();
+    let mut markers = Vec::new();
+    let emotional_words = [
+        ("cry", "sadness"),
+        ("weep", "sadness"),
+        ("tear", "sadness"),
+        ("laugh", "joy"),
+        ("smile", "joy"),
+        ("angry", "anger"),
+        ("shout", "anger"),
+        ("afraid", "fear"),
+        ("scared", "fear"),
+        ("surprise", "surprise"),
+        ("wonder", "anticipation"),
+        ("hope", "anticipation"),
+        ("flute", "recognition"),
+        ("music", "recognition"),
+        ("remember", "recognition"),
+    ];
+    for (word, marker) in &emotional_words {
+        if lower.contains(word) {
+            markers.push((*marker).to_string());
+        }
+    }
+    markers
+}
+
+/// Extract token counts from a `CollectingObserver` after context assembly.
+///
+/// Returns `(preamble, journal, retrieved, total)`. Drains the observer's
+/// event buffer — call this once after `assemble_narrator_context`.
+fn extract_token_counts_from_observer(observer: &CollectingObserver) -> (u32, u32, u32, u32) {
+    let events = observer.take_events();
+    for event in &events {
+        if let PhaseEventDetail::ContextAssembled {
+            preamble_tokens,
+            journal_tokens,
+            retrieved_tokens,
+            total_tokens,
+            ..
+        } = &event.detail
+        {
+            return (
+                *preamble_tokens,
+                *journal_tokens,
+                *retrieved_tokens,
+                *total_tokens,
+            );
+        }
+    }
+    (0, 0, 0, 0)
 }

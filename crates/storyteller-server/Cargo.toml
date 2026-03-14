@@ -13,6 +13,7 @@ categories = ["game-engines", "web-programming"]
 storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
 storyteller-engine = { path = "../storyteller-engine", version = "=0.1.0" }
 storyteller-composer = { path = "../storyteller-composer", version = "=0.1.0" }
+storyteller-ml = { path = "../storyteller-ml", version = "=0.1.0" }
 
 # HTTP framework
 axum = { workspace = true }
