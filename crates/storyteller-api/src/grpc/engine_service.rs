@@ -278,18 +278,125 @@ impl StorytellerEngine for EngineServiceImpl {
     }
 
     async fn list_sessions(&self, _request: Request<()>) -> Result<Response<SessionList>, Status> {
-        Err(Status::unimplemented("ListSessions not yet implemented"))
+        let session_ids = self
+            .session_store
+            .list_session_ids()
+            .map_err(|e| Status::internal(format!("list sessions: {e}")))?;
+
+        let mut summaries = Vec::new();
+        for id in session_ids {
+            if let Ok(comp) = self.session_store.composition.read(&id) {
+                let turn_count = self.session_store.turns.turn_count(&id).unwrap_or(0) as u32;
+
+                summaries.push(SessionSummary {
+                    session_id: id,
+                    genre: comp
+                        .get("selections")
+                        .and_then(|s| s.get("genre_id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    profile: comp
+                        .get("selections")
+                        .and_then(|s| s.get("profile_id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    title: comp
+                        .get("scene")
+                        .and_then(|s| s.get("title"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Untitled")
+                        .to_string(),
+                    cast_names: comp
+                        .get("characters")
+                        .and_then(|c| c.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|c| c.get("name").and_then(|n| n.as_str()))
+                                .map(|s| s.to_string())
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    turn_count,
+                    created_at: String::new(), // TODO: from directory mtime
+                });
+            }
+        }
+
+        Ok(Response::new(SessionList {
+            sessions: summaries,
+        }))
     }
 
     async fn get_scene_state(
         &self,
-        _request: Request<GetSceneStateRequest>,
+        request: Request<GetSceneStateRequest>,
     ) -> Result<Response<SceneState>, Status> {
-        Err(Status::unimplemented("GetSceneState not yet implemented"))
+        let session_id = &request.get_ref().session_id;
+
+        let composition = self
+            .state_manager
+            .get_composition(session_id)
+            .ok_or_else(|| Status::not_found(format!("session {session_id} not found")))?;
+
+        let snapshot = self.state_manager.get_runtime_snapshot(session_id);
+
+        let characters: Vec<CharacterState> = composition
+            .characters
+            .iter()
+            .filter_map(|c| {
+                Some(CharacterState {
+                    entity_id: c.get("entity_id")?.as_str()?.to_string(),
+                    name: c.get("name")?.as_str()?.to_string(),
+                    role: c
+                        .get("backstory")
+                        .and_then(|b| b.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    performance_notes: c
+                        .get("performance_notes")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                })
+            })
+            .collect();
+
+        let current_turn = snapshot.map(|s| s.turn_count).unwrap_or(0);
+
+        Ok(Response::new(SceneState {
+            session_id: session_id.to_string(),
+            title: composition
+                .scene
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string(),
+            setting_description: composition
+                .scene
+                .get("setting")
+                .and_then(|s| s.get("description"))
+                .and_then(|d| d.as_str())
+                .unwrap_or("")
+                .to_string(),
+            characters,
+            scene_goals_json: composition.goals.as_ref().map(|g| g.to_string()),
+            intentions_json: composition.intentions.as_ref().map(|i| i.to_string()),
+            current_turn,
+        }))
     }
 
     async fn check_llm_status(&self, _request: Request<()>) -> Result<Response<LlmStatus>, Status> {
-        Err(Status::unimplemented("CheckLlmStatus not yet implemented"))
+        Ok(Response::new(LlmStatus {
+            narrator_available: true, // placeholder
+            narrator_model: String::new(),
+            decomposition_available: self.providers.structured_llm.is_some(),
+            decomposition_model: String::new(),
+            intent_available: self.providers.intent_llm.is_some(),
+            intent_model: String::new(),
+            predictor_available: self.providers.predictor_available,
+        }))
     }
 
     async fn get_prediction_history(
