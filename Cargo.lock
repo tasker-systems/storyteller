@@ -6157,6 +6157,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "storyteller-client"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "storyteller-core",
+ "thiserror 2.0.18",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tracing",
+]
+
+[[package]]
 name = "storyteller-composer"
 version = "0.1.0"
 dependencies = [
