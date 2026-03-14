@@ -656,15 +656,71 @@ impl StorytellerEngine for EngineServiceImpl {
         }))
     }
 
-    async fn check_llm_status(&self, _request: Request<()>) -> Result<Response<LlmStatus>, Status> {
-        Ok(Response::new(LlmStatus {
-            narrator_available: true, // placeholder
-            narrator_model: String::new(),
-            decomposition_available: self.providers.structured_llm.is_some(),
-            decomposition_model: String::new(),
-            intent_available: self.providers.intent_llm.is_some(),
-            intent_model: String::new(),
-            predictor_available: self.providers.predictor_available,
+    async fn check_health(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<crate::proto::HealthResponse>, Status> {
+        let providers = &self.providers;
+
+        let mut subsystems = vec![crate::proto::SubsystemHealth {
+            name: "narrator_llm".to_string(),
+            status: "healthy".to_string(),
+            message: None,
+        }];
+
+        subsystems.push(crate::proto::SubsystemHealth {
+            name: "structured_llm".to_string(),
+            status: if providers.structured_llm.is_some() {
+                "healthy".to_string()
+            } else {
+                "unavailable".to_string()
+            },
+            message: if providers.structured_llm.is_none() {
+                Some("Structured LLM provider not configured".to_string())
+            } else {
+                None
+            },
+        });
+
+        subsystems.push(crate::proto::SubsystemHealth {
+            name: "intent_llm".to_string(),
+            status: if providers.intent_llm.is_some() {
+                "healthy".to_string()
+            } else {
+                "unavailable".to_string()
+            },
+            message: if providers.intent_llm.is_none() {
+                Some("Intent LLM provider not configured".to_string())
+            } else {
+                None
+            },
+        });
+
+        subsystems.push(crate::proto::SubsystemHealth {
+            name: "predictor".to_string(),
+            status: if providers.predictor_available {
+                "healthy".to_string()
+            } else {
+                "unavailable".to_string()
+            },
+            message: if !providers.predictor_available {
+                Some("Character predictor model not loaded".to_string())
+            } else {
+                None
+            },
+        });
+
+        // Rollup: any unavailable subsystem → server is degraded (still up)
+        let has_unavailable = subsystems.iter().any(|s| s.status == "unavailable");
+        let overall_status = if has_unavailable {
+            "degraded".to_string()
+        } else {
+            "healthy".to_string()
+        };
+
+        Ok(Response::new(crate::proto::HealthResponse {
+            status: overall_status,
+            subsystems,
         }))
     }
 
