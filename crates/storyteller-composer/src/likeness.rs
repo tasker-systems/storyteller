@@ -179,8 +179,8 @@ pub fn populate_character_goal_fragments<R: Rng>(
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptors::DimensionalContext;
     use super::*;
+    use crate::descriptors::DimensionalContext;
 
     fn make_entry(
         fragment: &str,

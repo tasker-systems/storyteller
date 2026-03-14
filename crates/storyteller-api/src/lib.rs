@@ -20,6 +20,7 @@
 //! - [`state`] — Shared application state passed to handlers
 
 pub mod middleware;
+pub mod proto;
 pub mod routes;
 pub mod state;
 
