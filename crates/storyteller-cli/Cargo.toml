@@ -10,28 +10,11 @@ keywords = ["storytelling", "narrative", "cli"]
 categories = ["game-engines"]
 
 [dependencies]
-storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
-storyteller-engine = { path = "../storyteller-engine", version = "=0.1.0" }
-storyteller-server = { path = "../storyteller-server", version = "=0.1.0" }
-
-anyhow = { workspace = true }
 clap = { workspace = true }
-config = { workspace = true }
 dotenvy = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# ECS runtime for App assembly
-bevy_app = { workspace = true }
-
 [lints]
 workspace = true
-
-[[bin]]
-name = "storyteller-server"
-path = "src/bin/server.rs"
-
-[[bin]]
-name = "play-scene"
-path = "src/bin/play_scene_context.rs"

@@ -1,8 +1,8 @@
 //! Storyteller CLI — primary entry point.
 //!
-//! Provides CLI subcommands for running the gRPC server and development utilities.
+//! Subcommands: playtest, compose, composer (added in later tasks).
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
 #[derive(Parser)]
 #[command(name = "storyteller-cli", about = "Storyteller engine CLI")]
@@ -11,31 +11,20 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(clap::Subcommand)]
 enum Commands {
-    /// Start the gRPC engine server.
-    Serve,
+    // Subcommands will be added in later tasks
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // Load .env if available
-    let _ = dotenvy::dotenv();
+    dotenvy::dotenv().ok();
 
     let cli = Cli::parse();
-    match cli.command {
-        Commands::Serve => {
-            let config = storyteller_server::server::ServerConfig::from_env();
-            storyteller_server::server::run_server(config).await?;
-        }
-    }
 
-    Ok(())
+    match cli.command {}
 }
