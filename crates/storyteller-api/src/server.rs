@@ -2,16 +2,20 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tonic::transport::Server;
 use tracing::info;
 
 use storyteller_composer::SceneComposer;
+use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
 
-use crate::engine::EngineStateManager;
+use crate::engine::{EngineProviders, EngineStateManager};
 use crate::grpc::composer_service::ComposerServiceImpl;
+use crate::grpc::engine_service::EngineServiceImpl;
 use crate::persistence::SessionStore;
 use crate::proto::composer_service_server::ComposerServiceServer;
+use crate::proto::storyteller_engine_server::StorytellerEngineServer;
 
 /// Server configuration from environment variables.
 #[derive(Debug)]
@@ -50,8 +54,8 @@ impl ServerConfig {
 
 /// Start the gRPC server.
 ///
-/// Currently serves only the [`ComposerService`] — the engine service requires
-/// LLM providers which are wired in Task 12.
+/// Serves both [`ComposerService`] and [`StorytellerEngine`] with real LLM
+/// providers constructed from [`ServerConfig`].
 pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading descriptors from {}", config.data_path);
     let composer = Arc::new(
@@ -59,26 +63,56 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
             .map_err(|e| format!("Failed to load descriptors: {e}"))?,
     );
 
-    let _state_manager = Arc::new(EngineStateManager::new());
+    let state_manager = Arc::new(EngineStateManager::new());
 
-    let _session_store = Arc::new(
+    let session_store = Arc::new(
         SessionStore::new(std::path::Path::new(&config.sessions_dir))
             .map_err(|e| format!("Failed to create session store: {e}"))?,
     );
 
-    // TODO: Construct real LLM providers from config.
-    // The engine service needs LLM providers — wired in Task 12.
+    // Construct LLM providers from config.
+    // Providers are built without requiring Ollama to be running — connections
+    // are made lazily on first request.
+    let narrator_llm = Arc::new(ExternalServerProvider::new(ExternalServerConfig {
+        base_url: config.ollama_url.clone(),
+        model: config.narrator_model.clone(),
+        timeout: Duration::from_secs(120),
+    }));
+
+    let intent_llm = Arc::new(ExternalServerProvider::new(ExternalServerConfig {
+        base_url: config.ollama_url.clone(),
+        model: config.intent_model.clone(),
+        timeout: Duration::from_secs(60),
+    }));
+
+    let providers = Arc::new(EngineProviders {
+        narrator_llm,
+        structured_llm: None, // TODO: construct OllamaStructuredProvider (Task 13+)
+        intent_llm: Some(intent_llm),
+        predictor_available: false, // TODO: construct CharacterPredictor
+    });
+
+    info!(
+        narrator_model = %config.narrator_model,
+        intent_model = %config.intent_model,
+        ollama_url = %config.ollama_url,
+        "LLM providers constructed"
+    );
 
     let addr: SocketAddr = format!("0.0.0.0:{}", config.grpc_port).parse()?;
     info!("Starting gRPC server on {addr}");
 
     let composer_service = ComposerServiceImpl::new(composer.clone());
-    // Note: EngineServiceImpl requires EngineProviders which needs LLM.
-    // Added incrementally after Task 12 wires LLM providers.
-    // .add_service(StorytellerEngineServer::new(engine_service))
+    let engine_service = EngineServiceImpl::new(
+        composer.clone(),
+        state_manager.clone(),
+        session_store.clone(),
+        providers.clone(),
+    );
 
     Server::builder()
         .add_service(ComposerServiceServer::new(composer_service))
+        .add_service(StorytellerEngineServer::new(engine_service))
         .serve(addr)
         .await?;
 
