@@ -23,7 +23,7 @@ path = "src/lib.rs"
 [dev-dependencies]
 storyteller-core = { path = "../storyteller-core" }
 storyteller-engine = { path = "../storyteller-engine" }
-storyteller-api = { path = "../storyteller-api" }
+storyteller-server = { path = "../storyteller-server" }
 tokio = { workspace = true }
 
 [lints]

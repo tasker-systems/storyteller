@@ -15,7 +15,7 @@ service StorytellerEngine {
   // Query RPCs (unary)
   rpc ListSessions(google.protobuf.Empty) returns (SessionList);
   rpc GetSceneState(GetSceneStateRequest) returns (SceneState);
-  rpc CheckLlmStatus(google.protobuf.Empty) returns (LlmStatus);
+  rpc CheckHealth(google.protobuf.Empty) returns (HealthResponse);
   rpc GetPredictionHistory(PredictionHistoryRequest) returns (PredictionHistoryResponse);
 
   // Event replay (server-streaming)
@@ -121,7 +121,6 @@ message SessionList { repeated SessionSummary sessions = 1; }
 message SessionSummary { string session_id = 1; string genre = 2; string profile = 3; string title = 4; repeated string cast_names = 5; uint32 turn_count = 6; string created_at = 7; }
 message SceneState { string session_id = 1; string title = 2; string setting_description = 3; repeated CharacterState characters = 4; optional string scene_goals_json = 5; optional string intentions_json = 6; uint32 current_turn = 7; }
 message CharacterState { string entity_id = 1; string name = 2; string role = 3; string performance_notes = 4; }
-message LlmStatus { bool narrator_available = 1; string narrator_model = 2; bool decomposition_available = 3; string decomposition_model = 4; bool intent_available = 5; string intent_model = 6; bool predictor_available = 7; }
 message PredictionHistoryResponse { string raw_json = 1; }
 message StoredEvent { string event_id = 1; string event_type = 2; string payload_json = 3; string timestamp = 4; }
 message LogEntry { string level = 1; string target = 2; string message = 3; string timestamp = 4; }

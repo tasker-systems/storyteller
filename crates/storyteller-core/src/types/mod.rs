@@ -8,6 +8,7 @@ pub mod character;
 pub mod entity;
 pub mod event;
 pub mod event_grammar;
+pub mod health;
 pub mod implication;
 pub mod message;
 pub mod narrative;

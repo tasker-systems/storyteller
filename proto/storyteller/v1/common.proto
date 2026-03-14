@@ -5,3 +5,14 @@ import "google/protobuf/empty.proto";
 
 // Shared types used across storyteller services.
 // google.protobuf.Empty is used for parameterless RPCs.
+
+message SubsystemHealth {
+  string name = 1;
+  string status = 2;
+  optional string message = 3;
+}
+
+message HealthResponse {
+  string status = 1;
+  repeated SubsystemHealth subsystems = 2;
+}

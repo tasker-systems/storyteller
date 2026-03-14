@@ -6,8 +6,10 @@
 
 use std::sync::Arc;
 
+use storyteller_core::grammars::PlutchikWestern;
 use storyteller_core::traits::llm::LlmProvider;
 use storyteller_core::traits::structured_llm::StructuredLlmProvider;
+use storyteller_engine::inference::frame::CharacterPredictor;
 
 /// Shared providers for LLM and ML inference.
 ///
@@ -16,19 +18,18 @@ use storyteller_core::traits::structured_llm::StructuredLlmProvider;
 ///
 /// ## Provider roles
 ///
-/// - `narrator_llm` — capable model (e.g. llama3.1:8b) used for prose generation
+/// - `narrator_llm` — capable model (e.g. qwen2.5:14b) used for prose generation
 /// - `structured_llm` — small fast model (e.g. qwen2.5:3b-instruct) for JSON extraction
 /// - `intent_llm` — small model for NPC intent synthesis (3b-instruct via Ollama)
-/// - `predictor_available` — whether the ONNX character predictor is loaded
-///
-/// `CharacterPredictor` and `PlutchikWestern` will be added when the turn
-/// pipeline is wired in Tasks 12+.
+/// - `predictor` — optional ONNX character predictor (absent if model not on disk)
+/// - `grammar` — emotion grammar used by prediction enrichment
 #[derive(Clone)]
 pub struct EngineProviders {
     pub narrator_llm: Arc<dyn LlmProvider>,
     pub structured_llm: Option<Arc<dyn StructuredLlmProvider>>,
     pub intent_llm: Option<Arc<dyn LlmProvider>>,
-    pub predictor_available: bool,
+    pub predictor: Option<Arc<CharacterPredictor>>,
+    pub grammar: Arc<PlutchikWestern>,
 }
 
 impl std::fmt::Debug for EngineProviders {
@@ -37,9 +38,14 @@ impl std::fmt::Debug for EngineProviders {
             .field("narrator_llm", &"Arc<dyn LlmProvider>")
             .field("structured_llm", &self.structured_llm.is_some())
             .field("intent_llm", &self.intent_llm.is_some())
-            .field("predictor_available", &self.predictor_available)
+            .field("predictor", &self.predictor.is_some())
             .finish()
     }
+}
+
+/// Convenience accessor — consistent with the old `predictor_available` field.
+pub fn predictor_available(providers: &EngineProviders) -> bool {
+    providers.predictor.is_some()
 }
 
 #[cfg(test)]
@@ -69,14 +75,15 @@ mod tests {
             narrator_llm: Arc::new(MockLlm),
             structured_llm: None,
             intent_llm: None,
-            predictor_available: false,
+            predictor: None,
+            grammar: Arc::new(PlutchikWestern::new()),
         };
 
         let debug_str = format!("{providers:?}");
         assert!(debug_str.contains("narrator_llm"));
         assert!(debug_str.contains("structured_llm: false"));
         assert!(debug_str.contains("intent_llm: false"));
-        assert!(debug_str.contains("predictor_available: false"));
+        assert!(debug_str.contains("predictor: false"));
         // Should not expose raw pointer addresses or internal state
         assert!(!debug_str.contains("0x"));
     }
@@ -87,12 +94,13 @@ mod tests {
             narrator_llm: Arc::new(MockLlm),
             structured_llm: None,
             intent_llm: None,
-            predictor_available: true,
+            predictor: None,
+            grammar: Arc::new(PlutchikWestern::new()),
         };
 
         let cloned = providers.clone();
         // Same Arc pointer
         assert!(Arc::ptr_eq(&providers.narrator_llm, &cloned.narrator_llm));
-        assert_eq!(providers.predictor_available, cloned.predictor_available);
+        assert!(Arc::ptr_eq(&providers.grammar, &cloned.grammar));
     }
 }

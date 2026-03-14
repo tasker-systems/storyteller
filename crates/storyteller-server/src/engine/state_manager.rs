@@ -190,7 +190,7 @@ mod tests {
         mgr.create_session("s1", make_test_composition());
         let snap = mgr.get_runtime_snapshot("s1").unwrap();
         assert_eq!(snap.turn_count, 0);
-        assert!(snap.journal_entries.is_empty());
+        assert!(snap.journal.entries.is_empty());
     }
 
     #[test]
@@ -220,14 +220,13 @@ mod tests {
         mgr.update_runtime_snapshot("s1", |snap| {
             let mut new = snap.clone();
             new.turn_count = 5;
-            new.journal_entries.push("opening narration".to_string());
             new
         })
         .await;
 
         let snap = mgr.get_runtime_snapshot("s1").unwrap();
         assert_eq!(snap.turn_count, 5);
-        assert_eq!(snap.journal_entries, vec!["opening narration"]);
+        assert!(snap.journal.entries.is_empty());
     }
 
     #[tokio::test]
@@ -273,7 +272,6 @@ mod tests {
             mgr.update_runtime_snapshot("s1", move |snap| {
                 let mut new = snap.clone();
                 new.turn_count = i;
-                new.journal_entries.push(format!("turn {i}"));
                 new
             })
             .await;
@@ -281,6 +279,5 @@ mod tests {
 
         let snap = mgr.get_runtime_snapshot("s1").unwrap();
         assert_eq!(snap.turn_count, 5);
-        assert_eq!(snap.journal_entries.len(), 5);
     }
 }

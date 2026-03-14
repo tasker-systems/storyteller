@@ -1,5 +1,5 @@
 [package]
-name = "storyteller-api"
+name = "storyteller-server"
 version = "0.1.0"
 edition = "2021"
 description = "Player-facing HTTP/WebSocket API for the storyteller engine — deployment-agnostic"
@@ -13,6 +13,7 @@ categories = ["game-engines", "web-programming"]
 storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
 storyteller-engine = { path = "../storyteller-engine", version = "=0.1.0" }
 storyteller-composer = { path = "../storyteller-composer", version = "=0.1.0" }
+storyteller-ml = { path = "../storyteller-ml", version = "=0.1.0" }
 
 # HTTP framework
 axum = { workspace = true }
@@ -29,9 +30,20 @@ tonic-prost = { workspace = true }
 prost = { workspace = true }
 tokio-stream = { workspace = true }
 
+# HTTP client (health probes)
+reqwest = { workspace = true }
+
 # Concurrent data structures
 arc-swap = { workspace = true }
 dashmap = { workspace = true }
+
+# Binary dependencies
+tracing-subscriber = { workspace = true }
+dotenvy = { workspace = true }
+
+[[bin]]
+name = "storyteller-server"
+path = "src/bin/main.rs"
 
 [build-dependencies]
 tonic-build = { workspace = true }
@@ -42,8 +54,13 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 tempfile = { workspace = true }
-tokio-stream = { version = "0.1", features = ["net"] }
+tokio-stream = { workspace = true, features = ["net"] }
 storyteller-composer = { path = "../storyteller-composer", version = "=0.1.0" }
+
+[features]
+## Enable integration tests that require a running Ollama server.
+## Run with: cargo test -p storyteller-server --features test-llm
+test-llm = []
 
 [lints]
 workspace = true

@@ -1,0 +1,29 @@
+[package]
+name = "storyteller-client"
+version = "0.1.0"
+edition = "2021"
+description = "Typed gRPC client for the storyteller engine server"
+readme = "../README.md"
+license = "MIT"
+repository = "https://github.com/tasker-systems/storyteller"
+keywords = ["storytelling", "narrative", "grpc", "client"]
+categories = ["game-engines"]
+
+[dependencies]
+storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+tonic-build = { workspace = true }
+tonic-prost-build = { workspace = true }
+
+[features]
+test-llm = []
+
+[lints]
+workspace = true
