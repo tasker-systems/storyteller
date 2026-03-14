@@ -6320,6 +6320,7 @@ dependencies = [
  "bevy_app",
  "clap",
  "config",
+ "dotenvy",
  "storyteller-api",
  "storyteller-core",
  "storyteller-engine",
