@@ -58,7 +58,12 @@ impl TurnWriter {
     }
 
     pub fn turn_count(&self, session_id: &str) -> Result<usize, String> {
-        self.read_all(session_id).map(|v| v.len())
+        let path = self.base_dir.join(session_id).join("turns.jsonl");
+        if !path.exists() {
+            return Ok(0);
+        }
+        let contents = std::fs::read_to_string(&path).map_err(|e| format!("read turns: {e}"))?;
+        Ok(contents.lines().filter(|l| !l.trim().is_empty()).count())
     }
 }
 
