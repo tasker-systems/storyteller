@@ -19,6 +19,9 @@
 //! - [`middleware`] — Auth, rate limiting, and other middleware
 //! - [`state`] — Shared application state passed to handlers
 //! - [`persistence`] — Three-file session persistence (composition, events, turns)
+//! - [`engine`] — Server-side engine state and provider management
+//! - [`grpc`] — gRPC service implementations (ComposerService, StorytellerEngine)
+//! - [`proto`] — Generated protobuf types from tonic-build
 
 pub mod engine;
 pub mod grpc;
