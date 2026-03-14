@@ -251,6 +251,7 @@ mod tests {
     fn empty_lexicon_returns_empty_fragments() {
         let goal = Goal {
             id: "test".to_string(),
+            entity_id: String::new(),
             description: String::new(),
             category: "revelation".to_string(),
             visibility: "Signaled".to_string(),
@@ -273,6 +274,7 @@ mod tests {
 
         let goal = Goal {
             id: "test".to_string(),
+            entity_id: String::new(),
             description: String::new(),
             category: "revelation".to_string(),
             visibility: "Signaled".to_string(),

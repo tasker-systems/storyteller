@@ -44,6 +44,8 @@ struct ArchetypesFile {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Archetype {
     pub id: String,
+    #[serde(default)]
+    pub entity_id: String,
     pub display_name: String,
     pub description: String,
     pub axes: Vec<ArchetypeAxis>,
@@ -117,6 +119,8 @@ struct GenresFile {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Genre {
     pub id: String,
+    #[serde(default)]
+    pub entity_id: String,
     pub display_name: String,
     pub description: String,
     pub valid_archetypes: Vec<String>,
@@ -148,6 +152,8 @@ struct ProfilesFile {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Profile {
     pub id: String,
+    #[serde(default)]
+    pub entity_id: String,
     pub display_name: String,
     pub description: String,
     pub scene_type: String,
@@ -180,6 +186,8 @@ struct DynamicsFile {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Dynamic {
     pub id: String,
+    #[serde(default)]
+    pub entity_id: String,
     pub display_name: String,
     pub description: String,
     pub role_a: String,
@@ -310,6 +318,8 @@ struct GoalsFile {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Goal {
     pub id: String,
+    #[serde(default)]
+    pub entity_id: String,
     pub description: String,
     pub category: String,
     pub visibility: String,

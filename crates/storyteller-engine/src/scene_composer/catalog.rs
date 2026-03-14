@@ -194,24 +194,36 @@ impl SceneComposer {
 
     // -- internal helpers --------------------------------------------------
 
-    /// Find a genre by id.
+    /// Find a genre by slug id or UUIDv7 entity_id.
     pub(crate) fn find_genre(&self, id: &str) -> Option<&Genre> {
-        self.descriptors.genres.iter().find(|g| g.id == id)
+        self.descriptors
+            .genres
+            .iter()
+            .find(|g| g.id == id || g.entity_id == id)
     }
 
-    /// Find an archetype by id.
+    /// Find an archetype by slug id or UUIDv7 entity_id.
     pub(crate) fn find_archetype(&self, id: &str) -> Option<&Archetype> {
-        self.descriptors.archetypes.iter().find(|a| a.id == id)
+        self.descriptors
+            .archetypes
+            .iter()
+            .find(|a| a.id == id || a.entity_id == id)
     }
 
-    /// Find a profile by id.
+    /// Find a profile by slug id or UUIDv7 entity_id.
     pub(crate) fn find_profile(&self, id: &str) -> Option<&Profile> {
-        self.descriptors.profiles.iter().find(|p| p.id == id)
+        self.descriptors
+            .profiles
+            .iter()
+            .find(|p| p.id == id || p.entity_id == id)
     }
 
-    /// Find a dynamic by id.
+    /// Find a dynamic by slug id or UUIDv7 entity_id.
     pub(crate) fn find_dynamic(&self, id: &str) -> Option<&Dynamic> {
-        self.descriptors.dynamics.iter().find(|d| d.id == id)
+        self.descriptors
+            .dynamics
+            .iter()
+            .find(|d| d.id == id || d.entity_id == id)
     }
 
     // -- goal system ----------------------------------------------------------
