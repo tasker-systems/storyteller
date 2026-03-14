@@ -28,6 +28,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install protobuf compiler
+        uses: ./.github/actions/install-protobuf
+
       - name: Setup Rust build cache
         uses: ./.github/actions/setup-rust-cache
         with:
@@ -49,6 +52,9 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/install-protobuf
 
       - name: Setup Rust build cache
         uses: ./.github/actions/setup-rust-cache

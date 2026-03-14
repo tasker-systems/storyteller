@@ -1,0 +1,47 @@
+name: "Install Protobuf Compiler"
+description: "Installs protobuf compiler for gRPC proto compilation"
+author: "Tasker Systems"
+
+inputs:
+  version:
+    description: "Protobuf version to install (must be 3.15+ for proto3 optional support)"
+    required: false
+    default: "28.3"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install protobuf compiler
+      shell: bash
+      run: |
+        echo "Installing protobuf compiler v${{ inputs.version }}..."
+
+        PROTOC_VERSION="${{ inputs.version }}"
+
+        # Detect platform and architecture for multi-arch support
+        OS="$(uname -s)"
+        ARCH="$(uname -m)"
+
+        case "${OS}-${ARCH}" in
+          Linux-x86_64)   PROTOC_PLATFORM="linux-x86_64" ;;
+          Linux-aarch64)  PROTOC_PLATFORM="linux-aarch_64" ;;
+          Darwin-x86_64)  PROTOC_PLATFORM="osx-x86_64" ;;
+          Darwin-arm64)   PROTOC_PLATFORM="osx-aarch_64" ;;
+          *) echo "Unsupported platform: ${OS}-${ARCH}" && exit 1 ;;
+        esac
+
+        PROTOC_ZIP="protoc-${PROTOC_VERSION}-${PROTOC_PLATFORM}.zip"
+        PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ZIP}"
+
+        echo "Downloading from: ${PROTOC_URL}"
+        curl -sLO "${PROTOC_URL}"
+
+        # Extract to /usr/local
+        sudo unzip -o "${PROTOC_ZIP}" -d /usr/local bin/protoc 'include/*'
+        sudo chmod +x /usr/local/bin/protoc
+
+        # Clean up
+        rm -f "${PROTOC_ZIP}"
+
+        # Verify installation
+        echo "Protobuf compiler installed: $(protoc --version)"
