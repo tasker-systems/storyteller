@@ -33,6 +33,14 @@ tokio-stream = { workspace = true }
 arc-swap = { workspace = true }
 dashmap = { workspace = true }
 
+# Binary dependencies
+tracing-subscriber = { workspace = true }
+dotenvy = { workspace = true }
+
+[[bin]]
+name = "storyteller-server"
+path = "src/bin/main.rs"
+
 [build-dependencies]
 tonic-build = { workspace = true }
 tonic-prost-build = { workspace = true }
