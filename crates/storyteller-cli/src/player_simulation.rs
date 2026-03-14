@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Simulates a player character responding to narrator output.
+#[derive(Debug)]
 pub struct PlayerSimulation {
     client: reqwest::Client,
     ollama_url: String,

@@ -168,6 +168,13 @@ impl StorytellerEngine for EngineServiceImpl {
             let composed = match composer.compose(&selections) {
                 Ok(c) => c,
                 Err(e) => {
+                    // Persist error event for debugging consistency with SubmitInput
+                    let _ = session_store.events.append(
+                        &session_id,
+                        "composition_error",
+                        Some(0),
+                        &serde_json::json!({"phase": "composition", "message": &e}),
+                    );
                     let _ = tx
                         .send(Ok(make_event(
                             &session_id,
@@ -988,8 +995,8 @@ impl StorytellerEngine for EngineServiceImpl {
                     entity_id: c.get("entity_id")?.as_str()?.to_string(),
                     name: c.get("name")?.as_str()?.to_string(),
                     role: c
-                        .get("backstory")
-                        .and_then(|b| b.as_str())
+                        .get("role")
+                        .and_then(|r| r.as_str())
                         .unwrap_or("")
                         .to_string(),
                     performance_notes: c
@@ -1029,67 +1036,107 @@ impl StorytellerEngine for EngineServiceImpl {
         &self,
         _request: Request<()>,
     ) -> Result<Response<crate::proto::HealthResponse>, Status> {
-        let providers = &self.providers;
-
-        let mut subsystems = vec![crate::proto::SubsystemHealth {
-            name: "narrator_llm".to_string(),
-            status: "healthy".to_string(),
-            message: None,
-        }];
-
-        subsystems.push(crate::proto::SubsystemHealth {
-            name: "structured_llm".to_string(),
-            status: if providers.structured_llm.is_some() {
-                "healthy".to_string()
-            } else {
-                "unavailable".to_string()
-            },
-            message: if providers.structured_llm.is_none() {
-                Some("Structured LLM provider not configured".to_string())
-            } else {
-                None
-            },
-        });
-
-        subsystems.push(crate::proto::SubsystemHealth {
-            name: "intent_llm".to_string(),
-            status: if providers.intent_llm.is_some() {
-                "healthy".to_string()
-            } else {
-                "unavailable".to_string()
-            },
-            message: if providers.intent_llm.is_none() {
-                Some("Intent LLM provider not configured".to_string())
-            } else {
-                None
-            },
-        });
-
-        subsystems.push(crate::proto::SubsystemHealth {
-            name: "predictor".to_string(),
-            status: if providers.predictor.is_some() {
-                "healthy".to_string()
-            } else {
-                "unavailable".to_string()
-            },
-            message: if providers.predictor.is_none() {
-                Some("Character predictor model not loaded".to_string())
-            } else {
-                None
-            },
-        });
-
-        // Rollup: any unavailable subsystem → server is degraded (still up)
-        let has_unavailable = subsystems.iter().any(|s| s.status == "unavailable");
-        let overall_status = if has_unavailable {
-            "degraded".to_string()
-        } else {
-            "healthy".to_string()
+        use storyteller_core::types::health::{
+            HealthStatus, ServerHealth, SubsystemHealth as CoreSubsystemHealth,
         };
 
+        let providers = &self.providers;
+
+        // Probe Ollama to verify narrator LLM reachability
+        let narrator_health = {
+            let probe_url = format!(
+                "{}/api/tags",
+                std::env::var("OLLAMA_URL")
+                    .unwrap_or_else(|_| "http://localhost:11434".to_string())
+            );
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .build();
+            match client {
+                Ok(c) => match c.get(&probe_url).send().await {
+                    Ok(resp) if resp.status().is_success() => CoreSubsystemHealth {
+                        name: "narrator_llm".to_string(),
+                        status: HealthStatus::Healthy,
+                        message: None,
+                    },
+                    Ok(resp) => CoreSubsystemHealth {
+                        name: "narrator_llm".to_string(),
+                        status: HealthStatus::Degraded,
+                        message: Some(format!("Ollama returned status {}", resp.status())),
+                    },
+                    Err(e) => CoreSubsystemHealth {
+                        name: "narrator_llm".to_string(),
+                        status: HealthStatus::Unavailable,
+                        message: Some(format!("Ollama unreachable: {e}")),
+                    },
+                },
+                Err(e) => CoreSubsystemHealth {
+                    name: "narrator_llm".to_string(),
+                    status: HealthStatus::Unavailable,
+                    message: Some(format!("HTTP client error: {e}")),
+                },
+            }
+        };
+
+        let core_subsystems = vec![
+            narrator_health,
+            CoreSubsystemHealth {
+                name: "structured_llm".to_string(),
+                status: if providers.structured_llm.is_some() {
+                    HealthStatus::Healthy
+                } else {
+                    HealthStatus::Unavailable
+                },
+                message: if providers.structured_llm.is_none() {
+                    Some("Structured LLM provider not configured".to_string())
+                } else {
+                    None
+                },
+            },
+            CoreSubsystemHealth {
+                name: "intent_llm".to_string(),
+                status: if providers.intent_llm.is_some() {
+                    HealthStatus::Healthy
+                } else {
+                    HealthStatus::Unavailable
+                },
+                message: if providers.intent_llm.is_none() {
+                    Some("Intent LLM provider not configured".to_string())
+                } else {
+                    None
+                },
+            },
+            CoreSubsystemHealth {
+                name: "predictor".to_string(),
+                status: if providers.predictor.is_some() {
+                    HealthStatus::Healthy
+                } else {
+                    HealthStatus::Unavailable
+                },
+                message: if providers.predictor.is_none() {
+                    Some("Character predictor model not loaded".to_string())
+                } else {
+                    None
+                },
+            },
+        ];
+
+        // Use core's ServerHealth::from_subsystems for consistent rollup logic
+        let health = ServerHealth::from_subsystems(core_subsystems);
+
+        let proto_subsystems = health
+            .subsystems
+            .iter()
+            .map(|s| crate::proto::SubsystemHealth {
+                name: s.name.clone(),
+                status: s.status.to_string(),
+                message: s.message.clone(),
+            })
+            .collect();
+
         Ok(Response::new(crate::proto::HealthResponse {
-            status: overall_status,
-            subsystems,
+            status: health.status.to_string(),
+            subsystems: proto_subsystems,
         }))
     }
 

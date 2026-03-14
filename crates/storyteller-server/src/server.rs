@@ -66,17 +66,15 @@ impl ServerConfig {
 /// providers constructed from [`ServerConfig`].
 pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading descriptors from {}", config.data_path);
-    let composer = Arc::new(
-        SceneComposer::load(std::path::Path::new(&config.data_path))
-            .map_err(|e| format!("Failed to load descriptors: {e}"))?,
-    );
+    let composer = Arc::new(SceneComposer::load(std::path::Path::new(
+        &config.data_path,
+    ))?);
 
     let state_manager = Arc::new(EngineStateManager::new());
 
-    let session_store = Arc::new(
-        SessionStore::new(std::path::Path::new(&config.sessions_dir))
-            .map_err(|e| format!("Failed to create session store: {e}"))?,
-    );
+    let session_store = Arc::new(SessionStore::new(std::path::Path::new(
+        &config.sessions_dir,
+    ))?);
 
     // Construct LLM providers from config.
     // Providers are built without requiring Ollama to be running — connections

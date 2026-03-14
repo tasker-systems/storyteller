@@ -18,6 +18,7 @@ pub struct CacheEntry {
 }
 
 /// Local descriptor cache rooted at a directory.
+#[derive(Debug)]
 pub struct ComposerCache {
     root: PathBuf,
 }

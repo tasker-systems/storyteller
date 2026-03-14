@@ -19,9 +19,9 @@ pub struct PlaytestArgs {
     #[arg(long, default_value = "5")]
     turns: u32,
 
-    /// Player simulation model name
-    #[arg(long, default_value = "qwen2.5:7b-instruct")]
-    player_model: String,
+    /// Player simulation model name (falls back to STORYTELLER_PLAYER_MODEL env var)
+    #[arg(long)]
+    player_model: Option<String>,
 }
 
 pub async fn run(args: PlaytestArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -84,9 +84,13 @@ pub async fn run(args: PlaytestArgs) -> Result<(), Box<dyn std::error::Error>> {
     // Set up player simulation
     let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let player_model = args
+        .player_model
+        .or_else(|| std::env::var("STORYTELLER_PLAYER_MODEL").ok())
+        .unwrap_or_else(|| "qwen2.5:7b-instruct".to_string());
     let protagonist_context =
         PlayerSimulation::build_protagonist_context(&protagonist_name, &composition_json);
-    let player_sim = PlayerSimulation::new(&ollama_url, &args.player_model, &protagonist_context);
+    let player_sim = PlayerSimulation::new(&ollama_url, &player_model, &protagonist_context);
 
     // Turn loop
     for turn in 1..=args.turns {

@@ -151,7 +151,7 @@ impl StorytellerClient {
     pub async fn list_genres(&mut self) -> Result<GenreList>;
     pub async fn get_archetypes_for_genre(&mut self, genre_id: &str) -> Result<ArchetypeList>;
     pub async fn get_profiles_for_genre(&mut self, genre_id: &str) -> Result<ProfileList>;
-    pub async fn get_dynamics_for_genre(&mut self, genre_id: &str) -> Result<DynamicsList>;
+    pub async fn get_dynamics_for_genre(&mut self, genre_id: &str, selected_archetype_ids: Vec<String>) -> Result<DynamicsList>;
     pub async fn get_names_for_genre(&mut self, genre_id: &str) -> Result<NameList>;
     pub async fn get_settings_for_genre(&mut self, genre_id: &str) -> Result<SettingList>;
 }
