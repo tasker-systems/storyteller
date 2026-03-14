@@ -440,9 +440,110 @@ impl StorytellerEngine for EngineServiceImpl {
 
     async fn resume_session(
         &self,
-        _request: Request<ResumeSessionRequest>,
+        request: Request<ResumeSessionRequest>,
     ) -> Result<Response<Self::ResumeSessionStream>, Status> {
-        Err(Status::unimplemented("ResumeSession not yet implemented"))
+        let session_id = request.into_inner().session_id;
+        let (tx, rx) = mpsc::channel(32);
+
+        let state_manager = self.state_manager.clone();
+        let session_store = self.session_store.clone();
+
+        tokio::spawn(async move {
+            // Load composition
+            let comp = match session_store.composition.read(&session_id) {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = tx
+                        .send(Ok(make_event(
+                            &session_id,
+                            None,
+                            engine_event::Payload::Error(ErrorOccurred {
+                                phase: "resume".to_string(),
+                                message: format!("load composition: {e}"),
+                            }),
+                        )))
+                        .await;
+                    return;
+                }
+            };
+
+            // Hydrate composition
+            let composition = crate::engine::Composition {
+                scene: comp.get("scene").cloned().unwrap_or_default(),
+                characters: comp
+                    .get("characters")
+                    .and_then(|c| c.as_array())
+                    .map(|a| a.to_vec())
+                    .unwrap_or_default(),
+                goals: comp.get("goals").cloned(),
+                intentions: comp.get("intentions").cloned(),
+                selections: comp.get("selections").cloned().unwrap_or_default(),
+            };
+
+            // Emit SceneComposed
+            let cast_names: Vec<String> = composition
+                .characters
+                .iter()
+                .filter_map(|c| c.get("name").and_then(|n| n.as_str()))
+                .map(|s| s.to_string())
+                .collect();
+
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    None,
+                    engine_event::Payload::SceneComposed(SceneComposed {
+                        title: composition
+                            .scene
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        setting_description: composition
+                            .scene
+                            .get("setting")
+                            .and_then(|s| s.get("description"))
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        cast_names,
+                        composition_json: String::new(),
+                    }),
+                )))
+                .await;
+
+            // Load turns and reconstruct state
+            let turns = session_store
+                .turns
+                .read_all(&session_id)
+                .unwrap_or_default();
+            let turn_count = turns.len() as u32;
+
+            state_manager.create_session(&session_id, composition);
+            state_manager
+                .update_runtime_snapshot(&session_id, |snap| {
+                    let mut new = snap.clone();
+                    new.turn_count = turn_count;
+                    new
+                })
+                .await;
+
+            // Emit TurnComplete for each existing turn
+            for turn in &turns {
+                let _ = tx
+                    .send(Ok(make_event(
+                        &session_id,
+                        Some(turn.turn),
+                        engine_event::Payload::TurnComplete(TurnComplete {
+                            turn: turn.turn,
+                            total_ms: 0,
+                        }),
+                    )))
+                    .await;
+            }
+        });
+
+        Ok(Response::new(ReceiverStream::new(rx)))
     }
 
     async fn list_sessions(&self, _request: Request<()>) -> Result<Response<SessionList>, Status> {
