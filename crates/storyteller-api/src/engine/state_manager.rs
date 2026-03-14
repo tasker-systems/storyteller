@@ -25,7 +25,9 @@ struct SessionState {
     composition: Arc<Composition>,
     runtime: ArcSwap<RuntimeSnapshot>,
     /// SWMR guard: only one writer may publish a snapshot at a time per session.
-    write_handle: tokio::sync::Mutex<()>,
+    /// Wrapped in `Arc` so it can be cloned out before the DashMap ref is dropped,
+    /// avoiding holding a shard lock across `.await` boundaries.
+    write_handle: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl std::fmt::Debug for SessionState {
@@ -58,7 +60,7 @@ impl EngineStateManager {
         let state = SessionState {
             composition: Arc::new(composition),
             runtime: ArcSwap::from_pointee(RuntimeSnapshot::default()),
-            write_handle: tokio::sync::Mutex::new(()),
+            write_handle: Arc::new(tokio::sync::Mutex::new(())),
         };
         self.sessions.insert(session_id.to_string(), state);
     }
@@ -89,8 +91,18 @@ impl EngineStateManager {
         session_id: &str,
         f: impl FnOnce(&RuntimeSnapshot) -> RuntimeSnapshot,
     ) {
+        // Clone the write_handle Arc before dropping the DashMap ref,
+        // so we don't hold a shard lock across the .await boundary.
+        let write_handle = match self.sessions.get(session_id) {
+            Some(state) => Arc::clone(&state.write_handle),
+            None => return,
+        };
+        // DashMap ref is dropped here — shard lock released.
+
+        let _guard = write_handle.lock().await;
+
+        // Re-acquire briefly for the atomic swap.
         if let Some(state) = self.sessions.get(session_id) {
-            let _guard = state.write_handle.lock().await;
             let current = state.runtime.load();
             let new_snapshot = f(&current);
             state.runtime.store(Arc::new(new_snapshot));
