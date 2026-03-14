@@ -20,6 +20,7 @@
 //! - [`state`] — Shared application state passed to handlers
 //! - [`persistence`] — Three-file session persistence (composition, events, turns)
 
+pub mod engine;
 pub mod middleware;
 pub mod persistence;
 pub mod proto;

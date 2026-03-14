@@ -38,6 +38,7 @@ tonic-build = { workspace = true }
 tonic-prost-build = { workspace = true }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 tempfile = { workspace = true }
