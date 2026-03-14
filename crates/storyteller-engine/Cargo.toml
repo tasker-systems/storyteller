@@ -11,6 +11,7 @@ categories = ["game-engines"]
 
 [dependencies]
 storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
+storyteller-composer = { path = "../storyteller-composer", version = "=0.1.0" }
 storyteller-ml = { path = "../storyteller-ml", version = "=0.1.0" }
 
 # ECS runtime (sub-crates for minimal/headless usage)

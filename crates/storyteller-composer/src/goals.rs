@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use storyteller_core::types::entity::EntityId;
 
-use super::descriptors::{Archetype, Dynamic, Goal, Profile};
+use crate::descriptors::{Archetype, Dynamic, Goal, Profile};
 
 /// Visibility level for how a goal manifests to the player.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -203,7 +203,7 @@ fn parse_visibility(s: &str) -> GoalVisibility {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene_composer::descriptors::*;
+    use crate::descriptors::*;
 
     fn test_goal(id: &str, category: &str, visibility: &str) -> Goal {
         Goal {

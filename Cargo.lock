@@ -6161,6 +6161,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "storyteller-composer"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "storyteller-core",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "storyteller-core"
 version = "0.1.0"
 dependencies = [
@@ -6199,6 +6211,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "storyteller-composer",
  "storyteller-core",
  "storyteller-ml",
  "tokenizers",

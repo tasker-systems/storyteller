@@ -7,8 +7,8 @@
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use super::descriptors::{Goal, LexiconEntry};
-use super::goals::{CharacterGoal, FragmentRegister, GoalFragment, SceneGoal};
+use crate::descriptors::{Goal, LexiconEntry};
+use crate::goals::{CharacterGoal, FragmentRegister, GoalFragment, SceneGoal};
 
 /// Scene context for the likeness pass.
 #[derive(Debug)]
@@ -179,7 +179,7 @@ pub fn populate_character_goal_fragments<R: Rng>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::descriptors::DimensionalContext;
+    use crate::descriptors::DimensionalContext;
     use super::*;
 
     fn make_entry(

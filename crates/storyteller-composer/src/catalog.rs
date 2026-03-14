@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use storyteller_core::StorytellerError;
 
-use super::descriptors::{Archetype, DescriptorSet, Dynamic, Genre, Profile};
+use crate::descriptors::{Archetype, DescriptorSet, Dynamic, Genre, Profile};
 
 // ---------------------------------------------------------------------------
 // Summary types (UI-facing)
@@ -229,7 +229,7 @@ impl SceneComposer {
     // -- goal system ----------------------------------------------------------
 
     /// Access the goal definitions from the descriptor set.
-    pub fn goal_defs(&self) -> &[super::descriptors::Goal] {
+    pub fn goal_defs(&self) -> &[crate::descriptors::Goal] {
         &self.descriptors.goals
     }
 
@@ -239,10 +239,10 @@ impl SceneComposer {
     /// Pass 2: Character goals from archetype ∩ dynamics - blocked.
     pub fn intersect_goals(
         &self,
-        selections: &super::compose::SceneSelections,
-        composed: &super::compose::ComposedScene,
-    ) -> super::goals::ComposedGoals {
-        use super::goals::{
+        selections: &crate::compose::SceneSelections,
+        composed: &crate::compose::ComposedScene,
+    ) -> crate::goals::ComposedGoals {
+        use crate::goals::{
             intersect_character_goals, intersect_scene_goals, CastMember, ComposedGoals,
         };
 
