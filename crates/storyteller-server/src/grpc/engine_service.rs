@@ -115,8 +115,7 @@ impl StorytellerEngine for EngineServiceImpl {
         let composer = self.composer.clone();
         let state_manager = self.state_manager.clone();
         let session_store = self.session_store.clone();
-        // providers cloned for future LLM wiring (Tasks 12+)
-        let _providers = self.providers.clone();
+        let providers = self.providers.clone();
 
         tokio::spawn(async move {
             let session_id = session_store
@@ -240,7 +239,7 @@ impl StorytellerEngine for EngineServiceImpl {
                 )))
                 .await;
 
-            // Phase 2: Narrator (placeholder — LLM integration in Tasks 12+)
+            // Phase 2: Opening Narrator
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
@@ -251,14 +250,68 @@ impl StorytellerEngine for EngineServiceImpl {
                 )))
                 .await;
 
+            // Assemble opening context from composed data
+            let characters_refs: Vec<&CharacterSheet> = composed.characters.iter().collect();
+            let entity_ids: Vec<EntityId> =
+                composed.characters.iter().map(|c| c.entity_id).collect();
+
+            // Find player character: protagonist role
+            let player_entity_id = composed
+                .scene
+                .cast
+                .iter()
+                .find(|c| c.role.to_lowercase().contains("protagonist"))
+                .map(|c| c.entity_id);
+
+            let opening_journal = storyteller_core::types::narrator_context::SceneJournal::new(
+                composed.scene.scene_id,
+                1200,
+            );
+            let opening_resolver = storyteller_core::types::resolver::ResolverOutput {
+                sequenced_actions: vec![],
+                original_predictions: vec![],
+                scene_dynamics: "Opening — the scene is just beginning".to_string(),
+                conflicts: vec![],
+                intent_statements: None,
+            };
+
+            let obs = CollectingObserver::new();
+            let context = assemble_narrator_context(
+                &composed.scene,
+                &characters_refs,
+                &opening_journal,
+                &opening_resolver,
+                "",
+                &entity_ids,
+                DEFAULT_TOTAL_TOKEN_BUDGET,
+                &obs,
+                player_entity_id,
+            );
+
+            let narrator = NarratorAgent::new(&context, Arc::clone(&providers.narrator_llm))
+                .with_temperature(0.8);
+            let noop = NoopObserver;
+            let llm_start = Instant::now();
+            let opening_prose = match narrator.render_opening(&noop).await {
+                Ok(r) => r.text,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        session = %session_id,
+                        "Opening narrator render failed — degrading to placeholder"
+                    );
+                    "[The scene begins.]".to_string()
+                }
+            };
+            let narrator_ms = llm_start.elapsed().as_millis() as u64;
+
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
                     Some(0),
                     engine_event::Payload::NarratorComplete(NarratorComplete {
-                        prose: "[Narrator LLM integration pending — scene composed successfully]"
-                            .to_string(),
-                        generation_ms: 0,
+                        prose: opening_prose.clone(),
+                        generation_ms: narrator_ms,
                     }),
                 )))
                 .await;
@@ -277,6 +330,26 @@ impl StorytellerEngine for EngineServiceImpl {
             };
             state_manager.create_session(&session_id, composition);
 
+            // Update initial snapshot: record turn 0 journal entry and player entity
+            let noop_journal = NoopObserver;
+            let mut opening_journal_with_prose = opening_journal;
+            add_turn(
+                &mut opening_journal_with_prose,
+                0,
+                &opening_prose,
+                entity_ids,
+                vec![],
+                &noop_journal,
+            );
+            state_manager
+                .update_runtime_snapshot(&session_id, move |_snap| RuntimeSnapshot {
+                    turn_count: 0,
+                    player_entity_id,
+                    journal: opening_journal_with_prose,
+                    prediction_history: Default::default(),
+                })
+                .await;
+
             // Turn complete
             let _ = tx
                 .send(Ok(make_event(
@@ -284,7 +357,7 @@ impl StorytellerEngine for EngineServiceImpl {
                     Some(0),
                     engine_event::Payload::TurnComplete(TurnComplete {
                         turn: 0,
-                        total_ms: 0,
+                        total_ms: narrator_ms,
                     }),
                 )))
                 .await;
