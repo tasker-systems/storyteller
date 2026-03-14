@@ -4,6 +4,7 @@ members = [
     "crates/storyteller",
     "crates/storyteller-core",
     "crates/storyteller-storykeeper",
+    "crates/storyteller-composer",
     "crates/storyteller-engine",
     "crates/storyteller-api",
     "crates/storyteller-cli",
@@ -49,6 +50,14 @@ uuid = { version = "1.11", features = ["serde", "v4", "v7"] }
 lapin = "3.7"
 tonic = "0.14"
 prost = "0.14"
+tonic-build = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+tokio-stream = "0.1"
+
+# Concurrent data structures
+arc-swap = "1"
+dashmap = "6"
 
 # --- Storyteller-specific ---
 # Use sub-crates directly for minimal/headless ECS usage (bevy umbrella
@@ -77,6 +86,7 @@ regex = "1.11"
 
 # Test utilities
 serial_test = "3.2"
+tempfile = "3"
 
 # Optional: local LLM inference
 candle-core = { version = "0.9" }

@@ -17,6 +17,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install protobuf compiler
+        uses: ./.github/actions/install-protobuf
+
       - name: Setup Rust build cache
         uses: ./.github/actions/setup-rust-cache
         with:

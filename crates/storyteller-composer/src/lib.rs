@@ -1,4 +1,9 @@
-//! Scene composer — builds playable scenes from training data descriptors.
+//! Scene composition and descriptor catalog for the storyteller engine.
+//!
+//! This crate owns the creative assembly layer: descriptor catalogs,
+//! genre/archetype/setting/dynamics selection, character generation,
+//! scene composition, and goal intersection. Hydrated from JSON descriptor
+//! files today, eventually database-backed.
 
 pub mod catalog;
 pub mod compose;

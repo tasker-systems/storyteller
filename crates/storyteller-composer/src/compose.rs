@@ -19,11 +19,11 @@ use storyteller_core::types::scene::{SceneId, SceneType};
 use storyteller_core::types::tensor::{AwarenessLevel, AxisValue, Provenance, TemporalLayer};
 use storyteller_core::types::world_model::CapabilityProfile;
 
-use super::catalog::SceneComposer;
-use super::descriptors::{
+use crate::catalog::SceneComposer;
+use crate::descriptors::{
     Archetype, EmotionalProfile, RangeBounds, SelfEdge as DescriptorSelfEdge,
 };
-use super::names::select_names;
+use crate::names::select_names;
 
 // ---------------------------------------------------------------------------
 // Selection types (UI → engine boundary)
@@ -339,7 +339,7 @@ fn compose_self_edge<R: Rng>(desc: &DescriptorSelfEdge, rng: &mut R) -> SelfEdge
 
 /// Build a `SceneSetting` from the descriptor settings collection, with optional override.
 fn compose_setting(
-    settings: &std::collections::HashMap<String, super::descriptors::SettingCollection>,
+    settings: &std::collections::HashMap<String, crate::descriptors::SettingCollection>,
     genre_id: &str,
     profile_id: &str,
     override_text: Option<&str>,
@@ -407,7 +407,7 @@ fn compose_setting(
 }
 
 /// Generate stakes from the profile's characteristic events.
-fn compose_stakes(profile: &super::descriptors::Profile) -> Vec<String> {
+fn compose_stakes(profile: &crate::descriptors::Profile) -> Vec<String> {
     if profile.characteristic_events.is_empty() {
         return vec![format!("A {} scene", profile.scene_type)];
     }

@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use storyteller_core::types::entity::EntityId;
 
-use super::descriptors::{Archetype, Dynamic, Goal, Profile};
+use crate::descriptors::{Archetype, Dynamic, Goal, Profile};
 
 /// Visibility level for how a goal manifests to the player.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -203,11 +203,12 @@ fn parse_visibility(s: &str) -> GoalVisibility {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene_composer::descriptors::*;
+    use crate::descriptors::*;
 
     fn test_goal(id: &str, category: &str, visibility: &str) -> Goal {
         Goal {
             id: id.to_string(),
+            entity_id: String::new(),
             description: format!("Test goal: {id}"),
             category: category.to_string(),
             visibility: visibility.to_string(),
@@ -219,6 +220,7 @@ mod tests {
     fn test_profile(scene_goals: Vec<&str>) -> Profile {
         Profile {
             id: "test_profile".to_string(),
+            entity_id: String::new(),
             display_name: "Test".to_string(),
             description: "Test profile".to_string(),
             scene_type: "Gravitational".to_string(),
@@ -232,6 +234,7 @@ mod tests {
     fn test_archetype(id: &str, pursuable: Vec<&str>) -> Archetype {
         Archetype {
             id: id.to_string(),
+            entity_id: String::new(),
             display_name: id.to_string(),
             description: String::new(),
             axes: Vec::new(),
@@ -262,6 +265,7 @@ mod tests {
     fn test_dynamic(enabled: Vec<&str>, blocked: Vec<&str>) -> Dynamic {
         Dynamic {
             id: "test_dynamic".to_string(),
+            entity_id: String::new(),
             display_name: "Test".to_string(),
             description: String::new(),
             role_a: "role_a".to_string(),

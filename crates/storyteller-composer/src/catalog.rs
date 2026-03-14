@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use storyteller_core::StorytellerError;
 
-use super::descriptors::{Archetype, DescriptorSet, Dynamic, Genre, Profile};
+use crate::descriptors::{Archetype, DescriptorSet, Dynamic, Genre, Profile};
 
 // ---------------------------------------------------------------------------
 // Summary types (UI-facing)
@@ -19,6 +19,7 @@ use super::descriptors::{Archetype, DescriptorSet, Dynamic, Genre, Profile};
 /// Lightweight genre summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct GenreSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -30,6 +31,7 @@ pub struct GenreSummary {
 /// Lightweight profile summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct ProfileSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -43,6 +45,7 @@ pub struct ProfileSummary {
 /// Lightweight archetype summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct ArchetypeSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -51,6 +54,7 @@ pub struct ArchetypeSummary {
 /// Lightweight dynamic summary for catalog listing.
 #[derive(Debug, Clone, Serialize)]
 pub struct DynamicSummary {
+    pub entity_id: String,
     pub id: String,
     pub display_name: String,
     pub description: String,
@@ -87,6 +91,7 @@ impl SceneComposer {
             .genres
             .iter()
             .map(|g| GenreSummary {
+                entity_id: g.entity_id.clone(),
                 id: g.id.clone(),
                 display_name: g.display_name.clone(),
                 description: g.description.clone(),
@@ -108,6 +113,7 @@ impl SceneComposer {
             .iter()
             .filter_map(|pid| self.find_profile(pid))
             .map(|p| ProfileSummary {
+                entity_id: p.entity_id.clone(),
                 id: p.id.clone(),
                 display_name: p.display_name.clone(),
                 description: p.description.clone(),
@@ -131,6 +137,7 @@ impl SceneComposer {
             .iter()
             .filter_map(|aid| self.find_archetype(aid))
             .map(|a| ArchetypeSummary {
+                entity_id: a.entity_id.clone(),
                 id: a.id.clone(),
                 display_name: a.display_name.clone(),
                 description: a.description.clone(),
@@ -173,6 +180,7 @@ impl SceneComposer {
             .filter(|did| !excluded_dynamic_ids.contains(did.as_str()))
             .filter_map(|did| self.find_dynamic(did))
             .map(|d| DynamicSummary {
+                entity_id: d.entity_id.clone(),
                 id: d.id.clone(),
                 display_name: d.display_name.clone(),
                 description: d.description.clone(),
@@ -194,30 +202,42 @@ impl SceneComposer {
 
     // -- internal helpers --------------------------------------------------
 
-    /// Find a genre by id.
+    /// Find a genre by slug id or UUIDv7 entity_id.
     pub(crate) fn find_genre(&self, id: &str) -> Option<&Genre> {
-        self.descriptors.genres.iter().find(|g| g.id == id)
+        self.descriptors
+            .genres
+            .iter()
+            .find(|g| g.id == id || g.entity_id == id)
     }
 
-    /// Find an archetype by id.
+    /// Find an archetype by slug id or UUIDv7 entity_id.
     pub(crate) fn find_archetype(&self, id: &str) -> Option<&Archetype> {
-        self.descriptors.archetypes.iter().find(|a| a.id == id)
+        self.descriptors
+            .archetypes
+            .iter()
+            .find(|a| a.id == id || a.entity_id == id)
     }
 
-    /// Find a profile by id.
+    /// Find a profile by slug id or UUIDv7 entity_id.
     pub(crate) fn find_profile(&self, id: &str) -> Option<&Profile> {
-        self.descriptors.profiles.iter().find(|p| p.id == id)
+        self.descriptors
+            .profiles
+            .iter()
+            .find(|p| p.id == id || p.entity_id == id)
     }
 
-    /// Find a dynamic by id.
+    /// Find a dynamic by slug id or UUIDv7 entity_id.
     pub(crate) fn find_dynamic(&self, id: &str) -> Option<&Dynamic> {
-        self.descriptors.dynamics.iter().find(|d| d.id == id)
+        self.descriptors
+            .dynamics
+            .iter()
+            .find(|d| d.id == id || d.entity_id == id)
     }
 
     // -- goal system ----------------------------------------------------------
 
     /// Access the goal definitions from the descriptor set.
-    pub fn goal_defs(&self) -> &[super::descriptors::Goal] {
+    pub fn goal_defs(&self) -> &[crate::descriptors::Goal] {
         &self.descriptors.goals
     }
 
@@ -227,10 +247,10 @@ impl SceneComposer {
     /// Pass 2: Character goals from archetype ∩ dynamics - blocked.
     pub fn intersect_goals(
         &self,
-        selections: &super::compose::SceneSelections,
-        composed: &super::compose::ComposedScene,
-    ) -> super::goals::ComposedGoals {
-        use super::goals::{
+        selections: &crate::compose::SceneSelections,
+        composed: &crate::compose::ComposedScene,
+    ) -> crate::goals::ComposedGoals {
+        use crate::goals::{
             intersect_character_goals, intersect_scene_goals, CastMember, ComposedGoals,
         };
 

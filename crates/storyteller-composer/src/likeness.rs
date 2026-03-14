@@ -7,8 +7,8 @@
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use super::descriptors::{Goal, LexiconEntry};
-use super::goals::{CharacterGoal, FragmentRegister, GoalFragment, SceneGoal};
+use crate::descriptors::{Goal, LexiconEntry};
+use crate::goals::{CharacterGoal, FragmentRegister, GoalFragment, SceneGoal};
 
 /// Scene context for the likeness pass.
 #[derive(Debug)]
@@ -179,8 +179,8 @@ pub fn populate_character_goal_fragments<R: Rng>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::descriptors::DimensionalContext;
     use super::*;
+    use crate::descriptors::DimensionalContext;
 
     fn make_entry(
         fragment: &str,
@@ -251,6 +251,7 @@ mod tests {
     fn empty_lexicon_returns_empty_fragments() {
         let goal = Goal {
             id: "test".to_string(),
+            entity_id: String::new(),
             description: String::new(),
             category: "revelation".to_string(),
             visibility: "Signaled".to_string(),
@@ -273,6 +274,7 @@ mod tests {
 
         let goal = Goal {
             id: "test".to_string(),
+            entity_id: String::new(),
             description: String::new(),
             category: "revelation".to_string(),
             visibility: "Signaled".to_string(),
