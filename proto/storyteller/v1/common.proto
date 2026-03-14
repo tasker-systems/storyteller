@@ -1,0 +1,7 @@
+syntax = "proto3";
+package storyteller.v1;
+
+import "google/protobuf/empty.proto";
+
+// Shared types used across storyteller services.
+// google.protobuf.Empty is used for parameterless RPCs.

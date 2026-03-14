@@ -1,0 +1,34 @@
+syntax = "proto3";
+package storyteller.v1;
+
+import "storyteller/v1/common.proto";
+import "google/protobuf/empty.proto";
+
+service ComposerService {
+  rpc ListGenres(google.protobuf.Empty) returns (GenreList);
+  rpc GetProfilesForGenre(GenreRequest) returns (ProfileList);
+  rpc GetArchetypesForGenre(GenreRequest) returns (ArchetypeList);
+  rpc GetDynamicsForGenre(DynamicsRequest) returns (DynamicsList);
+  rpc GetNamesForGenre(GenreRequest) returns (NameList);
+  rpc GetSettingsForGenre(GenreRequest) returns (SettingList);
+}
+
+message GenreRequest { string genre_id = 1; }
+message DynamicsRequest { string genre_id = 1; repeated string selected_archetype_ids = 2; }
+
+message GenreList { repeated GenreInfo genres = 1; }
+message GenreInfo { string entity_id = 1; string slug = 2; string display_name = 3; string description = 4; uint32 archetype_count = 5; uint32 profile_count = 6; uint32 dynamic_count = 7; }
+
+message ProfileList { repeated ProfileInfo profiles = 1; }
+message ProfileInfo { string entity_id = 1; string slug = 2; string display_name = 3; string description = 4; string scene_type = 5; double tension_min = 6; double tension_max = 7; uint32 cast_size_min = 8; uint32 cast_size_max = 9; }
+
+message ArchetypeList { repeated ArchetypeInfo archetypes = 1; }
+message ArchetypeInfo { string entity_id = 1; string slug = 2; string display_name = 3; string description = 4; }
+
+message DynamicsList { repeated DynamicInfo dynamics = 1; }
+message DynamicInfo { string entity_id = 1; string slug = 2; string display_name = 3; string description = 4; string role_a = 5; string role_b = 6; }
+
+message NameList { repeated string names = 1; }
+
+message SettingList { repeated SettingInfo settings = 1; }
+message SettingInfo { string profile_id = 1; string name = 2; optional string description = 3; }

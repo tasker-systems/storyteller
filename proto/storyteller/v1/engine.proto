@@ -1,0 +1,127 @@
+syntax = "proto3";
+package storyteller.v1;
+
+import "storyteller/v1/common.proto";
+import "google/protobuf/empty.proto";
+
+// Core engine service for gameplay and session management.
+// Named StorytellerEngine to match the design spec.
+service StorytellerEngine {
+  // Gameplay RPCs (server-streaming)
+  rpc ComposeScene(ComposeSceneRequest) returns (stream EngineEvent);
+  rpc SubmitInput(SubmitInputRequest) returns (stream EngineEvent);
+  rpc ResumeSession(ResumeSessionRequest) returns (stream EngineEvent);
+
+  // Query RPCs (unary)
+  rpc ListSessions(google.protobuf.Empty) returns (SessionList);
+  rpc GetSceneState(GetSceneStateRequest) returns (SceneState);
+  rpc CheckLlmStatus(google.protobuf.Empty) returns (LlmStatus);
+  rpc GetPredictionHistory(PredictionHistoryRequest) returns (PredictionHistoryResponse);
+
+  // Event replay (server-streaming)
+  rpc GetSessionEvents(SessionEventsRequest) returns (stream StoredEvent);
+
+  // Continuous push (server-streaming)
+  rpc StreamLogs(LogFilter) returns (stream LogEntry);
+}
+
+// --- Requests ---
+
+message ComposeSceneRequest {
+  string genre_id = 1;
+  string profile_id = 2;
+  repeated CastMember cast = 3;
+  repeated DynamicPairing dynamics = 4;
+  optional string title_override = 5;
+  optional string setting_override = 6;
+  optional uint64 seed = 7;
+}
+
+message CastMember {
+  string archetype_id = 1;
+  optional string name = 2;
+  string role = 3;
+}
+
+message DynamicPairing {
+  string dynamic_id = 1;
+  uint32 cast_index_a = 2;
+  uint32 cast_index_b = 3;
+}
+
+message SubmitInputRequest {
+  string session_id = 1;
+  string input = 2;
+}
+
+message ResumeSessionRequest {
+  string session_id = 1;
+}
+
+message GetSceneStateRequest {
+  string session_id = 1;
+}
+
+message PredictionHistoryRequest {
+  string session_id = 1;
+  optional uint32 from_turn = 2;
+  optional uint32 to_turn = 3;
+}
+
+message SessionEventsRequest {
+  string session_id = 1;
+  repeated string event_types = 2;
+}
+
+message LogFilter {
+  optional string level = 1;
+  optional string target = 2;
+}
+
+// --- EngineEvent envelope ---
+
+message EngineEvent {
+  string event_id = 1;
+  string session_id = 2;
+  optional uint32 turn = 3;
+  string timestamp = 4;
+
+  oneof payload {
+    PhaseStarted phase_started = 10;
+    DecompositionComplete decomposition = 11;
+    PredictionComplete prediction = 12;
+    ArbitrationComplete arbitration = 13;
+    IntentSynthesisComplete intent_synthesis = 14;
+    ContextAssembled context = 15;
+    NarratorToken narrator_token = 16;
+    NarratorComplete narrator_complete = 17;
+    SceneComposed scene_composed = 18;
+    GoalsGenerated goals = 19;
+    TurnComplete turn_complete = 20;
+    ErrorOccurred error = 30;
+  }
+}
+
+message PhaseStarted { string phase = 1; }
+message DecompositionComplete { string raw_json = 1; }
+message PredictionComplete { string raw_json = 1; }
+message ArbitrationComplete { string verdict = 1; string details = 2; }
+message IntentSynthesisComplete { string intent_statements = 1; }
+message ContextAssembled { uint32 preamble_tokens = 1; uint32 journal_tokens = 2; uint32 retrieved_tokens = 3; uint32 total_tokens = 4; }
+message NarratorToken { string token = 1; }
+message NarratorComplete { string prose = 1; uint64 generation_ms = 2; }
+message SceneComposed { string title = 1; string setting_description = 2; repeated string cast_names = 3; string composition_json = 4; }
+message GoalsGenerated { repeated string scene_goals = 1; repeated string character_goals = 2; optional string scene_direction = 3; optional string character_drives = 4; optional string player_context = 5; uint64 timing_ms = 6; }
+message TurnComplete { uint32 turn = 1; uint64 total_ms = 2; }
+message ErrorOccurred { string phase = 1; string message = 2; }
+
+// --- Query responses ---
+
+message SessionList { repeated SessionSummary sessions = 1; }
+message SessionSummary { string session_id = 1; string genre = 2; string profile = 3; string title = 4; repeated string cast_names = 5; uint32 turn_count = 6; string created_at = 7; }
+message SceneState { string session_id = 1; string title = 2; string setting_description = 3; repeated CharacterState characters = 4; optional string scene_goals_json = 5; optional string intentions_json = 6; uint32 current_turn = 7; }
+message CharacterState { string entity_id = 1; string name = 2; string role = 3; string performance_notes = 4; }
+message LlmStatus { bool narrator_available = 1; string narrator_model = 2; bool decomposition_available = 3; string decomposition_model = 4; bool intent_available = 5; string intent_model = 6; bool predictor_available = 7; }
+message PredictionHistoryResponse { string raw_json = 1; }
+message StoredEvent { string event_id = 1; string event_type = 2; string payload_json = 3; string timestamp = 4; }
+message LogEntry { string level = 1; string target = 2; string message = 3; string timestamp = 4; }
