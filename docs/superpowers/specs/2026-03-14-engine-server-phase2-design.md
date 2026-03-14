@@ -6,6 +6,18 @@ Phase 1 delivered a gRPC server with scaffolded RPCs, event persistence, and sta
 
 Phase 2 stitches the client side together and ports the existing orchestration into the server — less invention, more assembly.
 
+## Decisions Evolved from Parent Design Doc
+
+The parent design doc (`docs/plans/2026-03-13-engine-server-and-playtest-harness-design.md`) was written as a holistic architecture. Phase 2 makes several deliberate departures based on brainstorming:
+
+1. **Server owns its own binary.** The parent doc has `storyteller-cli serve` as the server entry point. Phase 2 gives `storyteller-server` its own binary target instead. The CLI should not depend on server internals — it's a pure client-side tool via `storyteller-client`. The existing `Serve` subcommand and `play-scene` binary in `storyteller-cli` are removed as part of this work.
+
+2. **Composition requires a running server.** The parent doc describes `generate composition` as using `storyteller-composer` directly with "no running server required." Phase 2 routes all composition through the server via `storyteller-client` and the `ComposeScene` RPC. The CLI is for scripting and agent-driven workflows — rich composition UX belongs in the workshop (Tauri). Offline composition is not a priority at pre-alpha.
+
+3. **Full pipeline port, not partial.** The parent doc implies phased pipeline wiring. Since the complete turn pipeline already works in `commands.rs`, porting it wholesale is less work than surgically extracting individual phases.
+
+4. **`CheckLlmStatus` replaced by `CheckHealth`.** Not just a rename — the RPC signature, request/response types, and the `LlmStatus` message are fully replaced by the generic `HealthResponse`/`SubsystemHealth` model.
+
 ## Approach: Vertical Slice
 
 Get a single end-to-end path working first (compose → playtest with real pipeline), then widen with composition cache and CLI ergonomics.
@@ -32,7 +44,9 @@ The `storyteller-api` crate is the full server infrastructure, not just an API w
 - Update CI workflow paths if any reference `storyteller-api`
 - Update `build.rs` proto paths if any are relative to the crate directory
 
-**Server binary:** `storyteller-server` gets its own binary target. The server starts itself — `cargo run -p storyteller-server` or the compiled binary directly. The CLI does not start the server.
+**Server binary:** `storyteller-server` gets its own binary target via a `[[bin]]` entry in its `Cargo.toml`, with the binary source at `src/bin/main.rs` (or `src/main.rs` alongside `src/lib.rs`). The server starts itself — `cargo run -p storyteller-server` or the compiled binary directly. The CLI does not start the server.
+
+**CLI cleanup:** The existing `Serve` subcommand in `storyteller-cli/src/main.rs` is removed. The existing `play-scene` binary (`src/bin/play_scene_context.rs`) is also removed — its role is superseded by the `playtest` subcommand. The CLI's dependencies on `storyteller-api` (now `storyteller-server`) and `storyteller-engine` are dropped entirely. The CLI depends only on `storyteller-client`.
 
 **Dependency separation after rename:**
 
@@ -78,9 +92,9 @@ pub struct ServerHealth {
 
 Core doesn't know what "narrator" or "postgres" means — the server populates subsystem entries, the client consumes them. New subsystems (e.g., database) don't require core changes.
 
-**Proto update (`engine.proto`):**
+**Proto update:**
 
-Rename `CheckLlmStatus` RPC to `CheckHealth`. Response:
+Replace the `CheckLlmStatus` RPC and `LlmStatus` message in `engine.proto` with `CheckHealth` and the new `HealthResponse`/`SubsystemHealth` messages. The `SubsystemHealth` message belongs in `common.proto` since it's consumed by both server and client as a shared type. Response:
 
 ```protobuf
 message HealthResponse {
@@ -127,6 +141,11 @@ impl StorytellerClient {
         -> Result<tonic::Streaming<EngineEvent>>;
     pub async fn submit_input(&mut self, request: SubmitInputRequest)
         -> Result<tonic::Streaming<EngineEvent>>;
+    pub async fn resume_session(&mut self, request: ResumeSessionRequest)
+        -> Result<tonic::Streaming<EngineEvent>>;
+    pub async fn list_sessions(&mut self) -> Result<SessionList>;
+    pub async fn get_scene_state(&mut self, request: GetSceneStateRequest)
+        -> Result<SceneState>;
 
     // Composer RPCs (for cache sync)
     pub async fn list_genres(&mut self) -> Result<GenreList>;
@@ -154,6 +173,8 @@ pub enum ClientError {
 
 **Configuration from environment:**
 - `STORYTELLER_SERVER_URL` → default `http://localhost:50051`
+
+**`&mut self` note:** Methods take `&mut self` which is correct for tonic channel-backed clients. For Phase 2 usage (sequential playtest loop) this is fine. If concurrent access is needed later, the API may evolve to `&self` (tonic clients are cheap to clone).
 
 **What it doesn't do yet:** retry, reconnect, auth, event stream helpers. Follow-up concerns.
 
@@ -194,7 +215,7 @@ Flow:
    - Send generated player input via `SubmitInput`, consume stream until `NarratorComplete`
 6. Print summary: session ID, turn count, elapsed time
 
-**Player simulation lives in the CLI crate** — it's a scripting/testing concern, not a server concern.
+**Player simulation lives in the CLI crate** — it's a scripting/testing concern, not a server concern. The player simulation LLM connects directly to Ollama (using `OLLAMA_URL` from the environment, same as the server uses), not through the gRPC server.
 
 **Future extension (noted, not this phase):** Player simulation LLM may get its own endpoint configuration (`--player-ollama-url`) for load spreading or cloud provider abstraction.
 
@@ -240,15 +261,17 @@ Slim index files — slug, entity_id, display_name only. Not full descriptor rep
 
 **`composer list`:** Reads from local cache, prints to stdout. Fails with "run `composer sync` first" if cache is missing.
 
+**Stale cache handling:** If a slug used in `compose` is not found in the local cache, the CLI errors with a message suggesting `composer sync`. No automatic fallback to the server — the cache should be the single lookup path to keep the flow predictable.
+
 ### 5. Port Turn Pipeline into Server
 
 The full turn pipeline already works in the workshop's `commands.rs`. Phase 2 ports this orchestration into the server's `SubmitInput` gRPC handler.
 
-**Server startup constructs all providers** (same as the workshop does today):
-- `narrator_llm`: `ExternalServerProvider` (Ollama, narrator model)
-- `structured_llm`: `OllamaStructuredProvider` (decomposition model)
-- `intent_llm`: `ExternalServerProvider` (Ollama, intent model)
-- `predictor`: `CharacterPredictor` (ONNX, when model available)
+**Server startup constructs all providers** (same as the workshop does today). Phase 1 left `structured_llm: None` and `predictor_available: false` with TODOs. This phase wires them:
+- `narrator_llm`: `ExternalServerProvider` (Ollama, narrator model) — already wired in Phase 1
+- `structured_llm`: `OllamaStructuredProvider` (decomposition model) — **new**: construct in server startup, add `storyteller-engine` dependency for the type
+- `intent_llm`: `ExternalServerProvider` (Ollama, intent model) — already wired in Phase 1
+- `predictor`: `CharacterPredictor` (ONNX) — **new**: add `storyteller-ml` dependency to `storyteller-server`, construct when model path available via environment
 
 **`SubmitInput` runs the same pipeline phases as `commands.rs`:**
 1. Event decomposition via structured LLM
