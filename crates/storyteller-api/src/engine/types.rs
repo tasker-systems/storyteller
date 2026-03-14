@@ -18,23 +18,12 @@ pub struct Composition {
 ///
 /// Readers get a cheap `Arc` clone; writers publish a new `Arc` at each
 /// pipeline phase boundary. No reader ever blocks a writer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RuntimeSnapshot {
     pub journal_entries: Vec<String>,
     pub turn_count: u32,
     pub player_entity_id: Option<String>,
     pub prediction_history: Vec<serde_json::Value>,
-}
-
-impl Default for RuntimeSnapshot {
-    fn default() -> Self {
-        Self {
-            journal_entries: Vec::new(),
-            turn_count: 0,
-            player_entity_id: None,
-            prediction_history: Vec::new(),
-        }
-    }
 }
 
 #[cfg(test)]
