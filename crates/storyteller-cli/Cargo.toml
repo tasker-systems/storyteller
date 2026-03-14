@@ -12,7 +12,7 @@ categories = ["game-engines"]
 [dependencies]
 storyteller-core = { path = "../storyteller-core", version = "=0.1.0" }
 storyteller-engine = { path = "../storyteller-engine", version = "=0.1.0" }
-storyteller-api = { path = "../storyteller-api", version = "=0.1.0" }
+storyteller-server = { path = "../storyteller-server", version = "=0.1.0" }
 
 anyhow = { workspace = true }
 clap = { workspace = true }

@@ -1,5 +1,5 @@
 [package]
-name = "storyteller-api"
+name = "storyteller-server"
 version = "0.1.0"
 edition = "2021"
 description = "Player-facing HTTP/WebSocket API for the storyteller engine — deployment-agnostic"

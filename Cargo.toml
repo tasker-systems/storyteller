@@ -6,7 +6,7 @@ members = [
     "crates/storyteller-storykeeper",
     "crates/storyteller-composer",
     "crates/storyteller-engine",
-    "crates/storyteller-api",
+    "crates/storyteller-server",
     "crates/storyteller-cli",
     "crates/storyteller-ml",
     "crates/storyteller-workshop/src-tauri",

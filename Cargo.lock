@@ -6280,36 +6280,10 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "storyteller"
 version = "0.1.0"
 dependencies = [
- "storyteller-api",
  "storyteller-core",
  "storyteller-engine",
+ "storyteller-server",
  "tokio",
-]
-
-[[package]]
-name = "storyteller-api"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "async-trait",
- "axum",
- "chrono",
- "dashmap",
- "prost",
- "serde",
- "serde_json",
- "storyteller-composer",
- "storyteller-core",
- "storyteller-engine",
- "tempfile",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "tonic-prost",
- "tonic-prost-build",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -6321,9 +6295,9 @@ dependencies = [
  "clap",
  "config",
  "dotenvy",
- "storyteller-api",
  "storyteller-core",
  "storyteller-engine",
+ "storyteller-server",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -6402,6 +6376,32 @@ dependencies = [
  "sha2",
  "storyteller-core",
  "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "storyteller-server"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "axum",
+ "chrono",
+ "dashmap",
+ "prost",
+ "serde",
+ "serde_json",
+ "storyteller-composer",
+ "storyteller-core",
+ "storyteller-engine",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "tonic-prost",
+ "tonic-prost-build",
  "tracing",
  "uuid",
 ]

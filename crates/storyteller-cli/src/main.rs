@@ -32,8 +32,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Serve => {
-            let config = storyteller_api::server::ServerConfig::from_env();
-            storyteller_api::server::run_server(config).await?;
+            let config = storyteller_server::server::ServerConfig::from_env();
+            storyteller_server::server::run_server(config).await?;
         }
     }
 

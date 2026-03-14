@@ -3,10 +3,10 @@
 //! These tests start a real gRPC server and verify RPCs via tonic client stubs.
 //! Requires STORYTELLER_DATA_PATH to be set.
 
-use storyteller_api::grpc::composer_service::ComposerServiceImpl;
-use storyteller_api::proto::composer_service_client::ComposerServiceClient;
-use storyteller_api::proto::composer_service_server::ComposerServiceServer;
-use storyteller_api::proto::*;
+use storyteller_server::grpc::composer_service::ComposerServiceImpl;
+use storyteller_server::proto::composer_service_client::ComposerServiceClient;
+use storyteller_server::proto::composer_service_server::ComposerServiceServer;
+use storyteller_server::proto::*;
 
 use std::sync::Arc;
 use tokio::net::TcpListener;
