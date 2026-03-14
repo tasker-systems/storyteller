@@ -698,12 +698,12 @@ impl StorytellerEngine for EngineServiceImpl {
 
         subsystems.push(crate::proto::SubsystemHealth {
             name: "predictor".to_string(),
-            status: if providers.predictor_available {
+            status: if providers.predictor.is_some() {
                 "healthy".to_string()
             } else {
                 "unavailable".to_string()
             },
-            message: if !providers.predictor_available {
+            message: if providers.predictor.is_none() {
                 Some("Character predictor model not loaded".to_string())
             } else {
                 None

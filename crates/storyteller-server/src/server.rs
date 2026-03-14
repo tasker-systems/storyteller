@@ -1,14 +1,19 @@
 //! gRPC server startup and configuration.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use tonic::transport::Server;
 use tracing::info;
 
+use std::sync::Arc;
+
 use storyteller_composer::SceneComposer;
+use storyteller_core::grammars::PlutchikWestern;
+use storyteller_core::traits::structured_llm::StructuredLlmConfig;
 use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
+use storyteller_engine::inference::frame::CharacterPredictor;
+use storyteller_engine::inference::structured::OllamaStructuredProvider;
 
 use crate::engine::{EngineProviders, EngineStateManager};
 use crate::grpc::composer_service::ComposerServiceImpl;
@@ -27,6 +32,8 @@ pub struct ServerConfig {
     pub decomposition_model: String,
     pub intent_model: String,
     pub ollama_url: String,
+    /// Optional path to the ONNX character predictor model file.
+    pub model_path: Option<String>,
 }
 
 impl ServerConfig {
@@ -48,6 +55,7 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "qwen2.5:3b-instruct".to_string()),
             ollama_url: std::env::var("OLLAMA_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".to_string()),
+            model_path: std::env::var("STORYTELLER_MODEL_PATH").ok(),
         }
     }
 }
@@ -85,11 +93,42 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
         timeout: Duration::from_secs(60),
     }));
 
+    // Structured LLM provider for event decomposition
+    let structured_llm: Option<
+        Arc<dyn storyteller_core::traits::structured_llm::StructuredLlmProvider>,
+    > = {
+        let provider = OllamaStructuredProvider::new(StructuredLlmConfig {
+            base_url: config.ollama_url.clone(),
+            model: config.decomposition_model.clone(),
+            ..Default::default()
+        });
+        tracing::info!(model = %config.decomposition_model, "Structured LLM provider created");
+        Some(Arc::new(provider))
+    };
+
+    // Character predictor (optional — degrades gracefully when model not on disk)
+    let predictor: Option<Arc<CharacterPredictor>> = config.model_path.as_ref().and_then(|path| {
+        let model_path = std::path::Path::new(path);
+        match CharacterPredictor::load(model_path) {
+            Ok(p) => {
+                tracing::info!(%path, "Character predictor loaded");
+                Some(Arc::new(p))
+            }
+            Err(e) => {
+                tracing::warn!(%e, "Character predictor not available");
+                None
+            }
+        }
+    });
+
+    let grammar = Arc::new(PlutchikWestern::new());
+
     let providers = Arc::new(EngineProviders {
         narrator_llm,
-        structured_llm: None, // TODO: construct OllamaStructuredProvider (Task 13+)
+        structured_llm,
         intent_llm: Some(intent_llm),
-        predictor_available: false, // TODO: construct CharacterPredictor
+        predictor,
+        grammar,
     });
 
     info!(
