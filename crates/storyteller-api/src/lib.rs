@@ -18,8 +18,10 @@
 //! - [`routes`] — Route definitions (player input, session management, health)
 //! - [`middleware`] — Auth, rate limiting, and other middleware
 //! - [`state`] — Shared application state passed to handlers
+//! - [`persistence`] — Three-file session persistence (composition, events, turns)
 
 pub mod middleware;
+pub mod persistence;
 pub mod proto;
 pub mod routes;
 pub mod state;
