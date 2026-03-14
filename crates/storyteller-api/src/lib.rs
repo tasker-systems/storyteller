@@ -29,6 +29,7 @@ pub mod middleware;
 pub mod persistence;
 pub mod proto;
 pub mod routes;
+pub mod server;
 pub mod state;
 
 use axum::Router;

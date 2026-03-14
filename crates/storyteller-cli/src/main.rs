@@ -1,10 +1,41 @@
 //! Storyteller CLI — primary entry point.
 //!
-//! This binary assembles the Bevy App with all storyteller plugins
-//! and provides CLI subcommands for running the server, admin tools,
-//! and development utilities.
+//! Provides CLI subcommands for running the gRPC server and development utilities.
 
-fn main() {
-    println!("storyteller-cli: not yet implemented");
-    println!("Use `storyteller-server` binary for the game engine server.");
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "storyteller-cli", about = "Storyteller engine CLI")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the gRPC engine server.
+    Serve,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
+    // Load .env if available
+    let _ = dotenvy::dotenv();
+
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Serve => {
+            let config = storyteller_api::server::ServerConfig::from_env();
+            storyteller_api::server::run_server(config).await?;
+        }
+    }
+
+    Ok(())
 }
