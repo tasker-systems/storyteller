@@ -261,13 +261,181 @@ impl StorytellerEngine for EngineServiceImpl {
         Ok(Response::new(ReceiverStream::new(rx)))
     }
 
-    // --- Stub implementations for remaining RPCs (implemented in Tasks 13-14) ---
-
     async fn submit_input(
         &self,
-        _request: Request<SubmitInputRequest>,
+        request: Request<SubmitInputRequest>,
     ) -> Result<Response<Self::SubmitInputStream>, Status> {
-        Err(Status::unimplemented("SubmitInput not yet implemented"))
+        let req = request.into_inner();
+        let session_id = req.session_id.clone();
+        let input = req.input;
+
+        if !self.state_manager.has_session(&session_id) {
+            return Err(Status::not_found("session not found"));
+        }
+
+        let (tx, rx) = mpsc::channel(32);
+        let state_manager = self.state_manager.clone();
+        let session_store = self.session_store.clone();
+        // providers cloned for future LLM wiring
+        let _providers = self.providers.clone();
+
+        tokio::spawn(async move {
+            let mut event_ids: Vec<String> = Vec::new();
+            let snapshot = state_manager.get_runtime_snapshot(&session_id);
+            let turn = snapshot.as_ref().map(|s| s.turn_count + 1).unwrap_or(1);
+
+            // Phase 1: Event Decomposition
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::PhaseStarted(PhaseStarted {
+                        phase: "decomposition".to_string(),
+                    }),
+                )))
+                .await;
+
+            // TODO: Call decompose_events() with structured LLM
+            if let Ok(eid) = session_store.events.append(
+                &session_id,
+                "decomposition",
+                Some(turn),
+                &serde_json::json!({"input": input, "status": "placeholder"}),
+            ) {
+                event_ids.push(eid);
+            }
+
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::Decomposition(DecompositionComplete {
+                        raw_json: serde_json::json!({"status": "placeholder"}).to_string(),
+                    }),
+                )))
+                .await;
+
+            // Phase 2: ML Prediction
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::PhaseStarted(PhaseStarted {
+                        phase: "prediction".to_string(),
+                    }),
+                )))
+                .await;
+
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::Prediction(PredictionComplete {
+                        raw_json: serde_json::json!({"status": "placeholder"}).to_string(),
+                    }),
+                )))
+                .await;
+
+            // Phase 3: Arbitration
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::Arbitration(ArbitrationComplete {
+                        verdict: "Permitted".to_string(),
+                        details: "placeholder".to_string(),
+                    }),
+                )))
+                .await;
+
+            // Phase 4: Intent Synthesis
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::IntentSynthesis(IntentSynthesisComplete {
+                        intent_statements: String::new(),
+                    }),
+                )))
+                .await;
+
+            // Phase 5: Context Assembly
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::Context(ContextAssembled {
+                        preamble_tokens: 0,
+                        journal_tokens: 0,
+                        retrieved_tokens: 0,
+                        total_tokens: 0,
+                    }),
+                )))
+                .await;
+
+            // Phase 6: Narrator
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::PhaseStarted(PhaseStarted {
+                        phase: "narrator".to_string(),
+                    }),
+                )))
+                .await;
+
+            // TODO: Call narrator LLM with assembled context
+            let narrator_output = "[Narrator pipeline integration pending]".to_string();
+
+            if let Ok(eid) = session_store.events.append(
+                &session_id,
+                "narrator_complete",
+                Some(turn),
+                &serde_json::json!({"prose": narrator_output}),
+            ) {
+                event_ids.push(eid);
+            }
+
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::NarratorComplete(NarratorComplete {
+                        prose: narrator_output.clone(),
+                        generation_ms: 0,
+                    }),
+                )))
+                .await;
+
+            // Update state
+            state_manager
+                .update_runtime_snapshot(&session_id, |snap| {
+                    let mut new = snap.clone();
+                    new.turn_count = turn;
+                    new.journal_entries.push(narrator_output.clone());
+                    new
+                })
+                .await;
+
+            // Persist turn
+            let turn_entry = crate::persistence::TurnEntry {
+                turn,
+                timestamp: Utc::now().to_rfc3339(),
+                player_input: Some(input),
+                event_ids,
+            };
+            let _ = session_store.turns.append(&session_id, &turn_entry);
+
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::TurnComplete(TurnComplete { turn, total_ms: 0 }),
+                )))
+                .await;
+        });
+
+        Ok(Response::new(ReceiverStream::new(rx)))
     }
 
     async fn resume_session(
