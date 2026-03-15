@@ -211,6 +211,21 @@ impl StorytellerClient {
             .await?;
         Ok(response.into_inner())
     }
+
+    pub async fn get_genre_options(
+        &mut self,
+        genre_id: &str,
+        selected_archetype_ids: Vec<String>,
+    ) -> Result<crate::proto::GenreOptions, ClientError> {
+        let response = self
+            .composer
+            .get_genre_options(crate::proto::GenreOptionsRequest {
+                genre_id: genre_id.to_string(),
+                selected_archetype_ids,
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
 }
 
 // -----------------------------------------------------------------------------

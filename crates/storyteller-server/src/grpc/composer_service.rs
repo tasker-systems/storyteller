@@ -12,7 +12,8 @@ use storyteller_composer::SceneComposer;
 use crate::proto::composer_service_server::ComposerService;
 use crate::proto::{
     ArchetypeInfo, ArchetypeList, DynamicInfo, DynamicsList, DynamicsRequest, GenreInfo, GenreList,
-    GenreRequest, NameList, ProfileInfo, ProfileList, SettingList,
+    GenreOptions, GenreOptionsRequest, GenreRequest, NameList, ProfileInfo, ProfileList,
+    SettingList,
 };
 
 /// gRPC implementation of the `ComposerService` proto service.
@@ -137,5 +138,69 @@ impl ComposerService for ComposerServiceImpl {
         let _genre_id = &request.get_ref().genre_id;
         // TODO: Expose settings from DescriptorSet
         Ok(Response::new(SettingList { settings: vec![] }))
+    }
+
+    async fn get_genre_options(
+        &self,
+        request: Request<GenreOptionsRequest>,
+    ) -> Result<Response<GenreOptions>, Status> {
+        let req = request.get_ref();
+        let genre_id = &req.genre_id;
+
+        let archetypes = self
+            .composer
+            .archetypes_for_genre(genre_id)
+            .into_iter()
+            .map(|a| ArchetypeInfo {
+                entity_id: a.entity_id,
+                slug: a.id,
+                display_name: a.display_name,
+                description: a.description,
+            })
+            .collect();
+
+        let profiles = self
+            .composer
+            .profiles_for_genre(genre_id)
+            .into_iter()
+            .map(|p| ProfileInfo {
+                entity_id: p.entity_id,
+                slug: p.id,
+                display_name: p.display_name,
+                description: p.description,
+                scene_type: p.scene_type,
+                tension_min: p.tension_min,
+                tension_max: p.tension_max,
+                cast_size_min: p.cast_size_min as u32,
+                cast_size_max: p.cast_size_max as u32,
+            })
+            .collect();
+
+        let dynamics = self
+            .composer
+            .dynamics_for_genre(genre_id, &req.selected_archetype_ids)
+            .into_iter()
+            .map(|d| DynamicInfo {
+                entity_id: d.entity_id,
+                slug: d.id,
+                display_name: d.display_name,
+                description: d.description,
+                role_a: d.role_a,
+                role_b: d.role_b,
+            })
+            .collect();
+
+        let names = self.composer.names_for_genre(genre_id);
+
+        // Settings not yet exposed from DescriptorSet
+        let settings = vec![];
+
+        Ok(Response::new(GenreOptions {
+            archetypes,
+            profiles,
+            dynamics,
+            names,
+            settings,
+        }))
     }
 }
