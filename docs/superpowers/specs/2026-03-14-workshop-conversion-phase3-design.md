@@ -56,13 +56,13 @@ Each Tauri command becomes a thin wrapper: receive args from Svelte → call `st
 |---|---|---|
 | `check_health()` | `CheckHealth` | `HealthReport` |
 | `load_catalog()` | `ListGenres` | `Vec<GenreSummary>` |
-| `get_genre_options(genre_id)` | `GetGenreOptions` (new) | `GenreOptionsResult` |
+| `get_genre_options(genre_id, selected_archetype_ids)` | `GetGenreOptions` (new) | `GenreOptionsResult` |
 | `compose_scene(selections)` | `ComposeScene` (streaming) | `SceneInfo` |
 | `submit_input(session_id, input)` | `SubmitInput` (streaming) | `TurnResult` |
 | `resume_session(session_id)` | `ResumeSession` (streaming) | `ResumeResult` |
 | `list_sessions()` | `ListSessions` | `Vec<SessionSummary>` |
 | `get_scene_state(session_id)` | `GetSceneState` | `SceneState` |
-| `get_prediction_history(session_id)` | `GetPredictionHistory` | `PredictionHistoryResult` |
+| `get_prediction_history(session_id)` | `GetPredictionHistory` | `PredictionHistoryResult` (Phase 3 implements this previously-stubbed RPC) |
 
 **Streaming command pattern** (`compose_scene`, `submit_input`, `resume_session`):
 1. Open gRPC stream via `storyteller-client`
@@ -70,7 +70,7 @@ Each Tauri command becomes a thin wrapper: receive args from Svelte → call `st
 3. Accumulate the final result (narrator prose, scene info, etc.)
 4. Return the accumulated result when the stream completes
 
-**Client lifecycle:** A `StorytellerClient` is constructed once at app startup and stored in Tauri managed state (`tauri::State`). Commands receive it via Tauri's dependency injection. Connection errors surface as command errors that the Svelte layer displays.
+**Client lifecycle:** A `StorytellerClient` is constructed once at app startup and stored in Tauri managed state wrapped in `Mutex` (`tauri::State<Mutex<StorytellerClient>>`), since client methods take `&mut self`. Commands lock the mutex, make the gRPC call, and release. This matches the existing workshop pattern which uses `Mutex<Option<EngineState>>`. Connection errors surface as command errors that the Svelte layer displays.
 
 **Replaces `LlmStatus` with `HealthReport`:** The old `LlmStatus` struct (reachable, endpoint, model, available_models) is replaced by `HealthReport` which wraps the server's `CheckHealth` response — overall status plus per-subsystem breakdown. The server already probes Ollama reachability in its health check (implemented in Phase 2 review fixes).
 
@@ -111,15 +111,15 @@ Replaces the current `TauriTracingLayer` which hooks into the in-process tracing
 
 | Tab | Source | Change from Current |
 |---|---|---|
-| LLM | `DebugEvent` (NarratorComplete, timing) | Field mapping only |
-| Context | `DebugEvent` (ContextAssembled) | Field mapping only |
-| ML Predictions | `DebugEvent` (PredictionComplete) | Field mapping only |
-| Characters | `GetSceneState` RPC | Was in-process, now RPC |
-| Events | `DebugEvent` (DecompositionComplete) | Field mapping only |
-| Arbitration | `DebugEvent` (ArbitrationComplete) | Field mapping only |
-| Goals | `DebugEvent` (GoalsGenerated) | Field mapping only |
-| Narrator | `DebugEvent` (NarratorComplete) | Field mapping only |
-| Logs | `StreamLogs` RPC | New data source, same rendering |
+| LLM | `DebugEvent` (NarratorComplete) | Proto enrichment required (add prompt, model, token fields) |
+| Context | `DebugEvent` (ContextAssembled) | Proto enrichment required (add text fields, timing) |
+| ML Predictions | `DebugEvent` (PredictionComplete) | Minor enrichment (add timing, model_loaded) |
+| Characters | `GetSceneState` RPC | Was in-process event, now RPC query after each turn |
+| Events | `DebugEvent` (DecompositionComplete) | Minor enrichment (add timing, model, error) |
+| Arbitration | `DebugEvent` (ArbitrationComplete) | Minor enrichment (add player_input, timing) |
+| Goals | `DebugEvent` (GoalsGenerated) | Minimal — already rich |
+| Narrator | `DebugEvent` (NarratorComplete) | Same as LLM tab (shared data source) |
+| Logs | `StreamLogs` RPC | New data source, add fields to LogEntry proto |
 
 The debug surface is cleanly separable from gameplay. The inspector can be gated behind a dev/debug flag for release builds without affecting the core experience.
 
@@ -131,26 +131,45 @@ The debug surface is cleanly separable from gameplay. The inspector can be gated
 // In composer.proto
 message GenreOptionsRequest {
   string genre_id = 1;
+  repeated string selected_archetype_ids = 2;
 }
 
 message GenreOptions {
-  repeated Archetype archetypes = 1;
-  repeated Profile profiles = 2;
-  repeated Dynamic dynamics = 3;
+  repeated ArchetypeInfo archetypes = 1;
+  repeated ProfileInfo profiles = 2;
+  repeated DynamicInfo dynamics = 3;
   repeated string names = 4;
-  repeated Setting settings = 5;
+  repeated SettingInfo settings = 5;
 }
 
 rpc GetGenreOptions(GenreOptionsRequest) returns (GenreOptions);
 ```
 
-Added to `ComposerService` alongside existing per-category RPCs. Server-side implementation delegates to the already-loaded `SceneComposer` descriptor set.
+Added to `ComposerService` alongside existing per-category RPCs. The `selected_archetype_ids` field is required because dynamics filtering depends on which archetypes are selected (`composer.dynamics_for_genre()` takes selected archetypes). The response reuses existing message types (`ArchetypeInfo`, `ProfileInfo`, etc.) already defined in `composer.proto`.
+
+**`GetPredictionHistory` implementation:**
+Currently stubbed (returns `Status::unimplemented`). Phase 3 implements it: reads prediction data from the session's `EngineStateManager` runtime snapshot and returns structured prediction history. The `storyteller-client` crate also needs a `get_prediction_history()` method added.
 
 **`StreamLogs` RPC implementation:**
-Already defined in the proto from Phase 1 but currently stubbed. Phase 3 implements it: the server subscribes to its own `tracing` layer and forwards log entries to connected gRPC stream clients.
+Already defined in the proto from Phase 1 but currently stubbed. Phase 3 implements it: the server subscribes to its own `tracing` layer and forwards log entries to connected gRPC stream clients. The `LogEntry` proto message needs a `map<string, string> fields` field added to carry structured tracing span fields (the existing workshop `TracingLogEntry` includes `fields: Record<string, unknown>`).
 
-**`EngineEvent` payload enrichment:**
-During implementation, if any inspector tab requires detail not carried by current `EngineEvent` payloads, the proto is enriched. Adding fields to existing messages is non-breaking. This is handled per-tab during implementation rather than specified upfront.
+**`EngineEvent` payload enrichment (required):**
+
+The current proto payloads are significantly sparser than what the debug inspector consumes. This is not incidental — it is a substantial part of Phase 3 work. Comparing the workshop's `DebugEvent` variants (in `events.rs`) to the current proto messages:
+
+| Proto Message | Current Fields | Fields to Add for Inspector |
+|---|---|---|
+| `NarratorComplete` | `prose`, `generation_ms` | `system_prompt`, `user_message`, `raw_response`, `model`, `temperature`, `max_tokens`, `tokens_used` |
+| `PredictionComplete` | `raw_json` | `timing_ms`, `model_loaded` (structured resolver output stays in `raw_json`) |
+| `ContextAssembled` | `preamble_tokens`, `journal_tokens`, `retrieved_tokens`, `total_tokens` | `preamble_text`, `journal_text`, `retrieved_text`, `timing_ms` |
+| `DecompositionComplete` | `raw_json` | `timing_ms`, `model`, `error` (structured decomposition stays in `raw_json`) |
+| `ArbitrationComplete` | `verdict`, `details` | `player_input`, `timing_ms` |
+| `IntentSynthesisComplete` | `intent_statements` | `timing_ms` |
+| `GoalsGenerated` | scene/character goals, direction, drives, player_context, timing_ms | `character_drives` should be `repeated string` not `optional string` |
+
+Additionally, the workshop emits a `CharactersUpdated` debug event (with full `CharacterSheet` data and emotional markers) that has no proto equivalent. Options: (a) add a `CharactersUpdated` payload variant to `EngineEvent`, (b) enrich `SceneState` response with tensor/relationship data and have the Characters tab query via `GetSceneState` after each turn. Option (b) is preferred — character data is query-able state, not a phase event.
+
+All proto additions are non-breaking (adding fields to existing messages, adding new oneof variants).
 
 ### 6. Svelte Frontend Changes
 
@@ -180,6 +199,9 @@ During implementation, if any inspector tab requires detail not carried by curre
 - `session_log.rs` — local turn-by-turn JSONL logging (server owns event persistence)
 - `events.rs` — in-process debug event emitter (replaced by `EngineEvent` stream forwarding)
 - `tracing_layer.rs` — in-process tracing bridge (replaced by `StreamLogs` RPC)
+
+**Modified Rust files:**
+- `lib.rs` — replace `SceneComposer` and `EngineState` Tauri managed state setup with `Mutex<StorytellerClient>` construction. Remove handler registrations for deleted commands, register new thin command handlers.
 
 **New Rust files:**
 - `commands.rs` — thin gRPC command wrappers
