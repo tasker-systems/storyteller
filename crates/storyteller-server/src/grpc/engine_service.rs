@@ -10,6 +10,7 @@ use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
 use crate::engine::{Composition, EngineProviders, EngineStateManager, RuntimeSnapshot};
+use crate::logging::LogBroadcast;
 use crate::persistence::SessionStore;
 use crate::proto::storyteller_engine_server::StorytellerEngine;
 use crate::proto::*;
@@ -35,7 +36,8 @@ use storyteller_engine::{
     agents::narrator::NarratorAgent,
     context::{
         assemble_narrator_context,
-        journal::add_turn,
+        journal::{add_turn, render_journal},
+        preamble::render_preamble,
         prediction::{decomposition_to_event_features, predict_character_behaviors},
         DEFAULT_TOTAL_TOKEN_BUDGET,
     },
@@ -56,6 +58,7 @@ pub struct EngineServiceImpl {
     state_manager: Arc<EngineStateManager>,
     session_store: Arc<SessionStore>,
     providers: Arc<EngineProviders>,
+    log_broadcast: LogBroadcast,
 }
 
 impl EngineServiceImpl {
@@ -70,6 +73,27 @@ impl EngineServiceImpl {
             state_manager,
             session_store,
             providers,
+            log_broadcast: crate::logging::create_log_broadcast(),
+        }
+    }
+
+    /// Create an engine service with an external [`LogBroadcast`].
+    ///
+    /// Use this when the server binary creates the broadcast channel during
+    /// tracing initialization and needs the same channel wired into the service.
+    pub fn with_log_broadcast(
+        composer: Arc<SceneComposer>,
+        state_manager: Arc<EngineStateManager>,
+        session_store: Arc<SessionStore>,
+        providers: Arc<EngineProviders>,
+        log_broadcast: LogBroadcast,
+    ) -> Self {
+        Self {
+            composer,
+            state_manager,
+            session_store,
+            providers,
+            log_broadcast,
         }
     }
 }
@@ -79,6 +103,7 @@ impl std::fmt::Debug for EngineServiceImpl {
         f.debug_struct("EngineServiceImpl")
             .field("state_manager", &self.state_manager)
             .field("providers", &self.providers)
+            .field("log_broadcast", &self.log_broadcast)
             .finish()
     }
 }
@@ -239,9 +264,9 @@ impl StorytellerEngine for EngineServiceImpl {
                         scene_goals: scene_goal_strs,
                         character_goals: vec![],
                         scene_direction: None,
-                        character_drives: None,
                         player_context: None,
                         timing_ms: 0,
+                        character_drives: vec![],
                     }),
                 )))
                 .await;
@@ -297,6 +322,11 @@ impl StorytellerEngine for EngineServiceImpl {
 
             let narrator = NarratorAgent::new(&context, Arc::clone(&providers.narrator_llm))
                 .with_temperature(0.8);
+            let opening_system_prompt = narrator.system_prompt().to_string();
+            let opening_user_message = "Open the scene. Establish the setting and mood. \
+                The characters have not yet interacted. Under 200 words."
+                .to_string();
+            let narrator_model_name = providers.narrator_model.clone();
             let noop = NoopObserver;
             let llm_start = Instant::now();
             let opening_prose = match narrator.render_opening(&noop).await {
@@ -319,6 +349,13 @@ impl StorytellerEngine for EngineServiceImpl {
                     engine_event::Payload::NarratorComplete(NarratorComplete {
                         prose: opening_prose.clone(),
                         generation_ms: narrator_ms,
+                        system_prompt: opening_system_prompt,
+                        user_message: opening_user_message,
+                        raw_response: opening_prose.clone(),
+                        model: narrator_model_name,
+                        temperature: 0.8,
+                        max_tokens: 600,
+                        tokens_used: 0, // not available from NarratorRendering
                     }),
                 )))
                 .await;
@@ -507,11 +544,17 @@ impl StorytellerEngine for EngineServiceImpl {
                     }
                 }
             }
-            let _decomposition_ms = decomp_start.elapsed().as_millis() as u64;
+            let decomposition_ms = decomp_start.elapsed().as_millis() as u64;
 
             let decomp_json = persisted_decomposition
                 .clone()
                 .unwrap_or_else(|| serde_json::json!({"status": "skipped"}));
+            let decomp_error =
+                if event_decomposition.is_none() && providers.structured_llm.is_some() {
+                    Some("Decomposition failed or produced unparseable output".to_string())
+                } else {
+                    None
+                };
             if let Ok(eid) =
                 session_store
                     .events
@@ -526,6 +569,9 @@ impl StorytellerEngine for EngineServiceImpl {
                     Some(turn),
                     engine_event::Payload::Decomposition(DecompositionComplete {
                         raw_json: serde_json::to_string(&decomp_json).unwrap_or_default(),
+                        timing_ms: decomposition_ms,
+                        model: providers.decomposition_model.clone(),
+                        error: decomp_error,
                     }),
                 )))
                 .await;
@@ -580,7 +626,8 @@ impl StorytellerEngine for EngineServiceImpl {
                     intent_statements: None,
                 }
             };
-            let _prediction_ms = predict_start.elapsed().as_millis() as u64;
+            let prediction_ms = predict_start.elapsed().as_millis() as u64;
+            let model_loaded = providers.predictor.is_some();
 
             // Build updated prediction history from this turn's predictions
             let mut new_prediction_history = snapshot.prediction_history.clone();
@@ -595,6 +642,8 @@ impl StorytellerEngine for EngineServiceImpl {
                     engine_event::Payload::Prediction(PredictionComplete {
                         raw_json: serde_json::to_string(&resolver_output.original_predictions)
                             .unwrap_or_default(),
+                        timing_ms: prediction_ms,
+                        model_loaded,
                     }),
                 )))
                 .await;
@@ -612,6 +661,8 @@ impl StorytellerEngine for EngineServiceImpl {
                     engine_event::Payload::Arbitration(ArbitrationComplete {
                         verdict: format!("{:?}", arbitration_result),
                         details: format!("Arbitration completed in {arb_ms}ms"),
+                        player_input: input.clone(),
+                        timing_ms: arb_ms,
                     }),
                 )))
                 .await;
@@ -644,7 +695,7 @@ impl StorytellerEngine for EngineServiceImpl {
             } else {
                 None
             };
-            let _intent_ms = intent_start.elapsed().as_millis() as u64;
+            let intent_ms = intent_start.elapsed().as_millis() as u64;
 
             resolver_output.intent_statements = intent_statements.clone();
 
@@ -654,6 +705,7 @@ impl StorytellerEngine for EngineServiceImpl {
                     Some(turn),
                     engine_event::Payload::IntentSynthesis(IntentSynthesisComplete {
                         intent_statements: intent_statements.unwrap_or_default(),
+                        timing_ms: intent_ms,
                     }),
                 )))
                 .await;
@@ -674,7 +726,7 @@ impl StorytellerEngine for EngineServiceImpl {
                 &observer,
                 player_entity_id,
             );
-            let _assembly_ms = assembly_start.elapsed().as_millis() as u64;
+            let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
             // Inject composition-time goal intentions into preamble
             if let Some(ref intentions) = generated_intentions {
@@ -706,6 +758,22 @@ impl StorytellerEngine for EngineServiceImpl {
             // Extract token counts from observer (drains events)
             let token_counts = extract_token_counts_from_observer(&observer);
 
+            // Render context text for debug inspector
+            let preamble_text = render_preamble(&context.preamble);
+            let journal_text = render_journal(&context.journal);
+            let retrieved_text = context
+                .retrieved
+                .iter()
+                .map(|r| {
+                    let mut line = format!("- **{}**: {}", r.subject, r.content);
+                    if let Some(ref emotional) = r.emotional_context {
+                        line.push_str(&format!(" _{emotional}_"));
+                    }
+                    line
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
@@ -715,6 +783,10 @@ impl StorytellerEngine for EngineServiceImpl {
                         journal_tokens: token_counts.1,
                         retrieved_tokens: token_counts.2,
                         total_tokens: token_counts.3,
+                        preamble_text,
+                        journal_text,
+                        retrieved_text,
+                        timing_ms: assembly_ms,
                     }),
                 )))
                 .await;
@@ -732,6 +804,11 @@ impl StorytellerEngine for EngineServiceImpl {
 
             let narrator = NarratorAgent::new(&context, Arc::clone(&providers.narrator_llm))
                 .with_temperature(0.8);
+            let turn_system_prompt = narrator.system_prompt().to_string();
+            let turn_user_message = format!(
+                "[Context assembled — {} tokens across 3 tiers]",
+                context.estimated_tokens
+            );
             let noop = NoopObserver;
             let llm_start = Instant::now();
             let rendering = match narrator.render(&context, &noop).await {
@@ -766,6 +843,13 @@ impl StorytellerEngine for EngineServiceImpl {
                     engine_event::Payload::NarratorComplete(NarratorComplete {
                         prose: rendering.text.clone(),
                         generation_ms: narrator_ms,
+                        system_prompt: turn_system_prompt,
+                        user_message: turn_user_message,
+                        raw_response: rendering.text.clone(),
+                        model: providers.narrator_model.clone(),
+                        temperature: 0.8,
+                        max_tokens: 400,
+                        tokens_used: 0, // not available from NarratorRendering
                     }),
                 )))
                 .await;
@@ -904,8 +988,51 @@ impl StorytellerEngine for EngineServiceImpl {
                 })
                 .await;
 
-            // Emit TurnComplete for each existing turn
+            // Load persisted events to extract narrator prose for each turn
+            let events = session_store
+                .events
+                .read_all(&session_id)
+                .unwrap_or_default();
+
+            // Build a lookup: event_id → payload for narrator_complete events
+            let narrator_prose: std::collections::HashMap<String, String> = events
+                .iter()
+                .filter(|e| e.event_type == "narrator_complete")
+                .filter_map(|e| {
+                    let prose = e.payload.get("prose")?.as_str()?.to_string();
+                    Some((e.event_id.clone(), prose))
+                })
+                .collect();
+
+            // Replay each turn with its narrator output
             for turn in &turns {
+                // Find the narrator_complete event for this turn
+                let prose = turn
+                    .event_ids
+                    .iter()
+                    .find_map(|eid| narrator_prose.get(eid))
+                    .cloned()
+                    .unwrap_or_default();
+
+                // Emit NarratorComplete with the turn's prose
+                let _ = tx
+                    .send(Ok(make_event(
+                        &session_id,
+                        Some(turn.turn),
+                        engine_event::Payload::NarratorComplete(NarratorComplete {
+                            prose,
+                            generation_ms: 0,
+                            system_prompt: String::new(),
+                            user_message: turn.player_input.clone().unwrap_or_default(),
+                            raw_response: String::new(),
+                            model: String::new(),
+                            temperature: 0.0,
+                            max_tokens: 0,
+                            tokens_used: 0,
+                        }),
+                    )))
+                    .await;
+
                 let _ = tx
                     .send(Ok(make_event(
                         &session_id,
@@ -1142,11 +1269,18 @@ impl StorytellerEngine for EngineServiceImpl {
 
     async fn get_prediction_history(
         &self,
-        _request: Request<PredictionHistoryRequest>,
+        request: Request<PredictionHistoryRequest>,
     ) -> Result<Response<PredictionHistoryResponse>, Status> {
-        Err(Status::unimplemented(
-            "GetPredictionHistory not yet implemented",
-        ))
+        let req = request.into_inner();
+        let snapshot = self
+            .state_manager
+            .get_runtime_snapshot(&req.session_id)
+            .ok_or_else(|| Status::not_found("session not found"))?;
+
+        let history = &snapshot.prediction_history;
+        let raw_json = serde_json::to_string(history).unwrap_or_default();
+
+        Ok(Response::new(PredictionHistoryResponse { raw_json }))
     }
 
     async fn get_session_events(
@@ -1160,9 +1294,31 @@ impl StorytellerEngine for EngineServiceImpl {
 
     async fn stream_logs(
         &self,
-        _request: Request<LogFilter>,
+        request: Request<LogFilter>,
     ) -> Result<Response<Self::StreamLogsStream>, Status> {
-        Err(Status::unimplemented("StreamLogs not yet implemented"))
+        let filter = request.into_inner();
+        let mut rx = self.log_broadcast.subscribe();
+        let (tx, rx_out) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            while let Ok(entry) = rx.recv().await {
+                if let Some(ref level) = filter.level {
+                    if entry.level != *level {
+                        continue;
+                    }
+                }
+                if let Some(ref target) = filter.target {
+                    if !entry.target.starts_with(target.as_str()) {
+                        continue;
+                    }
+                }
+                if tx.send(Ok(entry)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(Response::new(ReceiverStream::new(rx_out)))
     }
 }
 

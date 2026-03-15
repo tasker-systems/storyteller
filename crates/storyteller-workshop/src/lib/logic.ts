@@ -8,17 +8,16 @@
 
 import type {
   StoryBlock,
+  PhaseStatus,
+  DebugState,
+} from "./types";
+import type {
   ResumeResult,
   CastSelection,
   ProfileSummary,
-  PhaseStatus,
-  DebugState,
+  HealthReport,
   DebugEvent,
-  LlmStatus,
-  EventDecomposedEvent,
-  ActionArbitratedEvent,
-  GoalsGeneratedEvent,
-} from "./types";
+} from "./generated";
 
 // ---------------------------------------------------------------------------
 // Session resume hydration
@@ -174,8 +173,8 @@ export function castPairs(
 export function phaseStatus(
   tab: string,
   debugState: DebugState,
-  llmStatus: LlmStatus | null,
-  llmChecking: boolean,
+  healthReport: HealthReport | null,
+  healthChecking: boolean,
 ): PhaseStatus {
   const TAB_PHASE_MAP: Record<string, string> = {
     LLM: "llm",
@@ -190,9 +189,9 @@ export function phaseStatus(
   };
 
   if (tab === "LLM") {
-    if (llmChecking) return "processing";
-    if (!llmStatus) return "pending";
-    return llmStatus.reachable ? "complete" : "error";
+    if (healthChecking) return "processing";
+    if (!healthReport) return "pending";
+    return healthReport.status === "Healthy" ? "complete" : "error";
   }
 
   const phase = TAB_PHASE_MAP[tab];
@@ -208,7 +207,6 @@ export function freshDebugState(turn: number): DebugState {
     phases: {},
     prediction: null,
     context: null,
-    characters: null,
     decomposition: null,
     arbitration: null,
     intent_synthesis: null,
@@ -237,16 +235,12 @@ export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugStat
       next.context = event;
       next.phases["context"] = "complete";
       break;
-    case "characters_updated":
-      next.characters = event;
-      next.phases["characters"] = "complete";
-      break;
     case "event_decomposed":
-      next.decomposition = event as EventDecomposedEvent;
+      next.decomposition = event;
       next.phases["decomposition"] = event.error ? "error" : "complete";
       break;
     case "action_arbitrated":
-      next.arbitration = event as ActionArbitratedEvent;
+      next.arbitration = event;
       next.phases["arbitration"] = "complete";
       break;
     case "intent_synthesized":
@@ -254,7 +248,7 @@ export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugStat
       next.phases["intent_synthesis"] = "complete";
       break;
     case "goals_generated":
-      next.goals = event as GoalsGeneratedEvent;
+      next.goals = event;
       next.phases["goals"] = "complete";
       break;
     case "narrator_complete":

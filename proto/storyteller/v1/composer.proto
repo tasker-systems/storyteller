@@ -11,6 +11,7 @@ service ComposerService {
   rpc GetDynamicsForGenre(DynamicsRequest) returns (DynamicsList);
   rpc GetNamesForGenre(GenreRequest) returns (NameList);
   rpc GetSettingsForGenre(GenreRequest) returns (SettingList);
+  rpc GetGenreOptions(GenreOptionsRequest) returns (GenreOptions);
 }
 
 message GenreRequest {
@@ -88,4 +89,17 @@ message SettingInfo {
   string profile_id = 1;
   string name = 2;
   optional string description = 3;
+}
+
+message GenreOptionsRequest {
+  string genre_id = 1;
+  repeated string selected_archetype_ids = 2;
+}
+
+message GenreOptions {
+  repeated ArchetypeInfo archetypes = 1;
+  repeated ProfileInfo profiles = 2;
+  repeated DynamicInfo dynamics = 3;
+  repeated string names = 4;
+  repeated SettingInfo settings = 5;
 }

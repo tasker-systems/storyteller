@@ -106,6 +106,8 @@ async fn start_engine_test_server(
         intent_llm: None,
         predictor: None,
         grammar: Arc::new(storyteller_core::grammars::PlutchikWestern::new()),
+        narrator_model: "test-model".to_string(),
+        decomposition_model: String::new(),
     });
 
     let engine_service = EngineServiceImpl::new(composer, state_manager, session_store, providers);
@@ -387,4 +389,122 @@ async fn invalid_genre_returns_empty_profiles() {
         .unwrap();
 
     assert!(response.into_inner().profiles.is_empty());
+}
+
+/// GetGenreOptions returns non-empty archetypes, profiles, dynamics, and names
+/// for a known genre.
+#[tokio::test]
+async fn get_genre_options_returns_all_sections() {
+    let Some(url) = start_test_server().await else {
+        eprintln!("STORYTELLER_DATA_PATH not set — skipping");
+        return;
+    };
+
+    let channel = Channel::from_shared(url).unwrap().connect().await.unwrap();
+    let mut client = ComposerServiceClient::new(channel);
+
+    let response = client
+        .get_genre_options(GenreOptionsRequest {
+            genre_id: "low_fantasy_folklore".to_string(),
+            selected_archetype_ids: vec![],
+        })
+        .await
+        .unwrap();
+
+    let options = response.into_inner();
+
+    assert!(
+        !options.archetypes.is_empty(),
+        "archetypes should not be empty for low_fantasy_folklore"
+    );
+    assert!(
+        !options.profiles.is_empty(),
+        "profiles should not be empty for low_fantasy_folklore"
+    );
+    assert!(
+        !options.dynamics.is_empty(),
+        "dynamics should not be empty for low_fantasy_folklore"
+    );
+    assert!(
+        !options.names.is_empty(),
+        "names should not be empty for low_fantasy_folklore"
+    );
+}
+
+/// ComposeScene with real LLM: verify NarratorComplete has non-empty
+/// system_prompt and model fields (enriched in Phase 2).
+///
+/// Requires: STORYTELLER_DATA_PATH env var + a running Ollama server.
+#[cfg(feature = "test-llm")]
+#[tokio::test(flavor = "multi_thread")]
+async fn narrator_complete_has_enriched_fields() {
+    use std::time::Duration;
+    use storyteller_engine::inference::external::{ExternalServerConfig, ExternalServerProvider};
+
+    let ollama_url =
+        std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let narrator_model =
+        std::env::var("STORYTELLER_NARRATOR_MODEL").unwrap_or_else(|_| "qwen2.5:14b".to_string());
+
+    let narrator_llm = Arc::new(ExternalServerProvider::new(ExternalServerConfig {
+        base_url: ollama_url,
+        model: narrator_model.clone(),
+        timeout: Duration::from_secs(180),
+    }));
+
+    let Some(server) = start_engine_test_server(narrator_llm).await else {
+        eprintln!("STORYTELLER_DATA_PATH not set — skipping");
+        return;
+    };
+
+    let channel = Channel::from_shared(server.url)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = StorytellerEngineClient::new(channel);
+
+    let request = ComposeSceneRequest {
+        genre_id: "low_fantasy_folklore".to_string(),
+        profile_id: "quiet_reunion".to_string(),
+        cast: vec![
+            CastMember {
+                archetype_id: "wandering_artist".to_string(),
+                name: Some("Mira".to_string()),
+                role: "protagonist".to_string(),
+            },
+            CastMember {
+                archetype_id: "stoic_survivor".to_string(),
+                name: Some("Aldric".to_string()),
+                role: "antagonist".to_string(),
+            },
+        ],
+        dynamics: vec![],
+        title_override: None,
+        setting_override: None,
+        seed: None,
+    };
+
+    let response = client.compose_scene(request).await.unwrap();
+    let mut stream = response.into_inner();
+
+    let mut narrator_complete = None;
+    while let Some(event) = stream.next().await {
+        let event = event.expect("stream should not error");
+        if let Some(engine_event::Payload::NarratorComplete(n)) = event.payload {
+            narrator_complete = Some(n);
+            break;
+        }
+    }
+
+    let nc = narrator_complete.expect("NarratorComplete event should be present");
+
+    assert!(
+        !nc.system_prompt.is_empty(),
+        "system_prompt should be non-empty in enriched NarratorComplete"
+    );
+    assert!(
+        !nc.model.is_empty(),
+        "model should be non-empty in enriched NarratorComplete"
+    );
 }

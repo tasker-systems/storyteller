@@ -2,13 +2,13 @@
   import { loadCatalog, getGenreOptions, composeScene } from "$lib/api";
   import type {
     GenreSummary,
-    GenreOptions,
+    GenreOptionsResult,
     SceneInfo,
     CastSelection,
     DynamicSelection,
     SceneSelections,
     ProfileSummary,
-  } from "$lib/types";
+  } from "$lib/generated";
   import {
     canAdvance as checkCanAdvance,
     nextStep,
@@ -34,7 +34,7 @@
   let selectedGenreId = $state<string | null>(null);
 
   // Step 1: Profile
-  let genreOptions = $state<GenreOptions | null>(null);
+  let genreOptions = $state<GenreOptionsResult | null>(null);
   let optionsLoading = $state(false);
   let optionsError = $state<string | null>(null);
   let selectedProfileId = $state<string | null>(null);

@@ -136,6 +136,39 @@ impl StorytellerClient {
         Ok(response.into_inner())
     }
 
+    pub async fn get_prediction_history(
+        &mut self,
+        session_id: &str,
+        from_turn: Option<u32>,
+        to_turn: Option<u32>,
+    ) -> Result<crate::proto::PredictionHistoryResponse, ClientError> {
+        let response = self
+            .engine
+            .get_prediction_history(crate::proto::PredictionHistoryRequest {
+                session_id: session_id.to_string(),
+                from_turn,
+                to_turn,
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Subscribe to a server-streaming log feed.
+    ///
+    /// Returns a `tonic::Streaming<LogEntry>` that yields log entries matching
+    /// the optional `level` and `target` filters.
+    pub async fn stream_logs(
+        &mut self,
+        level: Option<String>,
+        target: Option<String>,
+    ) -> Result<tonic::Streaming<crate::proto::LogEntry>, ClientError> {
+        let response = self
+            .engine
+            .stream_logs(crate::proto::LogFilter { level, target })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     // -------------------------------------------------------------------------
     // Composer RPCs
     // -------------------------------------------------------------------------
@@ -207,6 +240,21 @@ impl StorytellerClient {
             .composer
             .get_settings_for_genre(crate::proto::GenreRequest {
                 genre_id: genre_id.to_string(),
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub async fn get_genre_options(
+        &mut self,
+        genre_id: &str,
+        selected_archetype_ids: Vec<String>,
+    ) -> Result<crate::proto::GenreOptions, ClientError> {
+        let response = self
+            .composer
+            .get_genre_options(crate::proto::GenreOptionsRequest {
+                genre_id: genre_id.to_string(),
+                selected_archetype_ids,
             })
             .await?;
         Ok(response.into_inner())

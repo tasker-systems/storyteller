@@ -2,9 +2,10 @@
   import { onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import JSONTree from "svelte-json-tree";
-  import type { DebugState, DebugEvent, PhaseStatus, LlmStatus, TracingLogEntry, EventDecomposedEvent, ActionArbitratedEvent } from "./types";
+  import type { DebugState, PhaseStatus } from "./types";
   import { DEBUG_EVENT_CHANNEL, LOG_EVENT_CHANNEL } from "./types";
-  import { checkLlm } from "./api";
+  import type { DebugEvent, HealthReport, LogEntry } from "./generated";
+  import { checkHealth } from "./api";
   import { phaseStatus as computePhaseStatus, freshDebugState, applyDebugEvent } from "./logic";
 
   let { visible }: { visible: boolean } = $props();
@@ -24,10 +25,10 @@
   };
 
   let activeTab: TabName = $state("LLM");
-  let llmStatus: LlmStatus | null = $state(null);
-  let llmChecking = $state(false);
+  let healthReport: HealthReport | null = $state(null);
+  let healthChecking = $state(false);
   const MAX_LOG_ENTRIES = 500;
-  let logEntries: TracingLogEntry[] = $state([]);
+  let logEntries: LogEntry[] = $state([]);
   let logAutoScroll = $state(true);
   let logContainer: HTMLDivElement | undefined = $state(undefined);
   let expandedLogIndices: Set<number> = $state(new Set());
@@ -36,7 +37,6 @@
     phases: {},
     prediction: null,
     context: null,
-    characters: null,
     decomposition: null,
     arbitration: null,
     intent_synthesis: null,
@@ -85,32 +85,31 @@
   }
 
   function phaseStatus(tab: TabName): PhaseStatus {
-    return computePhaseStatus(tab, debugState, llmStatus, llmChecking);
+    return computePhaseStatus(tab, debugState, healthReport, healthChecking);
   }
 
-  async function runLlmCheck() {
-    llmChecking = true;
+  async function runHealthCheck() {
+    healthChecking = true;
     try {
-      llmStatus = await checkLlm();
+      healthReport = await checkHealth();
     } catch (e) {
-      llmStatus = {
-        reachable: false,
-        endpoint: "unknown",
-        model: "unknown",
-        provider: "Ollama",
-        available_models: [],
-        error: e instanceof Error ? e.message : String(e),
-        latency_ms: 0,
+      healthReport = {
+        status: "Unavailable",
+        subsystems: [{
+          name: "connection",
+          status: "Unavailable",
+          message: e instanceof Error ? e.message : String(e),
+        }],
       };
     }
-    llmChecking = false;
+    healthChecking = false;
   }
 
   function handleDebugEvent(event: DebugEvent) {
     debugState = applyDebugEvent(debugState, event);
   }
 
-  function handleLogEntry(entry: TracingLogEntry) {
+  function handleLogEntry(entry: LogEntry) {
     logEntries = [...logEntries, entry].slice(-MAX_LOG_ENTRIES);
     if (logAutoScroll && logContainer) {
       requestAnimationFrame(() => {
@@ -163,12 +162,12 @@
       unlistenDebug = await listen<DebugEvent>(DEBUG_EVENT_CHANNEL, (e) => {
         handleDebugEvent(e.payload);
       });
-      unlistenLogs = await listen<TracingLogEntry>(LOG_EVENT_CHANNEL, (e) => {
+      unlistenLogs = await listen<LogEntry>(LOG_EVENT_CHANNEL, (e) => {
         handleLogEntry(e.payload);
       });
     })();
 
-    runLlmCheck();
+    runHealthCheck();
 
     return () => {
       unlistenDebug?.();
@@ -209,35 +208,22 @@
     <div class="debug-content">
       {#if activeTab === "LLM"}
         <div class="debug-tab-content">
-          {#if llmChecking}
-            <p class="debug-empty">Checking LLM connectivity...</p>
-          {:else if llmStatus}
+          {#if healthChecking}
+            <p class="debug-empty">Checking server health...</p>
+          {:else if healthReport}
             <div class="debug-section">
               <h4>Status</h4>
-              <pre class={llmStatus.reachable ? "llm-ok" : "llm-fail"}>{llmStatus.reachable ? "Reachable" : "Unreachable"} ({llmStatus.latency_ms}ms)</pre>
+              <pre class={healthReport.status === "Healthy" ? "llm-ok" : "llm-fail"}>{healthReport.status}</pre>
             </div>
-            {#if llmStatus.error}
+            {#if healthReport.subsystems.length > 0}
               <div class="debug-section">
-                <h4>Error</h4>
-                <pre class="llm-fail">{llmStatus.error}</pre>
+                <h4>Subsystems</h4>
+                {#each healthReport.subsystems as sub}
+                  <pre class={sub.status === "Healthy" ? "llm-ok" : "llm-fail"}>{sub.name}: {sub.status}{sub.message ? ` — ${sub.message}` : ""}</pre>
+                {/each}
               </div>
             {/if}
-            <div class="debug-section">
-              <h4>Configuration</h4>
-              <pre>Provider: {llmStatus.provider}
-Endpoint: {llmStatus.endpoint}
-Model:    {llmStatus.model}</pre>
-            </div>
-            {#if llmStatus.available_models.length > 0}
-              <div class="debug-section">
-                <h4>Available Models ({llmStatus.available_models.length})</h4>
-                <pre>{llmStatus.available_models.join("\n")}</pre>
-              </div>
-              {#if !llmStatus.available_models.some(m => m.startsWith(llmStatus!.model))}
-                <p class="debug-notice">Configured model "{llmStatus.model}" not found in available models.</p>
-              {/if}
-            {/if}
-            <button class="llm-recheck" onclick={runLlmCheck}>Re-check</button>
+            <button class="llm-recheck" onclick={runHealthCheck}>Re-check</button>
           {:else}
             <p class="debug-empty">No status yet.</p>
           {/if}
@@ -271,15 +257,9 @@ Model:    {llmStatus.model}</pre>
               <p class="debug-notice">No ML model loaded. Set STORYTELLER_MODEL_PATH or STORYTELLER_DATA_PATH.</p>
             {/if}
             <div class="debug-section">
-              <h4>Scene Dynamics</h4>
-              <pre>{debugState.prediction.resolver_output.scene_dynamics}</pre>
+              <h4>Prediction Data</h4>
+              <pre>{debugState.prediction.raw_json}</pre>
             </div>
-            {#if debugState.prediction.resolver_output.original_predictions.length > 0}
-              <div class="debug-section">
-                <h4>Character Predictions</h4>
-                <JSONTree value={debugState.prediction.resolver_output.original_predictions} />
-              </div>
-            {/if}
             <div class="debug-section">
               <h4>Prediction: {debugState.prediction.timing_ms}ms</h4>
             </div>
@@ -289,60 +269,21 @@ Model:    {llmStatus.model}</pre>
         </div>
       {:else if activeTab === "Characters"}
         <div class="debug-tab-content">
-          {#if debugState.characters}
-            <div class="debug-section">
-              <h4>Emotional Markers</h4>
-              <pre>{debugState.characters.emotional_markers.length > 0 ? debugState.characters.emotional_markers.join(", ") : "(none detected)"}</pre>
-            </div>
-            {#each debugState.characters.characters as char}
-              <div class="debug-section">
-                <h4>{(char as any).name ?? "Character"}</h4>
-                <JSONTree value={char} />
-              </div>
-            {/each}
-          {:else}
-            <p class="debug-empty">Waiting for turn data...</p>
-          {/if}
+          <p class="debug-empty">Character state will be available via GetSceneState RPC.</p>
         </div>
       {:else if activeTab === "Events"}
         <div class="debug-tab-content">
           {#if debugState.decomposition}
-            <!-- LLM decomposition -->
             <div class="debug-section">
-              <h4>Decomposition <span class="events-source">qwen2.5:3b-instruct</span> <span class="token-count">{debugState.decomposition.timing_ms}ms</span></h4>
+              <h4>Decomposition <span class="events-source">{debugState.decomposition.model}</span> <span class="token-count">{debugState.decomposition.timing_ms}ms</span></h4>
               {#if debugState.decomposition.error}
                 <pre class="llm-fail">{debugState.decomposition.error}</pre>
               {/if}
-              {#if debugState.decomposition.raw_llm_json && !debugState.decomposition.decomposition}
+              {#if debugState.decomposition.raw_json}
                 <div class="debug-section">
-                  <h4>Raw LLM Response</h4>
-                  <JSONTree value={debugState.decomposition.raw_llm_json} />
+                  <h4>Raw Response</h4>
+                  <pre>{debugState.decomposition.raw_json}</pre>
                 </div>
-              {/if}
-              {#if debugState.decomposition.decomposition}
-                {@const decomp = debugState.decomposition.decomposition}
-                {#each decomp.events as event, i}
-                  <div class="decomp-event">
-                    <div class="decomp-kind">{event.kind} <span class="decomp-direction">{event.relational_direction}</span></div>
-                    <div class="decomp-triple">
-                      <span class="decomp-entity actor">{event.actor ? `${event.actor.mention} [${event.actor.category}]` : "(no actor)"}</span>
-                      <span class="decomp-arrow">&rarr;</span>
-                      <span class="decomp-action">{event.action}</span>
-                      <span class="decomp-arrow">&rarr;</span>
-                      <span class="decomp-entity target">{event.target ? `${event.target.mention} [${event.target.category}]` : "(no target)"}</span>
-                    </div>
-                    {#if event.confidence_note}
-                      <div class="decomp-note">{event.confidence_note}</div>
-                    {/if}
-                  </div>
-                {/each}
-                {#if decomp.entities.length > 0}
-                  <div class="decomp-entities-row">
-                    {#each decomp.entities as entity}
-                      <span class="entity-chip">{entity.mention} <span class="entity-cat">{entity.category}</span></span>
-                    {/each}
-                  </div>
-                {/if}
               {:else if !debugState.decomposition.error}
                 <p class="debug-empty">No decomposition produced.</p>
               {/if}
@@ -356,30 +297,12 @@ Model:    {llmStatus.model}</pre>
           {#if debugState.arbitration}
             <div class="debug-section">
               <h4>Verdict</h4>
-              <pre class={debugState.arbitration.result.verdict === "Permitted" ? "arb-permitted" : debugState.arbitration.result.verdict === "Impossible" ? "arb-impossible" : "arb-ambiguous"}>{debugState.arbitration.result.verdict}</pre>
+              <pre class={debugState.arbitration.verdict === "Permitted" ? "arb-permitted" : debugState.arbitration.verdict === "Impossible" ? "arb-impossible" : "arb-ambiguous"}>{debugState.arbitration.verdict}</pre>
             </div>
-            {#if debugState.arbitration.result.verdict === "Impossible" && debugState.arbitration.result.reason}
+            {#if debugState.arbitration.details}
               <div class="debug-section">
-                <h4>Violation</h4>
-                <pre>{debugState.arbitration.result.reason.constraint_name}: {debugState.arbitration.result.reason.description}</pre>
-              </div>
-            {/if}
-            {#if debugState.arbitration.result.verdict === "Ambiguous" && debugState.arbitration.result.uncertainty}
-              <div class="debug-section">
-                <h4>Uncertainty</h4>
-                <pre>{debugState.arbitration.result.uncertainty}</pre>
-              </div>
-              {#if debugState.arbitration.result.known_constraints && debugState.arbitration.result.known_constraints.length > 0}
-                <div class="debug-section">
-                  <h4>Known Constraints</h4>
-                  <JSONTree value={debugState.arbitration.result.known_constraints} />
-                </div>
-              {/if}
-            {/if}
-            {#if debugState.arbitration.result.verdict === "Permitted" && debugState.arbitration.result.conditions && debugState.arbitration.result.conditions.length > 0}
-              <div class="debug-section">
-                <h4>Conditions</h4>
-                <JSONTree value={debugState.arbitration.result.conditions} />
+                <h4>Details</h4>
+                <pre>{debugState.arbitration.details}</pre>
               </div>
             {/if}
             <div class="debug-section">

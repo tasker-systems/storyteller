@@ -29,13 +29,11 @@ tokio = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 storyteller-core = { path = "../../storyteller-core" }
-storyteller-engine = { path = "../../storyteller-engine" }
-storyteller-ml = { path = "../../storyteller-ml", version = "=0.1.0" }
+storyteller-client = { path = "../../storyteller-client", version = "=0.1.0" }
+ts-rs = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-reqwest = { workspace = true }
 dotenvy = { workspace = true }
-rand = { workspace = true }
 
 [lints]
 workspace = true

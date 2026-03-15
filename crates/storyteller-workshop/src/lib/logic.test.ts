@@ -11,15 +11,13 @@ import {
   freshDebugState,
   applyDebugEvent,
 } from "./logic";
+import type { DebugState, PhaseStatus } from "./types";
 import type {
   ResumeResult,
   CastSelection,
-  DebugState,
   DebugEvent,
-  LlmStatus,
-  PhaseStartedEvent,
-  EventDecomposedEvent,
-} from "./types";
+  HealthReport,
+} from "./generated";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,6 +25,7 @@ import type {
 
 function makeSceneInfo(opening = "Once upon a time...") {
   return {
+    session_id: "test-session-id",
     title: "Test Scene",
     setting_description: "A dark room",
     cast: ["Alice", "Bob"],
@@ -363,20 +362,20 @@ describe("phaseStatus", () => {
       expect(phaseStatus("LLM", emptyState, null, false)).toBe("pending");
     });
 
-    it("returns complete when reachable", () => {
-      const llm: LlmStatus = {
-        reachable: true, endpoint: "http://localhost:11434",
-        model: "llama3", provider: "Ollama", available_models: [], error: null, latency_ms: 50,
+    it("returns complete when healthy", () => {
+      const report: HealthReport = {
+        status: "Healthy",
+        subsystems: [],
       };
-      expect(phaseStatus("LLM", emptyState, llm, false)).toBe("complete");
+      expect(phaseStatus("LLM", emptyState, report, false)).toBe("complete");
     });
 
-    it("returns error when unreachable", () => {
-      const llm: LlmStatus = {
-        reachable: false, endpoint: "http://localhost:11434",
-        model: "llama3", provider: "Ollama", available_models: [], error: "refused", latency_ms: 0,
+    it("returns error when unhealthy", () => {
+      const report: HealthReport = {
+        status: "Degraded",
+        subsystems: [{ name: "llm", status: "Unavailable", message: "refused" }],
       };
-      expect(phaseStatus("LLM", emptyState, llm, false)).toBe("error");
+      expect(phaseStatus("LLM", emptyState, report, false)).toBe("error");
     });
   });
 
@@ -422,7 +421,7 @@ describe("applyDebugEvent", () => {
     const state = freshDebugState(1);
     state.phases["prediction"] = "complete";
 
-    const event: PhaseStartedEvent = { type: "phase_started", turn: 2, phase: "prediction" };
+    const event: DebugEvent = { type: "phase_started", turn: 2, phase: "prediction" };
     const next = applyDebugEvent(state, event);
 
     expect(next.turn).toBe(2);
@@ -435,7 +434,7 @@ describe("applyDebugEvent", () => {
     let state = freshDebugState(1);
     state.phases["prediction"] = "complete";
 
-    const event: PhaseStartedEvent = { type: "phase_started", turn: 1, phase: "context" };
+    const event: DebugEvent = { type: "phase_started", turn: 1, phase: "context" };
     const next = applyDebugEvent(state, event);
 
     expect(next.phases["prediction"]).toBe("complete");
@@ -444,10 +443,10 @@ describe("applyDebugEvent", () => {
 
   it("handles event_decomposed with error", () => {
     const state = freshDebugState(1);
-    const event: EventDecomposedEvent = {
+    const event: DebugEvent = {
       type: "event_decomposed", turn: 1,
-      decomposition: null, raw_llm_json: null,
-      timing_ms: 100, model: "qwen", error: "timeout",
+      raw_json: null,
+      timing_ms: BigInt(100), model: "qwen", error: "timeout",
     };
     const next = applyDebugEvent(state, event);
     expect(next.phases["decomposition"]).toBe("error");
@@ -456,10 +455,10 @@ describe("applyDebugEvent", () => {
 
   it("handles event_decomposed without error", () => {
     const state = freshDebugState(1);
-    const event: EventDecomposedEvent = {
+    const event: DebugEvent = {
       type: "event_decomposed", turn: 1,
-      decomposition: { events: [], entities: [] }, raw_llm_json: null,
-      timing_ms: 100, model: "qwen", error: null,
+      raw_json: '{"events":[],"entities":[]}',
+      timing_ms: BigInt(100), model: "qwen", error: null,
     };
     const next = applyDebugEvent(state, event);
     expect(next.phases["decomposition"]).toBe("complete");
@@ -480,7 +479,7 @@ describe("applyDebugEvent", () => {
     const event: DebugEvent = {
       type: "intent_synthesized", turn: 1,
       intent_statements: "**Arthur** should respond reluctantly.",
-      timing_ms: 2300,
+      timing_ms: BigInt(2300),
     };
     const next = applyDebugEvent(state, event);
     expect(next.phases["intent_synthesis"]).toBe("complete");
@@ -492,11 +491,11 @@ describe("applyDebugEvent", () => {
     const event: DebugEvent = {
       type: "goals_generated", turn: 1,
       scene_goals: ["reveal_secret (revelation)", "build_trust (bonding)"],
-      character_goals: ["Arthur → get_letter (revelation, Overt)", "Margaret → guard_secret (protection, Hidden)"],
+      character_goals: ["Arthur -> get_letter (revelation, Overt)", "Margaret -> guard_secret (protection, Hidden)"],
       scene_direction: "Arthur seeks a letter hidden on the mantel.",
       character_drives: ["Arthur: Get the letter [constraint: Margaret is near] [stance: Polite deflection]"],
       player_context: "get letter; explore room",
-      timing_ms: 1500,
+      timing_ms: BigInt(1500),
     };
     const next = applyDebugEvent(state, event);
     expect(next.phases["goals"]).toBe("complete");
@@ -516,7 +515,7 @@ describe("applyDebugEvent", () => {
       scene_direction: null,
       character_drives: [],
       player_context: null,
-      timing_ms: 0,
+      timing_ms: BigInt(0),
     };
     const next = applyDebugEvent(state, event);
     expect(next.phases["goals"]).toBe("complete");

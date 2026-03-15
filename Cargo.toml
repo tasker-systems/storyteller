@@ -85,6 +85,9 @@ toml = "0.8"
 # Regular expressions (env var substitution in config)
 regex = "1.11"
 
+# TypeScript type generation
+ts-rs = { version = "12", features = ["serde-compat"] }
+
 # Test utilities
 serial_test = "3.2"
 tempfile = "3"

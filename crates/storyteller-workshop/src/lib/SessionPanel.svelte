@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listSessions } from "$lib/api";
-  import type { SessionSummary } from "$lib/types";
+  import type { SessionInfo } from "$lib/generated";
 
   let { onNewSession, onResumeSession, visible }: {
     onNewSession: () => void;
@@ -9,7 +9,7 @@
     visible: boolean;
   } = $props();
 
-  let sessions = $state<SessionSummary[]>([]);
+  let sessions = $state<SessionInfo[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
 

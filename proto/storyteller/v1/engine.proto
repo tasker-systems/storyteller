@@ -103,15 +103,69 @@ message EngineEvent {
 }
 
 message PhaseStarted { string phase = 1; }
-message DecompositionComplete { string raw_json = 1; }
-message PredictionComplete { string raw_json = 1; }
-message ArbitrationComplete { string verdict = 1; string details = 2; }
-message IntentSynthesisComplete { string intent_statements = 1; }
-message ContextAssembled { uint32 preamble_tokens = 1; uint32 journal_tokens = 2; uint32 retrieved_tokens = 3; uint32 total_tokens = 4; }
+
+message DecompositionComplete {
+  string raw_json = 1;
+  uint64 timing_ms = 2;
+  string model = 3;
+  optional string error = 4;
+}
+
+message PredictionComplete {
+  string raw_json = 1;
+  uint64 timing_ms = 2;
+  bool model_loaded = 3;
+}
+
+message ArbitrationComplete {
+  string verdict = 1;
+  string details = 2;
+  string player_input = 3;
+  uint64 timing_ms = 4;
+}
+
+message IntentSynthesisComplete {
+  string intent_statements = 1;
+  uint64 timing_ms = 2;
+}
+
+message ContextAssembled {
+  uint32 preamble_tokens = 1;
+  uint32 journal_tokens = 2;
+  uint32 retrieved_tokens = 3;
+  uint32 total_tokens = 4;
+  string preamble_text = 5;
+  string journal_text = 6;
+  string retrieved_text = 7;
+  uint64 timing_ms = 8;
+}
+
 message NarratorToken { string token = 1; }
-message NarratorComplete { string prose = 1; uint64 generation_ms = 2; }
+
+message NarratorComplete {
+  string prose = 1;
+  uint64 generation_ms = 2;
+  string system_prompt = 3;
+  string user_message = 4;
+  string raw_response = 5;
+  string model = 6;
+  float temperature = 7;
+  uint32 max_tokens = 8;
+  uint32 tokens_used = 9;
+}
+
 message SceneComposed { string title = 1; string setting_description = 2; repeated string cast_names = 3; string composition_json = 4; }
-message GoalsGenerated { repeated string scene_goals = 1; repeated string character_goals = 2; optional string scene_direction = 3; optional string character_drives = 4; optional string player_context = 5; uint64 timing_ms = 6; }
+
+message GoalsGenerated {
+  repeated string scene_goals = 1;
+  repeated string character_goals = 2;
+  optional string scene_direction = 3;
+  reserved 4;
+  optional string player_context = 5;
+  uint64 timing_ms = 6;
+  repeated string character_drives = 7;
+}
+
 message TurnComplete { uint32 turn = 1; uint64 total_ms = 2; }
 message ErrorOccurred { string phase = 1; string message = 2; }
 
@@ -123,4 +177,10 @@ message SceneState { string session_id = 1; string title = 2; string setting_des
 message CharacterState { string entity_id = 1; string name = 2; string role = 3; string performance_notes = 4; }
 message PredictionHistoryResponse { string raw_json = 1; }
 message StoredEvent { string event_id = 1; string event_type = 2; string payload_json = 3; string timestamp = 4; }
-message LogEntry { string level = 1; string target = 2; string message = 3; string timestamp = 4; }
+message LogEntry {
+  string level = 1;
+  string target = 2;
+  string message = 3;
+  string timestamp = 4;
+  map<string, string> fields = 5;
+}

@@ -18,6 +18,7 @@ use storyteller_engine::inference::structured::OllamaStructuredProvider;
 use crate::engine::{EngineProviders, EngineStateManager};
 use crate::grpc::composer_service::ComposerServiceImpl;
 use crate::grpc::engine_service::EngineServiceImpl;
+use crate::logging::LogBroadcast;
 use crate::persistence::SessionStore;
 use crate::proto::composer_service_server::ComposerServiceServer;
 use crate::proto::storyteller_engine_server::StorytellerEngineServer;
@@ -64,7 +65,14 @@ impl ServerConfig {
 ///
 /// Serves both [`ComposerServiceImpl`] and [`EngineServiceImpl`] with real LLM
 /// providers constructed from [`ServerConfig`].
-pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
+///
+/// If `log_broadcast` is provided, the engine service will use it for the
+/// `StreamLogs` RPC. Pass the same [`LogBroadcast`] that was wired into the
+/// tracing subscriber so that log events are forwarded to streaming clients.
+pub async fn run_server(
+    config: ServerConfig,
+    log_broadcast: Option<LogBroadcast>,
+) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading descriptors from {}", config.data_path);
     let composer = Arc::new(SceneComposer::load(std::path::Path::new(
         &config.data_path,
@@ -106,8 +114,8 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     // Character predictor (optional — degrades gracefully when model not on disk)
     let predictor: Option<Arc<CharacterPredictor>> = config.model_path.as_ref().and_then(|path| {
-        let model_path = std::path::Path::new(path);
-        match CharacterPredictor::load(model_path) {
+        let model_path = std::path::Path::new(path).join("character_predictor.onnx");
+        match CharacterPredictor::load(&model_path) {
             Ok(p) => {
                 tracing::info!(%path, "Character predictor loaded");
                 Some(Arc::new(p))
@@ -127,6 +135,8 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
         intent_llm: Some(intent_llm),
         predictor,
         grammar,
+        narrator_model: config.narrator_model.clone(),
+        decomposition_model: config.decomposition_model.clone(),
     });
 
     info!(
@@ -140,12 +150,21 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
     info!("Starting gRPC server on {addr}");
 
     let composer_service = ComposerServiceImpl::new(composer.clone());
-    let engine_service = EngineServiceImpl::new(
-        composer.clone(),
-        state_manager.clone(),
-        session_store.clone(),
-        providers.clone(),
-    );
+    let engine_service = match log_broadcast {
+        Some(lb) => EngineServiceImpl::with_log_broadcast(
+            composer.clone(),
+            state_manager.clone(),
+            session_store.clone(),
+            providers.clone(),
+            lb,
+        ),
+        None => EngineServiceImpl::new(
+            composer.clone(),
+            state_manager.clone(),
+            session_store.clone(),
+            providers.clone(),
+        ),
+    };
 
     Server::builder()
         .add_service(ComposerServiceServer::new(composer_service))
