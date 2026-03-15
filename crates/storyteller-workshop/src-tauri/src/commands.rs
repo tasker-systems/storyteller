@@ -40,13 +40,13 @@ pub async fn check_health(client: State<'_, ClientState>) -> Result<HealthReport
     let health = c.check_health().await.map_err(|e| e.to_string())?;
 
     Ok(HealthReport {
-        status: format!("{:?}", health.status),
+        status: health.status.into(),
         subsystems: health
             .subsystems
             .into_iter()
             .map(|s| SubsystemStatus {
                 name: s.name,
-                status: format!("{:?}", s.status),
+                status: s.status.into(),
                 message: s.message,
             })
             .collect(),

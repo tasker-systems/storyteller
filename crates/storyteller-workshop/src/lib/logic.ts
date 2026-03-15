@@ -191,7 +191,7 @@ export function phaseStatus(
   if (tab === "LLM") {
     if (healthChecking) return "processing";
     if (!healthReport) return "pending";
-    return healthReport.status === "healthy" ? "complete" : "error";
+    return healthReport.status === "Healthy" ? "complete" : "error";
   }
 
   const phase = TAB_PHASE_MAP[tab];

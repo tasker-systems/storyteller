@@ -38,8 +38,8 @@
   async function checkServerHealthy(): Promise<boolean> {
     try {
       const report = await checkHealth();
-      if (report.status !== "healthy") {
-        const unhealthy = report.subsystems.filter((s) => s.status !== "ok");
+      if (report.status !== "Healthy") {
+        const unhealthy = report.subsystems.filter((s) => s.status !== "Healthy");
         const details = unhealthy.map((s) => `${s.name}: ${s.message ?? s.status}`).join("; ");
         error = `Server unhealthy: ${details || report.status}`;
         return false;

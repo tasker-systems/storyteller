@@ -48,11 +48,31 @@ pub struct ContextTokens {
     pub total: u32,
 }
 
+/// Health status enum — mirrors `storyteller_core::types::health::HealthStatus`
+/// but with `TS` derive for TypeScript generation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/generated/")]
+pub enum HealthStatus {
+    Healthy,
+    Degraded,
+    Unavailable,
+}
+
+impl From<storyteller_core::types::health::HealthStatus> for HealthStatus {
+    fn from(s: storyteller_core::types::health::HealthStatus) -> Self {
+        match s {
+            storyteller_core::types::health::HealthStatus::Healthy => Self::Healthy,
+            storyteller_core::types::health::HealthStatus::Degraded => Self::Degraded,
+            storyteller_core::types::health::HealthStatus::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
 /// Server health report.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/generated/")]
 pub struct HealthReport {
-    pub status: String,
+    pub status: HealthStatus,
     pub subsystems: Vec<SubsystemStatus>,
 }
 
@@ -60,7 +80,7 @@ pub struct HealthReport {
 #[ts(export, export_to = "../../src/lib/generated/")]
 pub struct SubsystemStatus {
     pub name: String,
-    pub status: String,
+    pub status: HealthStatus,
     pub message: Option<String>,
 }
 

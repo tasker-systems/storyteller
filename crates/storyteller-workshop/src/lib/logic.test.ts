@@ -364,7 +364,7 @@ describe("phaseStatus", () => {
 
     it("returns complete when healthy", () => {
       const report: HealthReport = {
-        status: "healthy",
+        status: "Healthy",
         subsystems: [],
       };
       expect(phaseStatus("LLM", emptyState, report, false)).toBe("complete");
@@ -372,8 +372,8 @@ describe("phaseStatus", () => {
 
     it("returns error when unhealthy", () => {
       const report: HealthReport = {
-        status: "degraded",
-        subsystems: [{ name: "llm", status: "error", message: "refused" }],
+        status: "Degraded",
+        subsystems: [{ name: "llm", status: "Unavailable", message: "refused" }],
       };
       expect(phaseStatus("LLM", emptyState, report, false)).toBe("error");
     });

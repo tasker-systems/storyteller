@@ -94,10 +94,10 @@
       healthReport = await checkHealth();
     } catch (e) {
       healthReport = {
-        status: "error",
+        status: "Unavailable",
         subsystems: [{
           name: "connection",
-          status: "error",
+          status: "Unavailable",
           message: e instanceof Error ? e.message : String(e),
         }],
       };
@@ -213,13 +213,13 @@
           {:else if healthReport}
             <div class="debug-section">
               <h4>Status</h4>
-              <pre class={healthReport.status === "healthy" ? "llm-ok" : "llm-fail"}>{healthReport.status}</pre>
+              <pre class={healthReport.status === "Healthy" ? "llm-ok" : "llm-fail"}>{healthReport.status}</pre>
             </div>
             {#if healthReport.subsystems.length > 0}
               <div class="debug-section">
                 <h4>Subsystems</h4>
                 {#each healthReport.subsystems as sub}
-                  <pre class={sub.status === "ok" ? "llm-ok" : "llm-fail"}>{sub.name}: {sub.status}{sub.message ? ` — ${sub.message}` : ""}</pre>
+                  <pre class={sub.status === "Healthy" ? "llm-ok" : "llm-fail"}>{sub.name}: {sub.status}{sub.message ? ` — ${sub.message}` : ""}</pre>
                 {/each}
               </div>
             {/if}

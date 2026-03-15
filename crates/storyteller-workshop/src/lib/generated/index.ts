@@ -10,6 +10,7 @@ export type { DynamicSummary } from './DynamicSummary';
 export type { GenreOptionsResult } from './GenreOptionsResult';
 export type { GenreSummary } from './GenreSummary';
 export type { HealthReport } from './HealthReport';
+export type { HealthStatus } from './HealthStatus';
 export type { LogEntry } from './LogEntry';
 export type { ProfileSummary } from './ProfileSummary';
 export type { ResumeResult } from './ResumeResult';
