@@ -988,8 +988,51 @@ impl StorytellerEngine for EngineServiceImpl {
                 })
                 .await;
 
-            // Emit TurnComplete for each existing turn
+            // Load persisted events to extract narrator prose for each turn
+            let events = session_store
+                .events
+                .read_all(&session_id)
+                .unwrap_or_default();
+
+            // Build a lookup: event_id → payload for narrator_complete events
+            let narrator_prose: std::collections::HashMap<String, String> = events
+                .iter()
+                .filter(|e| e.event_type == "narrator_complete")
+                .filter_map(|e| {
+                    let prose = e.payload.get("prose")?.as_str()?.to_string();
+                    Some((e.event_id.clone(), prose))
+                })
+                .collect();
+
+            // Replay each turn with its narrator output
             for turn in &turns {
+                // Find the narrator_complete event for this turn
+                let prose = turn
+                    .event_ids
+                    .iter()
+                    .find_map(|eid| narrator_prose.get(eid))
+                    .cloned()
+                    .unwrap_or_default();
+
+                // Emit NarratorComplete with the turn's prose
+                let _ = tx
+                    .send(Ok(make_event(
+                        &session_id,
+                        Some(turn.turn),
+                        engine_event::Payload::NarratorComplete(NarratorComplete {
+                            prose,
+                            generation_ms: 0,
+                            system_prompt: String::new(),
+                            user_message: turn.player_input.clone().unwrap_or_default(),
+                            raw_response: String::new(),
+                            model: String::new(),
+                            temperature: 0.0,
+                            max_tokens: 0,
+                            tokens_used: 0,
+                        }),
+                    )))
+                    .await;
+
                 let _ = tx
                     .send(Ok(make_event(
                         &session_id,

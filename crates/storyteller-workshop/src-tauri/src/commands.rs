@@ -406,6 +406,9 @@ pub async fn resume_session(
     let mut cast = Vec::new();
     let mut opening_prose = String::new();
     let mut turns: Vec<TurnSummary> = Vec::new();
+    // Track the latest narrator output and player input for turn assembly
+    let mut latest_narrator_prose = String::new();
+    let mut latest_player_input: Option<String> = None;
 
     while let Some(event) = stream
         .message()
@@ -429,15 +432,22 @@ pub async fn resume_session(
                     cast = sc.cast_names.clone();
                 }
                 engine_event::Payload::NarratorComplete(nc) => {
-                    // During resume, narrator_complete events carry the replayed turns
-                    opening_prose = nc.prose.clone();
+                    latest_narrator_prose = nc.prose.clone();
+                    latest_player_input = if nc.user_message.is_empty() {
+                        None
+                    } else {
+                        Some(nc.user_message.clone())
+                    };
+                    // The first narrator output (turn 0 or no turn) is the opening
+                    if turn == 0 && opening_prose.is_empty() {
+                        opening_prose = nc.prose.clone();
+                    }
                 }
                 engine_event::Payload::TurnComplete(tc) => {
-                    // Each TurnComplete during resume represents a replayed turn
                     turns.push(TurnSummary {
                         turn: tc.turn,
-                        player_input: None, // Resume stream doesn't carry player input
-                        narrator_output: opening_prose.clone(),
+                        player_input: latest_player_input.take(),
+                        narrator_output: latest_narrator_prose.clone(),
                     });
                 }
                 _ => {}
