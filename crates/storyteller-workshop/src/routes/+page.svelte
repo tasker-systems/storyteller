@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { checkLlm, submitInput, resumeSession } from "$lib/api";
-  import type { StoryBlock, SceneInfo, ResumeResult } from "$lib/types";
+  import { checkHealth, submitInput, resumeSession } from "$lib/api";
+  import type { StoryBlock } from "$lib/types";
+  import type { SceneInfo, ResumeResult } from "$lib/generated";
   import { hydrateBlocks } from "$lib/logic";
   import StoryPane from "$lib/StoryPane.svelte";
   import InputBar from "$lib/InputBar.svelte";
@@ -11,6 +12,7 @@
 
   let view: "setup" | "playing" = $state("setup");
   let sceneInfo: SceneInfo | null = $state(null);
+  let sessionId = $state("");
   let blocks: StoryBlock[] = $state([]);
   let loading = $state(false);
   let error: string | null = $state(null);
@@ -33,11 +35,13 @@
     return () => window.removeEventListener("keydown", handleKeydown);
   });
 
-  async function checkLlmReachable(): Promise<boolean> {
+  async function checkServerHealthy(): Promise<boolean> {
     try {
-      const llm = await checkLlm();
-      if (!llm.reachable) {
-        error = `LLM unreachable at ${llm.endpoint}: ${llm.error ?? "unknown error"}. Start Ollama and reload.`;
+      const report = await checkHealth();
+      if (report.status !== "healthy") {
+        const unhealthy = report.subsystems.filter((s) => s.status !== "ok");
+        const details = unhealthy.map((s) => `${s.name}: ${s.message ?? s.status}`).join("; ");
+        error = `Server unhealthy: ${details || report.status}`;
         return false;
       }
       return true;
@@ -49,6 +53,7 @@
 
   function transitionToPlaying(info: SceneInfo) {
     sceneInfo = info;
+    sessionId = info.session_id;
     blocks = [{ kind: "opening", text: info.opening_prose }];
     turnCount = 0;
     error = null;
@@ -62,6 +67,7 @@
 
   function hydrateFromResumeResult(result: ResumeResult) {
     sceneInfo = result.scene_info;
+    sessionId = result.scene_info.session_id;
     const hydrated = hydrateBlocks(result);
     blocks = hydrated.blocks;
     turnCount = hydrated.turnCount;
@@ -74,7 +80,7 @@
     loading = true;
     error = null;
     try {
-      if (!(await checkLlmReachable())) {
+      if (!(await checkServerHealthy())) {
         loading = false;
         return;
       }
@@ -89,6 +95,7 @@
   function handleNewScene() {
     view = "setup";
     sceneInfo = null;
+    sessionId = "";
     blocks = [];
     turnCount = 0;
     error = null;
@@ -104,7 +111,7 @@
     error = null;
 
     try {
-      const result = await submitInput(text);
+      const result = await submitInput(sessionId, text);
       blocks = [...blocks, { kind: "narrator", turn: result.turn, text: result.narrator_prose }];
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
