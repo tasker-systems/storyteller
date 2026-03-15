@@ -127,6 +127,8 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
         intent_llm: Some(intent_llm),
         predictor,
         grammar,
+        narrator_model: config.narrator_model.clone(),
+        decomposition_model: config.decomposition_model.clone(),
     });
 
     info!(

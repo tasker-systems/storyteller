@@ -106,6 +106,8 @@ async fn start_engine_test_server(
         intent_llm: None,
         predictor: None,
         grammar: Arc::new(storyteller_core::grammars::PlutchikWestern::new()),
+        narrator_model: "test-model".to_string(),
+        decomposition_model: String::new(),
     });
 
     let engine_service = EngineServiceImpl::new(composer, state_manager, session_store, providers);

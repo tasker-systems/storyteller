@@ -30,6 +30,10 @@ pub struct EngineProviders {
     pub intent_llm: Option<Arc<dyn LlmProvider>>,
     pub predictor: Option<Arc<CharacterPredictor>>,
     pub grammar: Arc<PlutchikWestern>,
+    /// Model name for the narrator LLM (for observability/debug inspector).
+    pub narrator_model: String,
+    /// Model name for the decomposition LLM (for observability/debug inspector).
+    pub decomposition_model: String,
 }
 
 impl std::fmt::Debug for EngineProviders {
@@ -39,6 +43,8 @@ impl std::fmt::Debug for EngineProviders {
             .field("structured_llm", &self.structured_llm.is_some())
             .field("intent_llm", &self.intent_llm.is_some())
             .field("predictor", &self.predictor.is_some())
+            .field("narrator_model", &self.narrator_model)
+            .field("decomposition_model", &self.decomposition_model)
             .finish()
     }
 }
@@ -77,6 +83,8 @@ mod tests {
             intent_llm: None,
             predictor: None,
             grammar: Arc::new(PlutchikWestern::new()),
+            narrator_model: "test-model".to_string(),
+            decomposition_model: "test-decomp-model".to_string(),
         };
 
         let debug_str = format!("{providers:?}");
@@ -96,6 +104,8 @@ mod tests {
             intent_llm: None,
             predictor: None,
             grammar: Arc::new(PlutchikWestern::new()),
+            narrator_model: "test-model".to_string(),
+            decomposition_model: "test-decomp-model".to_string(),
         };
 
         let cloned = providers.clone();
