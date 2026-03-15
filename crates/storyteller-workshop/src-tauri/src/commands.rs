@@ -20,9 +20,14 @@ use crate::types::{
 };
 
 /// Shared client state managed by Tauri.
-pub type ClientState = Arc<Mutex<StorytellerClient>>;
+///
+/// `Option` because the client connects asynchronously after app startup —
+/// Tauri 2's setup callback runs before the async runtime is fully available.
+pub type ClientState = Arc<Mutex<Option<StorytellerClient>>>;
 
 const DEBUG_CHANNEL: &str = "workshop:debug";
+
+const NOT_CONNECTED: &str = "Server not connected yet. Is storyteller-server running?";
 
 // ---------------------------------------------------------------------------
 // Unary commands
@@ -30,8 +35,9 @@ const DEBUG_CHANNEL: &str = "workshop:debug";
 
 #[tauri::command]
 pub async fn check_health(client: State<'_, ClientState>) -> Result<HealthReport, String> {
-    let mut client = client.lock().await;
-    let health = client.check_health().await.map_err(|e| e.to_string())?;
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let health = c.check_health().await.map_err(|e| e.to_string())?;
 
     Ok(HealthReport {
         status: format!("{:?}", health.status),
@@ -49,8 +55,9 @@ pub async fn check_health(client: State<'_, ClientState>) -> Result<HealthReport
 
 #[tauri::command]
 pub async fn load_catalog(client: State<'_, ClientState>) -> Result<Vec<GenreSummary>, String> {
-    let mut client = client.lock().await;
-    let genre_list = client.list_genres().await.map_err(|e| e.to_string())?;
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let genre_list = c.list_genres().await.map_err(|e| e.to_string())?;
 
     Ok(genre_list
         .genres
@@ -72,8 +79,9 @@ pub async fn get_genre_options(
     selected_archetypes: Vec<String>,
     client: State<'_, ClientState>,
 ) -> Result<GenreOptionsResult, String> {
-    let mut client = client.lock().await;
-    let opts = client
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let opts = c
         .get_genre_options(&genre_id, selected_archetypes)
         .await
         .map_err(|e| e.to_string())?;
@@ -127,8 +135,9 @@ pub async fn get_genre_options(
 
 #[tauri::command]
 pub async fn list_sessions(client: State<'_, ClientState>) -> Result<Vec<SessionInfo>, String> {
-    let mut client = client.lock().await;
-    let session_list = client.list_sessions().await.map_err(|e| e.to_string())?;
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let session_list = c.list_sessions().await.map_err(|e| e.to_string())?;
 
     Ok(session_list
         .sessions
@@ -150,8 +159,9 @@ pub async fn get_scene_state(
     session_id: String,
     client: State<'_, ClientState>,
 ) -> Result<serde_json::Value, String> {
-    let mut client = client.lock().await;
-    let state = client
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let state = c
         .get_scene_state(GetSceneStateRequest { session_id })
         .await
         .map_err(|e| e.to_string())?;
@@ -202,8 +212,9 @@ pub async fn get_prediction_history(
     session_id: String,
     client: State<'_, ClientState>,
 ) -> Result<serde_json::Value, String> {
-    let mut client = client.lock().await;
-    let response = client
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let response = c
         .get_prediction_history(&session_id, None, None)
         .await
         .map_err(|e| e.to_string())?;
@@ -250,11 +261,9 @@ pub async fn compose_scene(
 
     // Acquire lock, start stream, then drop lock before consuming
     let mut stream = {
-        let mut client = client.lock().await;
-        client
-            .compose_scene(request)
-            .await
-            .map_err(|e| e.to_string())?
+        let mut guard = client.lock().await;
+        let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+        c.compose_scene(request).await.map_err(|e| e.to_string())?
     };
 
     let mut session_id = String::new();
@@ -263,7 +272,11 @@ pub async fn compose_scene(
     let mut cast = Vec::new();
     let mut opening_prose = String::new();
 
-    while let Some(event) = stream.message().await.map_err(|e| e.to_string())? {
+    while let Some(event) = stream
+        .message()
+        .await
+        .map_err(|e| format!("stream error: {e}"))?
+    {
         let turn = event.turn.unwrap_or(0);
         if session_id.is_empty() {
             session_id = event.session_id.clone();
@@ -307,11 +320,9 @@ pub async fn submit_input(
     let request = SubmitInputRequest { session_id, input };
 
     let mut stream = {
-        let mut client = client.lock().await;
-        client
-            .submit_input(request)
-            .await
-            .map_err(|e| e.to_string())?
+        let mut guard = client.lock().await;
+        let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+        c.submit_input(request).await.map_err(|e| e.to_string())?
     };
 
     let mut turn_number = 0u32;
@@ -326,7 +337,11 @@ pub async fn submit_input(
         total: 0,
     };
 
-    while let Some(event) = stream.message().await.map_err(|e| e.to_string())? {
+    while let Some(event) = stream
+        .message()
+        .await
+        .map_err(|e| format!("stream error: {e}"))?
+    {
         let turn = event.turn.unwrap_or(0);
 
         if let Some(ref payload) = event.payload {
@@ -380,11 +395,9 @@ pub async fn resume_session(
     let request = ResumeSessionRequest { session_id };
 
     let mut stream = {
-        let mut client = client.lock().await;
-        client
-            .resume_session(request)
-            .await
-            .map_err(|e| e.to_string())?
+        let mut guard = client.lock().await;
+        let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+        c.resume_session(request).await.map_err(|e| e.to_string())?
     };
 
     let mut scene_session_id = String::new();
@@ -394,7 +407,11 @@ pub async fn resume_session(
     let mut opening_prose = String::new();
     let mut turns: Vec<TurnSummary> = Vec::new();
 
-    while let Some(event) = stream.message().await.map_err(|e| e.to_string())? {
+    while let Some(event) = stream
+        .message()
+        .await
+        .map_err(|e| format!("stream error: {e}"))?
+    {
         let turn = event.turn.unwrap_or(0);
         if scene_session_id.is_empty() {
             scene_session_id = event.session_id.clone();

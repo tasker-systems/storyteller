@@ -41,25 +41,33 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // Connect to the engine server (blocking in setup — server is required)
-            let config = ClientConfig::from_env();
-            info!(endpoint = %config.endpoint, "Connecting to storyteller server");
+            // Connect to the engine server in a background task.
+            // Tauri 2's setup callback runs before the async runtime is fully
+            // available on the main thread, so we cannot block_on here.
+            // Instead we spawn the connection and manage state once connected.
+            let client_state: ClientState = Arc::new(Mutex::new(None));
+            app.manage(client_state.clone());
 
-            let client =
-                tauri::async_runtime::block_on(async { StorytellerClient::connect(config).await })
-                    .expect(
-                        "Failed to connect to storyteller server. \
-                 Is the server running? Start it with: \
-                 cargo run -p storyteller-server",
-                    );
+            let connect_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let config = ClientConfig::from_env();
+                info!(endpoint = %config.endpoint, "Connecting to storyteller server");
 
-            let client_state: ClientState = Arc::new(Mutex::new(client));
-            app.manage(client_state);
+                match StorytellerClient::connect(config).await {
+                    Ok(client) => {
+                        info!("Connected to storyteller server");
+                        *client_state.lock().await = Some(client);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to connect to storyteller server: {e}");
+                        tracing::error!(
+                            "Is the server running? Start it with: cargo run -p storyteller-server"
+                        );
+                    }
+                }
 
-            // Spawn background log streaming task
-            let log_handle = handle.clone();
-            let log_config = ClientConfig::from_env();
-            tokio::spawn(async move {
+                // Start log streaming on a separate client connection
+                let log_config = ClientConfig::from_env();
                 match StorytellerClient::connect(log_config).await {
                     Ok(mut log_client) => {
                         info!("Log streaming client connected");
@@ -73,7 +81,7 @@ pub fn run() {
                                         message: entry.message,
                                         fields: entry.fields,
                                     };
-                                    let _ = log_handle.emit(LOG_CHANNEL, &log_entry);
+                                    let _ = connect_handle.emit(LOG_CHANNEL, &log_entry);
                                 }
                                 warn!("Log stream ended");
                             }
