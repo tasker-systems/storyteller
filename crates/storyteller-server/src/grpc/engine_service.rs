@@ -1202,11 +1202,18 @@ impl StorytellerEngine for EngineServiceImpl {
 
     async fn get_prediction_history(
         &self,
-        _request: Request<PredictionHistoryRequest>,
+        request: Request<PredictionHistoryRequest>,
     ) -> Result<Response<PredictionHistoryResponse>, Status> {
-        Err(Status::unimplemented(
-            "GetPredictionHistory not yet implemented",
-        ))
+        let req = request.into_inner();
+        let snapshot = self
+            .state_manager
+            .get_runtime_snapshot(&req.session_id)
+            .ok_or_else(|| Status::not_found("session not found"))?;
+
+        let history = &snapshot.prediction_history;
+        let raw_json = serde_json::to_string(history).unwrap_or_default();
+
+        Ok(Response::new(PredictionHistoryResponse { raw_json }))
     }
 
     async fn get_session_events(

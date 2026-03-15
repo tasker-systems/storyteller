@@ -136,6 +136,23 @@ impl StorytellerClient {
         Ok(response.into_inner())
     }
 
+    pub async fn get_prediction_history(
+        &mut self,
+        session_id: &str,
+        from_turn: Option<u32>,
+        to_turn: Option<u32>,
+    ) -> Result<crate::proto::PredictionHistoryResponse, ClientError> {
+        let response = self
+            .engine
+            .get_prediction_history(crate::proto::PredictionHistoryRequest {
+                session_id: session_id.to_string(),
+                from_turn,
+                to_turn,
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     // -------------------------------------------------------------------------
     // Composer RPCs
     // -------------------------------------------------------------------------
