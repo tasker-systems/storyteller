@@ -10,6 +10,7 @@ use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
 use crate::engine::{Composition, EngineProviders, EngineStateManager, RuntimeSnapshot};
+use crate::logging::LogBroadcast;
 use crate::persistence::SessionStore;
 use crate::proto::storyteller_engine_server::StorytellerEngine;
 use crate::proto::*;
@@ -57,6 +58,7 @@ pub struct EngineServiceImpl {
     state_manager: Arc<EngineStateManager>,
     session_store: Arc<SessionStore>,
     providers: Arc<EngineProviders>,
+    log_broadcast: LogBroadcast,
 }
 
 impl EngineServiceImpl {
@@ -71,6 +73,27 @@ impl EngineServiceImpl {
             state_manager,
             session_store,
             providers,
+            log_broadcast: crate::logging::create_log_broadcast(),
+        }
+    }
+
+    /// Create an engine service with an external [`LogBroadcast`].
+    ///
+    /// Use this when the server binary creates the broadcast channel during
+    /// tracing initialization and needs the same channel wired into the service.
+    pub fn with_log_broadcast(
+        composer: Arc<SceneComposer>,
+        state_manager: Arc<EngineStateManager>,
+        session_store: Arc<SessionStore>,
+        providers: Arc<EngineProviders>,
+        log_broadcast: LogBroadcast,
+    ) -> Self {
+        Self {
+            composer,
+            state_manager,
+            session_store,
+            providers,
+            log_broadcast,
         }
     }
 }
@@ -80,6 +103,7 @@ impl std::fmt::Debug for EngineServiceImpl {
         f.debug_struct("EngineServiceImpl")
             .field("state_manager", &self.state_manager)
             .field("providers", &self.providers)
+            .field("log_broadcast", &self.log_broadcast)
             .finish()
     }
 }
@@ -1227,9 +1251,31 @@ impl StorytellerEngine for EngineServiceImpl {
 
     async fn stream_logs(
         &self,
-        _request: Request<LogFilter>,
+        request: Request<LogFilter>,
     ) -> Result<Response<Self::StreamLogsStream>, Status> {
-        Err(Status::unimplemented("StreamLogs not yet implemented"))
+        let filter = request.into_inner();
+        let mut rx = self.log_broadcast.subscribe();
+        let (tx, rx_out) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            while let Ok(entry) = rx.recv().await {
+                if let Some(ref level) = filter.level {
+                    if entry.level != *level {
+                        continue;
+                    }
+                }
+                if let Some(ref target) = filter.target {
+                    if !entry.target.starts_with(target.as_str()) {
+                        continue;
+                    }
+                }
+                if tx.send(Ok(entry)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(Response::new(ReceiverStream::new(rx_out)))
     }
 }
 

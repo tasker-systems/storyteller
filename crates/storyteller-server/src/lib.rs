@@ -25,12 +25,15 @@
 
 pub mod engine;
 pub mod grpc;
+pub mod logging;
 pub mod middleware;
 pub mod persistence;
 pub mod proto;
 pub mod routes;
 pub mod server;
 pub mod state;
+
+pub use logging::{create_log_broadcast, BroadcastTracingLayer, LogBroadcast};
 
 use axum::Router;
 

@@ -153,6 +153,22 @@ impl StorytellerClient {
         Ok(response.into_inner())
     }
 
+    /// Subscribe to a server-streaming log feed.
+    ///
+    /// Returns a `tonic::Streaming<LogEntry>` that yields log entries matching
+    /// the optional `level` and `target` filters.
+    pub async fn stream_logs(
+        &mut self,
+        level: Option<String>,
+        target: Option<String>,
+    ) -> Result<tonic::Streaming<crate::proto::LogEntry>, ClientError> {
+        let response = self
+            .engine
+            .stream_logs(crate::proto::LogFilter { level, target })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     // -------------------------------------------------------------------------
     // Composer RPCs
     // -------------------------------------------------------------------------
