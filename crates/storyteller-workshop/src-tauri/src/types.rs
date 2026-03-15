@@ -12,7 +12,7 @@ use ts_rs::TS;
 /// downstream RPC calls. The CLI uses slugs for human ergonomics, but the
 /// workshop uses entity_ids directly since the UI provides selection, not typing.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct SceneInfo {
     pub session_id: String,
     pub title: String,
@@ -23,7 +23,7 @@ pub struct SceneInfo {
 
 /// Result of a player turn.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct TurnResult {
     pub turn: u32,
     pub narrator_prose: String,
@@ -32,7 +32,7 @@ pub struct TurnResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct TurnTiming {
     pub prediction_ms: u64,
     pub assembly_ms: u64,
@@ -40,7 +40,7 @@ pub struct TurnTiming {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct ContextTokens {
     pub preamble: u32,
     pub journal: u32,
@@ -50,14 +50,14 @@ pub struct ContextTokens {
 
 /// Server health report.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct HealthReport {
     pub status: String,
     pub subsystems: Vec<SubsystemStatus>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct SubsystemStatus {
     pub name: String,
     pub status: String,
@@ -66,7 +66,7 @@ pub struct SubsystemStatus {
 
 /// Genre summary for the wizard catalog.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct GenreSummary {
     pub id: String,
     pub display_name: String,
@@ -78,7 +78,7 @@ pub struct GenreSummary {
 
 /// Combined genre options for a wizard step.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct GenreOptionsResult {
     pub archetypes: Vec<ArchetypeSummary>,
     pub profiles: Vec<ProfileSummary>,
@@ -88,7 +88,7 @@ pub struct GenreOptionsResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct ArchetypeSummary {
     pub id: String,
     pub display_name: String,
@@ -96,7 +96,7 @@ pub struct ArchetypeSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct ProfileSummary {
     pub id: String,
     pub display_name: String,
@@ -109,7 +109,7 @@ pub struct ProfileSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct DynamicSummary {
     pub id: String,
     pub display_name: String,
@@ -119,7 +119,7 @@ pub struct DynamicSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct SettingSummary {
     pub id: String,
     pub name: String,
@@ -127,7 +127,7 @@ pub struct SettingSummary {
 
 /// Session summary for listing.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct SessionInfo {
     pub session_id: String,
     pub genre: String,
@@ -140,7 +140,7 @@ pub struct SessionInfo {
 
 /// Turn summary for session resume.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct TurnSummary {
     pub turn: u32,
     pub player_input: Option<String>,
@@ -149,7 +149,7 @@ pub struct TurnSummary {
 
 /// Resume result with scene info and turn history.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct ResumeResult {
     pub scene_info: SceneInfo,
     pub turns: Vec<TurnSummary>,
@@ -157,7 +157,7 @@ pub struct ResumeResult {
 
 /// Scene selections for composition (received from Svelte wizard).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct SceneSelections {
     pub genre_id: String,
     pub profile_id: String,
@@ -168,7 +168,7 @@ pub struct SceneSelections {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct CastSelection {
     pub archetype_id: String,
     pub name: Option<String>,
@@ -176,7 +176,7 @@ pub struct CastSelection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct DynamicSelection {
     pub dynamic_id: String,
     pub cast_index_a: u32,
@@ -189,7 +189,7 @@ pub struct DynamicSelection {
 /// streaming command handlers.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "type")]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub enum DebugEvent {
     #[serde(rename = "phase_started")]
     PhaseStarted { turn: u32, phase: String },
@@ -271,7 +271,7 @@ pub enum DebugEvent {
 
 /// Log entry from the server's tracing stream.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/lib/generated/")]
+#[ts(export, export_to = "../../src/lib/generated/")]
 pub struct LogEntry {
     pub timestamp: String,
     pub level: String,
