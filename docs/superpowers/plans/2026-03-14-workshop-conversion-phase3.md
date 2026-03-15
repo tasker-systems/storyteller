@@ -648,8 +648,9 @@ pub struct SubsystemStatus {
 }
 
 /// Genre summary for the wizard catalog.
-/// Note: `id` maps from `slug` (not `entity_id`) because downstream calls
-/// (get_genre_options, compose_scene) use slugs for matching.
+/// `id` is the UUIDv7 `entity_id` — the canonical identifier for all
+/// downstream RPC calls. The CLI uses slugs for human ergonomics, but the
+/// workshop uses entity_ids directly since the UI provides selection, not typing.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../src/lib/generated/")]
 pub struct GenreSummary {
@@ -955,7 +956,7 @@ pub async fn load_catalog(
         .genres
         .iter()
         .map(|g| GenreSummary {
-            id: g.slug.clone(), // Use slug, not entity_id — downstream calls match on slug
+            id: g.entity_id.clone(),
             display_name: g.display_name.clone(),
             description: g.description.clone(),
             archetype_count: g.archetype_count,
@@ -979,12 +980,12 @@ pub async fn get_genre_options(
 
     Ok(GenreOptionsResult {
         archetypes: options.archetypes.iter().map(|a| ArchetypeSummary {
-            id: a.slug.clone(), // Use slug for downstream matching
+            id: a.entity_id.clone(),
             display_name: a.display_name.clone(),
             description: a.description.clone(),
         }).collect(),
         profiles: options.profiles.iter().map(|p| ProfileSummary {
-            id: p.slug.clone(),
+            id: p.entity_id.clone(),
             display_name: p.display_name.clone(),
             description: p.description.clone(),
             scene_type: p.scene_type.clone(),
@@ -994,7 +995,7 @@ pub async fn get_genre_options(
             cast_size_max: p.cast_size_max,
         }).collect(),
         dynamics: options.dynamics.iter().map(|d| DynamicSummary {
-            id: d.slug.clone(),
+            id: d.entity_id.clone(),
             display_name: d.display_name.clone(),
             description: d.description.clone(),
             role_a: d.role_a.clone(),
