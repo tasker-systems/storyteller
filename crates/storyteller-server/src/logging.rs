@@ -1,8 +1,8 @@
 //! Broadcast tracing layer for the `StreamLogs` RPC.
 //!
 //! A [`tracing_subscriber::Layer`] captures tracing events and sends them as
-//! [`LogEntry`](crate::proto::LogEntry) proto messages over a
-//! [`tokio::sync::broadcast`] channel. The [`stream_logs`](super::grpc::engine_service)
+//! [`LogEntry`] proto messages over a
+//! [`tokio::sync::broadcast`] channel. The `stream_logs`
 //! RPC handler subscribes to this channel and streams entries to clients.
 
 use std::collections::HashMap;
