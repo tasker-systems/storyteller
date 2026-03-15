@@ -49,3 +49,6 @@ checkpoints/
 # Exception: committed test fixtures (small enough for git)
 !tests/fixtures/models/*.onnx
 !tests/fixtures/models/*.onnx.data
+
+# ignore our .story cache
+.story/
