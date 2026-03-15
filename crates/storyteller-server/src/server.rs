@@ -114,8 +114,8 @@ pub async fn run_server(
 
     // Character predictor (optional — degrades gracefully when model not on disk)
     let predictor: Option<Arc<CharacterPredictor>> = config.model_path.as_ref().and_then(|path| {
-        let model_path = std::path::Path::new(path);
-        match CharacterPredictor::load(model_path) {
+        let model_path = std::path::Path::new(path).join("character_predictor.onnx");
+        match CharacterPredictor::load(&model_path) {
             Ok(p) => {
                 tracing::info!(%path, "Character predictor loaded");
                 Some(Arc::new(p))
