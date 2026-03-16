@@ -125,6 +125,8 @@ Tier B produces **data and proposed schemas**, not running system code. Its outp
 
 **Roadmap reference:** Parts III, IV
 
+**Part IV scoping note:** The roadmap describes four data acquisition strategies: (1) LLM-assisted elicitation, (2) public domain literature analysis, (3) CC-BY-SA RPG module extraction, and (4) cross-source synthesis. For this planning horizon, **only strategy 1 (LLM elicitation) is in scope**, along with a provenance graph strawman to validate the attribution model. Strategies 2 and 3 involve sourcing, licensing review, and extraction tooling that is better addressed in a follow-up cycle once the data shape is established. The provenance schema should be designed to accommodate future multi-source integration, but populating it from external sources is deferred.
+
 **Scope:**
 - Identify ~20 genre regions that cover meaningful narrative space (folk horror, nordic noir, romantasy, cozy fantasy, hard sci-fi, literary fiction, magical realism, etc.)
 - For each region, elicit via structured prompts to qwen3.5:35b:
@@ -286,8 +288,8 @@ Several prior design documents touch on concerns addressed by this roadmap:
 
 | Prior design | Relationship |
 |---|---|
-| `dramaturgy-of-tension-design.md` (Mar 10) | Explored player character tension rendering. Tier C.1 (dramaturge) subsumes and extends this into a full agent architecture. |
-| `scene-goals-and-character-intentions-design.md` (Mar 11) | Established scene goals and per-character intentions. Tier A.3 (player intent review) surfaces these to the player. Tier C.1 (dramaturge) uses them as input to arc tracking. |
-| `narrator-anti-closure-and-emergent-agency-design.md` (Mar 11) | Addressed narrator drift and echo-stagnation. Tier C.1 (dramaturge) provides the architectural solution via dramatic directives and staleness detection. |
-| `engine-server-and-playtest-harness-design.md` (Mar 13) | Established the server/client architecture. Tier A builds on this infrastructure with streaming channels and turn lifecycle formalization. |
-| `workshop-conversion-phase3-design.md` (Mar 14) | Converted workshop to thin gRPC client. Tier A.1 corrects the combined RPC decision. Tier A.3 adds the deferred `workshop:gameplay` channel. |
+| `docs/plans/2026-03-10-dramaturgy-of-tension-design.md` | Explored player character tension rendering. Tier C.1 (dramaturge) subsumes and extends this into a full agent architecture. |
+| `docs/plans/2026-03-11-scene-goals-and-character-intentions-design.md` | Established scene goals and per-character intentions. Tier A.3 (player intent review) surfaces these to the player. Tier C.1 (dramaturge) uses them as input to arc tracking. |
+| `docs/plans/2026-03-11-narrator-anti-closure-and-emergent-agency-design.md` | Addressed narrator drift and echo-stagnation. Tier C.1 (dramaturge) provides the architectural solution via dramatic directives and staleness detection. |
+| `docs/plans/2026-03-13-engine-server-and-playtest-harness-design.md` | Established the server/client architecture. Tier A builds on this infrastructure with streaming channels and turn lifecycle formalization. |
+| `docs/superpowers/specs/2026-03-14-workshop-conversion-phase3-design.md` | Converted workshop to thin gRPC client. Tier A.1 corrects the combined RPC decision. Tier A.3 adds the deferred `workshop:gameplay` channel. |
