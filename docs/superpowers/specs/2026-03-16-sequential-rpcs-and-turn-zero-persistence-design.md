@@ -122,6 +122,7 @@ dynamicsError: string | null
 // Step 4: Settings (loaded on entering step 4)
 settings: SettingSummary[]
 settingsLoading: boolean
+settingsError: string | null
 ```
 
 #### Loading Triggers
@@ -164,7 +165,7 @@ Unchanged behavior, different implementation:
 
 ### Root Cause
 
-In `crates/storyteller-server/src/grpc/engine_service.rs`, the `compose_scene` method (lines 274-407):
+In `crates/storyteller-server/src/grpc/engine_service.rs`, the `compose_scene` method's opening narration phase (starting around line 274):
 1. Renders opening narration via `narrator.render_opening()`
 2. Streams `NarratorComplete` and `TurnComplete` events to the client
 3. Updates the in-memory `RuntimeSnapshot` with turn 0 journal entry
@@ -174,16 +175,15 @@ The `submit_input` method (turns 1+) does persist to both files. Turn 0 was miss
 
 ### Fix
 
-After the narrator renders opening prose and before the `TurnComplete` event is sent, add two persistence calls:
+After the narrator renders opening prose and before the `TurnComplete` event is sent, add two persistence calls. The `session_store` is already cloned into the spawned task (used for composition persistence earlier in the same closure), so no threading changes are needed.
 
 1. **Persist narrator event to `events.jsonl`:**
-   - `event_type`: `"narrator_complete"`
-   - `turn`: `0`
-   - `payload`: `{ "prose": opening_prose }`
-   - Generate a UUIDv7 event ID (same pattern as `submit_input`)
+   - Call `session_store.events.append()` (same pattern as `submit_input` at lines 830-837)
+   - `event_type`: `"narrator_complete"`, `turn`: `0`, `payload`: `{ "prose": opening_prose }`
+   - The `append()` method generates a UUIDv7 event ID internally and returns it
 
 2. **Persist turn entry to `turns.jsonl`:**
-   - `TurnEntry { turn: 0, timestamp, player_input: None, event_ids: [narrator_event_id] }`
+   - Call `session_store.turns.append()` with `TurnEntry { turn: 0, timestamp, player_input: None, event_ids: [narrator_event_id] }`
 
 This mirrors the persistence pattern in `submit_input`. The resume path (`resume_session`, lines 901-1046) already handles turn 0 correctly — it iterates all entries in `turns.jsonl`, looks up narrator prose from `events.jsonl` by event ID, and streams `NarratorComplete` events. It currently finds nothing for turn 0 because nothing was written.
 
