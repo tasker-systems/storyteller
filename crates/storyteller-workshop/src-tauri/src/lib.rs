@@ -101,7 +101,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::check_health,
             commands::load_catalog,
-            commands::get_genre_options,
+            commands::get_profiles_for_genre,
+            commands::get_archetypes_for_genre,
+            commands::get_dynamics_for_genre,
+            commands::get_names_for_genre,
+            commands::get_settings_for_genre,
             commands::compose_scene,
             commands::submit_input,
             commands::list_sessions,
