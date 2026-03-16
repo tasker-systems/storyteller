@@ -7,7 +7,6 @@ export type { ContextTokens } from './ContextTokens';
 export type { DebugEvent } from './DebugEvent';
 export type { DynamicSelection } from './DynamicSelection';
 export type { DynamicSummary } from './DynamicSummary';
-export type { GenreOptionsResult } from './GenreOptionsResult';
 export type { GenreSummary } from './GenreSummary';
 export type { HealthReport } from './HealthReport';
 export type { HealthStatus } from './HealthStatus';

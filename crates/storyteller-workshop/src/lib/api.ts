@@ -4,7 +4,10 @@ import type {
   SceneInfo,
   TurnResult,
   GenreSummary,
-  GenreOptionsResult,
+  ProfileSummary,
+  ArchetypeSummary,
+  DynamicSummary,
+  SettingSummary,
   SessionInfo,
   ResumeResult,
   SceneSelections,
@@ -18,14 +21,27 @@ export async function loadCatalog(): Promise<GenreSummary[]> {
   return invoke<GenreSummary[]>("load_catalog");
 }
 
-export async function getGenreOptions(
+export async function getProfilesForGenre(genreId: string): Promise<ProfileSummary[]> {
+  return invoke<ProfileSummary[]>("get_profiles_for_genre", { genreId });
+}
+
+export async function getArchetypesForGenre(genreId: string): Promise<ArchetypeSummary[]> {
+  return invoke<ArchetypeSummary[]>("get_archetypes_for_genre", { genreId });
+}
+
+export async function getDynamicsForGenre(
   genreId: string,
-  selectedArchetypes: string[] = [],
-): Promise<GenreOptionsResult> {
-  return invoke<GenreOptionsResult>("get_genre_options", {
-    genreId,
-    selectedArchetypes,
-  });
+  selectedArchetypeIds: string[] = [],
+): Promise<DynamicSummary[]> {
+  return invoke<DynamicSummary[]>("get_dynamics_for_genre", { genreId, selectedArchetypeIds });
+}
+
+export async function getNamesForGenre(genreId: string): Promise<string[]> {
+  return invoke<string[]>("get_names_for_genre", { genreId });
+}
+
+export async function getSettingsForGenre(genreId: string): Promise<SettingSummary[]> {
+  return invoke<SettingSummary[]>("get_settings_for_genre", { genreId });
 }
 
 export async function composeScene(
