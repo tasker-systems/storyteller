@@ -96,17 +96,6 @@ pub struct GenreSummary {
     pub dynamic_count: u32,
 }
 
-/// Combined genre options for a wizard step.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/generated/")]
-pub struct GenreOptionsResult {
-    pub archetypes: Vec<ArchetypeSummary>,
-    pub profiles: Vec<ProfileSummary>,
-    pub dynamics: Vec<DynamicSummary>,
-    pub names: Vec<String>,
-    pub settings: Vec<SettingSummary>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/generated/")]
 pub struct ArchetypeSummary {

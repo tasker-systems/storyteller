@@ -1,13 +1,23 @@
 <script lang="ts">
-  import { loadCatalog, getGenreOptions, composeScene } from "$lib/api";
+  import {
+    loadCatalog,
+    getProfilesForGenre,
+    getArchetypesForGenre,
+    getDynamicsForGenre,
+    getNamesForGenre,
+    getSettingsForGenre,
+    composeScene,
+  } from "$lib/api";
   import type {
     GenreSummary,
-    GenreOptionsResult,
     SceneInfo,
     CastSelection,
     DynamicSelection,
     SceneSelections,
     ProfileSummary,
+    ArchetypeSummary,
+    DynamicSummary,
+    SettingSummary,
   } from "$lib/generated";
   import {
     canAdvance as checkCanAdvance,
@@ -33,20 +43,30 @@
   let genresError = $state<string | null>(null);
   let selectedGenreId = $state<string | null>(null);
 
-  // Step 1: Profile
-  let genreOptions = $state<GenreOptionsResult | null>(null);
-  let optionsLoading = $state(false);
-  let optionsError = $state<string | null>(null);
+  // Step 1: Profiles
+  let profiles = $state<ProfileSummary[]>([]);
+  let profilesLoading = $state(false);
+  let profilesError = $state<string | null>(null);
   let selectedProfileId = $state<string | null>(null);
 
-  // Step 2: Cast
+  // Step 2: Cast data
+  let archetypes = $state<ArchetypeSummary[]>([]);
+  let namePool = $state<string[]>([]);
+  let castDataLoading = $state(false);
+  let castDataError = $state<string | null>(null);
   let cast = $state<CastSelection[]>([]);
   let castSize = $state(2);
 
   // Step 3: Dynamics
+  let availableDynamics = $state<DynamicSummary[]>([]);
+  let dynamicsLoading = $state(false);
+  let dynamicsError = $state<string | null>(null);
   let dynamics = $state<DynamicSelection[]>([]);
 
-  // Step 4: Setting
+  // Step 4: Settings
+  let settings = $state<SettingSummary[]>([]);
+  let settingsLoading = $state(false);
+  let settingsError = $state<string | null>(null);
   let settingOverride = $state("");
 
   // Step 5: Launch
@@ -60,12 +80,8 @@
   let selectedGenre = $derived(genres.find((g) => g.id === selectedGenreId) ?? null);
 
   let selectedProfile = $derived(
-    genreOptions?.profiles.find((p) => p.id === selectedProfileId) ?? null,
+    profiles.find((p) => p.id === selectedProfileId) ?? null,
   );
-
-  let archetypes = $derived(genreOptions?.archetypes ?? []);
-  let availableDynamics = $derived(genreOptions?.dynamics ?? []);
-  let namePool = $derived(genreOptions?.names ?? []);
 
   let selectedArchetypeIds = $derived(cast.map((c) => c.archetype_id).filter((a) => a !== ""));
 
@@ -89,37 +105,6 @@
       .catch((err) => {
         genresError = String(err);
         genresLoading = false;
-      });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Reload genre options when genre or archetypes change
-  // ---------------------------------------------------------------------------
-
-  let lastGenreId = $state<string | null>(null);
-  let lastArchetypes = $state<string>("");
-
-  $effect(() => {
-    if (!selectedGenreId) return;
-
-    const archetypeKey = selectedArchetypeIds.join(",");
-
-    // Only refetch when genre or archetypes actually changed
-    if (selectedGenreId === lastGenreId && archetypeKey === lastArchetypes) return;
-
-    lastGenreId = selectedGenreId;
-    lastArchetypes = archetypeKey;
-    optionsLoading = true;
-    optionsError = null;
-
-    getGenreOptions(selectedGenreId, selectedArchetypeIds)
-      .then((result) => {
-        genreOptions = result;
-        optionsLoading = false;
-      })
-      .catch((err) => {
-        optionsError = String(err);
-        optionsLoading = false;
       });
   });
 
@@ -201,9 +186,17 @@
   function selectGenre(id: string) {
     if (selectedGenreId !== id) {
       selectedGenreId = id;
-      // Reset downstream selections
+      // Reset all downstream state and error flags
       selectedProfileId = null;
-      genreOptions = null;
+      profiles = [];
+      profilesError = null;
+      archetypes = [];
+      namePool = [];
+      castDataError = null;
+      availableDynamics = [];
+      dynamicsError = null;
+      settings = [];
+      settingsError = null;
       cast = [];
       dynamics = [];
       settingOverride = "";
@@ -217,14 +210,83 @@
     dynamics = [];
   }
 
+  // ---------------------------------------------------------------------------
+  // Per-step data loading
+  // ---------------------------------------------------------------------------
+
+  async function loadProfiles() {
+    if (!selectedGenreId) return;
+    profilesLoading = true;
+    profilesError = null;
+    try {
+      profiles = await getProfilesForGenre(selectedGenreId);
+    } catch (err) {
+      profilesError = String(err);
+    } finally {
+      profilesLoading = false;
+    }
+  }
+
+  async function loadCastData() {
+    if (!selectedGenreId) return;
+    castDataLoading = true;
+    castDataError = null;
+    try {
+      const [archetypeResult, nameResult] = await Promise.all([
+        getArchetypesForGenre(selectedGenreId),
+        getNamesForGenre(selectedGenreId),
+      ]);
+      archetypes = archetypeResult;
+      namePool = nameResult;
+    } catch (err) {
+      castDataError = String(err);
+    } finally {
+      castDataLoading = false;
+    }
+  }
+
+  async function loadDynamics() {
+    if (!selectedGenreId) return;
+    dynamicsLoading = true;
+    dynamicsError = null;
+    try {
+      availableDynamics = await getDynamicsForGenre(selectedGenreId, selectedArchetypeIds);
+    } catch (err) {
+      dynamicsError = String(err);
+    } finally {
+      dynamicsLoading = false;
+    }
+  }
+
+  async function loadSettings() {
+    if (!selectedGenreId) return;
+    settingsLoading = true;
+    settingsError = null;
+    try {
+      settings = await getSettingsForGenre(selectedGenreId);
+    } catch (err) {
+      settingsError = String(err);
+    } finally {
+      settingsLoading = false;
+    }
+  }
+
   function goNext() {
     if (!canAdvance) return;
-    if (step === 1) {
+
+    // Trigger data loading for the target step
+    if (step === 0) {
+      loadProfiles();
+    } else if (step === 1) {
       initCast();
-    }
-    if (step === 2 && cast.length >= 2) {
+      loadCastData();
+    } else if (step === 2 && cast.length >= 2) {
       initDynamics();
+      loadDynamics();
+    } else if (step === 3) {
+      loadSettings();
     }
+
     step = nextStep(step, cast.length);
   }
 
@@ -314,13 +376,13 @@
           Profiles define the shape of a scene: its type, tension range, and cast size.
         </p>
 
-        {#if optionsLoading}
-          <div class="loading">Loading options...</div>
-        {:else if optionsError}
-          <div class="error">{optionsError}</div>
-        {:else if genreOptions}
+        {#if profilesLoading}
+          <div class="loading">Loading profiles...</div>
+        {:else if profilesError}
+          <div class="error">{profilesError}</div>
+        {:else if profiles.length > 0}
           <div class="option-list">
-            {#each genreOptions.profiles as profile}
+            {#each profiles as profile}
               <button
                 class="option-card"
                 class:selected={selectedProfileId === profile.id}
@@ -354,8 +416,10 @@
           {/if}
         </p>
 
-        {#if optionsLoading}
-          <div class="loading">Loading archetypes...</div>
+        {#if castDataLoading}
+          <div class="loading">Loading archetypes and names...</div>
+        {:else if castDataError}
+          <div class="error">{castDataError}</div>
         {:else}
           <div class="cast-list">
             {#each cast as member, i}
@@ -418,7 +482,11 @@
           Define the relational dynamics between characters. Leave blank to skip a pairing.
         </p>
 
-        {#if castPairs.length === 0}
+        {#if dynamicsLoading}
+          <div class="loading">Loading dynamics...</div>
+        {:else if dynamicsError}
+          <div class="error">{dynamicsError}</div>
+        {:else if castPairs.length === 0}
           <p class="empty-note">No character pairs to configure.</p>
         {:else}
           <div class="dynamics-list">
@@ -449,12 +517,16 @@
           Optionally override the composed setting description, or leave blank to use the default.
         </p>
 
-        <textarea
-          class="setting-textarea"
-          placeholder="Leave blank for the default setting, or describe your own..."
-          bind:value={settingOverride}
-          rows="6"
-        ></textarea>
+        {#if settingsLoading}
+          <div class="loading">Loading settings...</div>
+        {:else}
+          <textarea
+            class="setting-textarea"
+            placeholder="Leave blank for the default setting, or describe your own..."
+            bind:value={settingOverride}
+            rows="6"
+          ></textarea>
+        {/if}
       </div>
 
     <!-- Step 5: Launch -->
