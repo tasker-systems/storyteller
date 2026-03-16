@@ -394,6 +394,25 @@ impl StorytellerEngine for EngineServiceImpl {
                 })
                 .await;
 
+            // Persist turn 0 to event log and turn index
+            let mut turn0_event_ids = Vec::new();
+            if let Ok(eid) = session_store.events.append(
+                &session_id,
+                "narrator_complete",
+                Some(0),
+                &serde_json::json!({"prose": opening_prose}),
+            ) {
+                turn0_event_ids.push(eid);
+            }
+
+            let turn0_entry = crate::persistence::TurnEntry {
+                turn: 0,
+                timestamp: Utc::now().to_rfc3339(),
+                player_input: None,
+                event_ids: turn0_event_ids,
+            };
+            let _ = session_store.turns.append(&session_id, &turn0_entry);
+
             // Turn complete
             let _ = tx
                 .send(Ok(make_event(
