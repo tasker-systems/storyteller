@@ -134,6 +134,120 @@ pub async fn get_genre_options(
 }
 
 #[tauri::command]
+pub async fn get_profiles_for_genre(
+    genre_id: String,
+    client: State<'_, ClientState>,
+) -> Result<Vec<ProfileSummary>, String> {
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let list = c
+        .get_profiles_for_genre(&genre_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(list
+        .profiles
+        .into_iter()
+        .map(|p| ProfileSummary {
+            id: p.entity_id,
+            display_name: p.display_name,
+            description: p.description,
+            scene_type: p.scene_type,
+            tension_min: p.tension_min,
+            tension_max: p.tension_max,
+            cast_size_min: p.cast_size_min,
+            cast_size_max: p.cast_size_max,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn get_archetypes_for_genre(
+    genre_id: String,
+    client: State<'_, ClientState>,
+) -> Result<Vec<ArchetypeSummary>, String> {
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let list = c
+        .get_archetypes_for_genre(&genre_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(list
+        .archetypes
+        .into_iter()
+        .map(|a| ArchetypeSummary {
+            id: a.entity_id,
+            display_name: a.display_name,
+            description: a.description,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn get_dynamics_for_genre(
+    genre_id: String,
+    selected_archetype_ids: Vec<String>,
+    client: State<'_, ClientState>,
+) -> Result<Vec<DynamicSummary>, String> {
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let list = c
+        .get_dynamics_for_genre(&genre_id, selected_archetype_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(list
+        .dynamics
+        .into_iter()
+        .map(|d| DynamicSummary {
+            id: d.entity_id,
+            display_name: d.display_name,
+            description: d.description,
+            role_a: d.role_a,
+            role_b: d.role_b,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn get_names_for_genre(
+    genre_id: String,
+    client: State<'_, ClientState>,
+) -> Result<Vec<String>, String> {
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let list = c
+        .get_names_for_genre(&genre_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(list.names)
+}
+
+#[tauri::command]
+pub async fn get_settings_for_genre(
+    genre_id: String,
+    client: State<'_, ClientState>,
+) -> Result<Vec<SettingSummary>, String> {
+    let mut guard = client.lock().await;
+    let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
+    let list = c
+        .get_settings_for_genre(&genre_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(list
+        .settings
+        .into_iter()
+        .map(|s| SettingSummary {
+            id: s.profile_id,
+            name: s.name,
+        })
+        .collect())
+}
+
+#[tauri::command]
 pub async fn list_sessions(client: State<'_, ClientState>) -> Result<Vec<SessionInfo>, String> {
     let mut guard = client.lock().await;
     let c = guard.as_mut().ok_or(NOT_CONNECTED)?;
