@@ -10,8 +10,10 @@ use std::time::Duration;
 
 use storyteller_core::errors::StorytellerError;
 use storyteller_core::traits::llm::{
-    CompletionRequest, CompletionResponse, LlmProvider, Message, MessageRole,
+    narrator_token_channel, CompletionRequest, CompletionResponse, LlmProvider, Message,
+    MessageRole, NarratorTokenStream,
 };
+use tokio_stream::StreamExt as _;
 use tracing::instrument;
 
 /// Configuration for an external LLM server.
@@ -97,6 +99,21 @@ struct OllamaResponseMessage {
     content: String,
 }
 
+/// Streaming chunk from `/api/chat` with `stream: true`.
+#[derive(Debug, serde::Deserialize)]
+struct OllamaChatStreamChunk {
+    #[serde(default)]
+    message: OllamaStreamMessage,
+    #[serde(default)]
+    done: bool,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct OllamaStreamMessage {
+    #[serde(default)]
+    content: String,
+}
+
 // -- LlmProvider implementation -----------------------------------------------
 
 #[async_trait::async_trait]
@@ -174,6 +191,109 @@ impl LlmProvider for ExternalServerProvider {
             content: ollama_response.message.content,
             tokens_used,
         })
+    }
+
+    #[instrument(skip(self, request), fields(model = %self.config.model))]
+    async fn stream_complete(
+        &self,
+        request: CompletionRequest,
+    ) -> storyteller_core::StorytellerResult<NarratorTokenStream> {
+        let url = format!("{}/api/chat", self.config.base_url);
+
+        // Build Ollama messages: system prompt first, then conversation history.
+        let mut messages = Vec::with_capacity(request.messages.len() + 1);
+        messages.push(OllamaMessage {
+            role: "system".to_string(),
+            content: request.system_prompt,
+        });
+        for msg in &request.messages {
+            messages.push(OllamaMessage {
+                role: match msg.role {
+                    MessageRole::System => "system",
+                    MessageRole::User => "user",
+                    MessageRole::Assistant => "assistant",
+                }
+                .to_string(),
+                content: msg.content.clone(),
+            });
+        }
+
+        let ollama_request = OllamaChatRequest {
+            model: self.config.model.clone(),
+            messages,
+            stream: true,
+            options: OllamaOptions {
+                temperature: request.temperature,
+                num_predict: request.max_tokens,
+            },
+        };
+
+        tracing::debug!("sending streaming request to Ollama: {url}");
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&ollama_request)
+            .send()
+            .await
+            .map_err(|e| StorytellerError::Llm(format!("Ollama stream request failed: {e}")))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "failed to read body".to_string());
+            return Err(StorytellerError::Llm(format!(
+                "Ollama returned {status}: {body}"
+            )));
+        }
+
+        let (sender, receiver) = narrator_token_channel();
+        let mut stream = response.bytes_stream();
+
+        tokio::spawn(async move {
+            let mut buffer = String::new();
+
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(bytes) => {
+                        buffer.push_str(&String::from_utf8_lossy(&bytes));
+                        // Process complete lines from the buffer.
+                        while let Some(newline_pos) = buffer.find('\n') {
+                            let line = buffer[..newline_pos].trim().to_string();
+                            buffer = buffer[newline_pos + 1..].to_string();
+                            if line.is_empty() {
+                                continue;
+                            }
+                            match serde_json::from_str::<OllamaChatStreamChunk>(&line) {
+                                Ok(chunk) => {
+                                    let token = &chunk.message.content;
+                                    if !token.is_empty() {
+                                        if sender.0.send(token.clone()).await.is_err() {
+                                            return; // receiver dropped — caller cancelled
+                                        }
+                                    }
+                                    if chunk.done {
+                                        return;
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(line = %line, "failed to parse Ollama stream chunk: {e}");
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Ollama stream error: {e}");
+                        break;
+                    }
+                }
+            }
+            // Sender drops here, closing the channel naturally.
+        });
+
+        Ok(receiver)
     }
 }
 
