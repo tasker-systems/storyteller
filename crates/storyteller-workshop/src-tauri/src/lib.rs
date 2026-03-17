@@ -73,6 +73,17 @@ pub fn run() {
                         info!("Log streaming client connected");
                         match log_client.stream_logs(None, None).await {
                             Ok(mut stream) => {
+                                // Emit a synthetic entry so the Logs tab confirms connectivity
+                                let _ = connect_handle.emit(
+                                    LOG_CHANNEL,
+                                    &LogEntry {
+                                        timestamp: chrono::Utc::now().to_rfc3339(),
+                                        level: "INFO".to_string(),
+                                        target: "workshop::logs".to_string(),
+                                        message: "Log stream connected to server".to_string(),
+                                        fields: std::collections::HashMap::new(),
+                                    },
+                                );
                                 while let Ok(Some(entry)) = stream.message().await {
                                     let log_entry = LogEntry {
                                         timestamp: entry.timestamp,
@@ -87,11 +98,31 @@ pub fn run() {
                             }
                             Err(e) => {
                                 warn!("Failed to start log stream: {e}");
+                                let _ = connect_handle.emit(
+                                    LOG_CHANNEL,
+                                    &LogEntry {
+                                        timestamp: chrono::Utc::now().to_rfc3339(),
+                                        level: "ERROR".to_string(),
+                                        target: "workshop::logs".to_string(),
+                                        message: format!("Failed to start log stream: {e}"),
+                                        fields: std::collections::HashMap::new(),
+                                    },
+                                );
                             }
                         }
                     }
                     Err(e) => {
                         warn!("Failed to connect log streaming client: {e}");
+                        let _ = connect_handle.emit(
+                            LOG_CHANNEL,
+                            &LogEntry {
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                                level: "ERROR".to_string(),
+                                target: "workshop::logs".to_string(),
+                                message: format!("Failed to connect log streaming client: {e}"),
+                                fields: std::collections::HashMap::new(),
+                            },
+                        );
                     }
                 }
             });
