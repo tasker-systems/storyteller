@@ -117,7 +117,11 @@
   function transitionToPlaying(info: SceneInfo) {
     sceneInfo = info;
     sessionId = info.session_id;
-    blocks = [{ kind: "opening", text: info.opening_prose }];
+    // Do not pre-populate blocks from opening_prose — the gameplay channel already
+    // received NarratorProse/NarratorComplete events during compose_scene streaming
+    // and built the opening block incrementally. Resetting blocks here would discard
+    // that work. If the gameplay channel somehow missed the events, blocks stays []
+    // and the scene still opens (just without prose until the next event or reload).
     turnCount = 0;
     error = null;
     loading = false;
@@ -174,8 +178,11 @@
     error = null;
 
     try {
-      const result = await submitInput(sessionId, text);
-      blocks = [...blocks, { kind: "narrator", turn: result.turn, text: result.narrator_prose }];
+      // submitInput triggers server-side processing that emits gameplay channel events.
+      // The gameplay channel listener (NarratorProse/NarratorComplete) handles narrator
+      // block rendering incrementally. We do NOT append from the TurnResult return value
+      // here — that would duplicate the narrator output already built by the channel.
+      await submitInput(sessionId, text);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
