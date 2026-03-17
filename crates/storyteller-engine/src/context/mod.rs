@@ -50,9 +50,30 @@ pub fn assemble_narrator_context(
     total_budget: u32,
     observer: &dyn PhaseObserver,
     player_entity_id: Option<EntityId>,
+    directive_context: Option<&str>,
 ) -> NarratorContextInput {
     // Tier 1: Preamble
-    let preamble = build_preamble(scene, characters, observer, player_entity_id);
+    let mut preamble = build_preamble(scene, characters, observer, player_entity_id);
+    if let Some(directive) = directive_context {
+        use storyteller_core::types::narrator_context::SceneDirection;
+        match preamble.scene_direction.as_mut() {
+            Some(sd) => {
+                // Append to existing dramatic_tension so the directive is visible
+                // to whatever renders the preamble.
+                if sd.dramatic_tension.is_empty() {
+                    sd.dramatic_tension = directive.to_string();
+                } else {
+                    sd.dramatic_tension = format!("{}\n\n{directive}", sd.dramatic_tension);
+                }
+            }
+            None => {
+                preamble.scene_direction = Some(SceneDirection {
+                    dramatic_tension: directive.to_string(),
+                    trajectory: String::new(),
+                });
+            }
+        }
+    }
     let preamble_tokens = estimate_preamble_tokens(&preamble);
 
     // Tier 2: Journal (already built and compressed externally)
@@ -133,6 +154,7 @@ mod tests {
             DEFAULT_TOTAL_TOKEN_BUDGET,
             &observer,
             None,
+            None,
         );
 
         // All three tiers present
@@ -179,6 +201,7 @@ mod tests {
             &[bramblehoof.entity_id],
             100, // absurdly low budget
             &observer,
+            None,
             None,
         );
 

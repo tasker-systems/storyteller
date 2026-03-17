@@ -248,6 +248,7 @@ pub fn assemble_context_system(
         crate::context::DEFAULT_TOTAL_TOKEN_BUDGET,
         &NoopObserver,
         None, // player_entity_id — Bevy system doesn't track player entity yet
+        None, // directive_context — Bevy path has no directive store access yet
     );
 
     tracing::debug!(

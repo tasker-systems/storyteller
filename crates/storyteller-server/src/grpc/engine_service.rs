@@ -396,6 +396,7 @@ impl StorytellerEngine for EngineServiceImpl {
                 DEFAULT_TOTAL_TOKEN_BUDGET,
                 &obs,
                 player_entity_id,
+                None, // directive_context — no directives at scene open
             );
 
             // Emit ProcessingUpdate before rendering
@@ -526,7 +527,7 @@ impl StorytellerEngine for EngineServiceImpl {
                     &session_id,
                     Some(0),
                     engine_event::Payload::SceneReady(SceneReady {
-                        scene_id: composed.scene.scene_id.to_string(),
+                        scene_id: composed.scene.scene_id.0.to_string(),
                         title: composed.scene.title.clone(),
                         setting_summary: composed.scene.setting.description.clone(),
                         cast_names,
@@ -876,6 +877,18 @@ impl StorytellerEngine for EngineServiceImpl {
             let assembly_start = Instant::now();
             let emotional_markers = extract_emotional_markers(&input);
 
+            // Read applicable directives for this turn (graceful on empty — store is
+            // always empty until Tier C agents start writing; this is a no-op for now).
+            let directive_context: Option<String> = session_store
+                .directives
+                .applicable_for_turn(&session_id, turn)
+                .ok()
+                .and_then(|directives| {
+                    directives
+                        .last()
+                        .map(|d| format!("[Dramatic Direction] {}", d.payload))
+                });
+
             let mut context = assemble_narrator_context(
                 &scene,
                 &characters_refs,
@@ -886,6 +899,7 @@ impl StorytellerEngine for EngineServiceImpl {
                 DEFAULT_TOTAL_TOKEN_BUDGET,
                 &observer,
                 player_entity_id,
+                directive_context.as_deref(),
             );
             let assembly_ms = assembly_start.elapsed().as_millis() as u64;
 
