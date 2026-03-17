@@ -222,8 +222,11 @@ pub fn enrichment_system(
 ) {
     match enrichment.0 {
         EnrichmentPhase::EventClassification => {
-            // Currently a no-op (DistilBERT removed).
-            // Future: wired to structured LLM event classification.
+            // Bevy-side pass-through. Event decomposition/classification
+            // happens at the server layer (engine_service.rs lines 546-564)
+            // via structured 3b-instruct LLM, not in the Bevy pipeline.
+            // DistilBERT was removed; the structured LLM replaced it with
+            // richer semantic decomposition (actor→action→target triples).
             enrichment.0 = enrichment.0.next();
         }
         EnrichmentPhase::BehaviorPrediction => {
