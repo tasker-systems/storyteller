@@ -24,7 +24,7 @@ The gameplay channel, prose streaming, and turn lifecycle are deeply coupled. Th
 
 ### D2: Bevy pipeline collapse
 
-The current 8-stage `TurnCycleStage` enum spreads responsibilities across stages that don't need top-level representation. Classifying, Predicting, and Resolving are all "understand what just happened" work that should be encapsulated behind a single stage boundary. Collapsing to 6 stages with an internal enrichment sub-pipeline makes the top-level state machine cleaner and the enrichment pipeline independently extensible.
+The current 7-variant `TurnCycleStage` enum spreads responsibilities across stages that don't need top-level representation. Classifying, Predicting, and Resolving are all "understand what just happened" work that should be encapsulated behind a single stage boundary. Collapsing to 5 variants with an internal enrichment sub-pipeline makes the top-level state machine cleaner and the enrichment pipeline independently extensible.
 
 ### D3: Narrator prose batching over token-level streaming
 
@@ -50,23 +50,23 @@ Phase events and prose events are naturally sequential within a turn — they ne
 
 ## Section 1: Bevy Pipeline Refactor
 
-### Current state (8 stages)
+### Current state (7 variants)
 
 ```
 AwaitingInput → CommittingPrevious → Classifying → Predicting →
-Resolving → AssemblingContext → Rendering → AwaitingInput
+Resolving → AssemblingContext → Rendering → [back to AwaitingInput]
 ```
 
 Each stage has a corresponding `TurnCycleSets` entry, a `run_if(in_stage(...))` condition, and a dedicated system function. `Classifying` is currently a no-op pass-through (DistilBERT removed). `Predicting` calls `predict_character_behaviors()`. `Resolving` wraps predictions into `ResolverOutput` and runs basic arbitration.
 
-### Revised state (6 stages)
+### Revised state (5 variants)
 
 ```
 AwaitingInput → CommittingPrevious → Enriching → AssemblingContext →
-Rendering → AwaitingInput
+Rendering → [back to AwaitingInput]
 ```
 
-`Classifying`, `Predicting`, and `Resolving` collapse into `Enriching`. The `TurnCycleStage` enum loses three variants and gains one.
+`Classifying`, `Predicting`, and `Resolving` collapse into `Enriching`. The `TurnCycleStage` enum loses three variants and gains one (7 → 5).
 
 ### Enrichment sub-pipeline
 
@@ -86,7 +86,7 @@ Clarified: this stage performs an enum-backed state change (Provisional → Comm
 
 ### SystemSet changes
 
-`TurnCycleSets` consolidates from 7 to 5 variants: `Input`, `CommittingPrevious`, `Enrichment`, `ContextAssembly`, `Rendering`. The plugin's `configure_sets` and `add_systems` calls update accordingly.
+`TurnCycleSets` consolidates from 7 to 5 variants: `Input`, `CommittingPrevious`, `Enrichment`, `ContextAssembly`, `Rendering`. The plugin's `configure_sets` and `add_systems` calls update accordingly. (Note: the source docstring on `TurnCycleStage` incorrectly claims "Eight variants" — fix this during implementation.)
 
 ### Files affected
 
@@ -110,7 +110,7 @@ async fn stream_complete(
 ) -> StorytellerResult<NarratorTokenStream>;
 ```
 
-Default implementation calls `complete()` and yields the full response as a single chunk through the channel. Providers that support real streaming override this.
+Default implementation spawns a task that calls `complete()` and sends the full response as a single chunk through the channel, returning the receiver immediately. Providers that support real streaming override this.
 
 ### Newtype wrapper
 
@@ -122,6 +122,8 @@ pub struct NarratorTokenStream(pub tokio::mpsc::Receiver<String>);
 
 The corresponding sender side uses a paired newtype `NarratorTokenSender(pub tokio::mpsc::Sender<String>)`.
 
+Channel capacity: **64** (bounded, per project convention — no `unbounded_channel()`). This is sufficient for token-level streaming throughput while providing backpressure if the consumer falls behind.
+
 ### ExternalServerProvider streaming
 
 `ExternalServerProvider` (Ollama) implements real streaming via Ollama's `/api/generate` endpoint with `stream: true`. The response is a newline-delimited JSON stream where each line contains a `response` field with the next token chunk. The provider spawns a task that reads the HTTP response body incrementally and sends each token through the `NarratorTokenSender`.
@@ -131,7 +133,7 @@ The corresponding sender side uses a paired newtype `NarratorTokenSender(pub tok
 The engine service (`engine_service.rs`) consumes the `NarratorTokenStream` and implements sentence/paragraph batching:
 
 1. Read tokens from the stream, append to a buffer
-2. On sentence-ending punctuation (`. ` `? ` `! `) or paragraph break (`\n\n`), flush the buffer as a `NarratorProse` event on the gRPC stream
+2. On sentence-ending punctuation (`. ` `? ` `! `) or paragraph break (`\n\n`), flush the buffer as a `NarratorProse` event on the gRPC stream. (Note: simple punctuation matching may false-positive on abbreviations like "Dr. Smith" — acceptable for ~4-8 events per turn where cosmetic splitting is not harmful.)
 3. On stream completion, flush any remaining buffer
 4. Emit `NarratorComplete` with the full accumulated prose
 
@@ -194,7 +196,7 @@ Six variants, all downstream (server → client):
 
 ### Proto additions
 
-`engine.proto` gains a `NarratorProse` message and the `EngineEvent.payload` oneof gains corresponding variants for `NarratorProse`, `SceneReady`, `InputReceived`, `ProcessingUpdate`. The existing `NarratorComplete` and `TurnComplete` messages are reused.
+`engine.proto` gains new messages: `NarratorProse`, `SceneReady`, `InputReceived`, `ProcessingUpdate`. The `EngineEvent.payload` oneof gains corresponding variants. The existing `NarratorComplete` message is reused as-is. The existing `TurnComplete` message gains a `ready_for_input` bool field — the `GameplayEvent::TurnComplete` variant on the Tauri side maps directly from this proto message rather than wrapping it separately.
 
 ### Frontend wiring
 
@@ -273,17 +275,17 @@ Player submits input
 
 ### New wizard step
 
-Positioned after Dynamics and before Names in the wizard flow:
+The current wizard has 6 steps: Genre → Profile → Cast → Dynamics → Setting → Launch. The Player Character step is inserted after Dynamics:
 
 ```
-Genre → Profiles → Cast → Dynamics → Player Character → Names → Settings → Compose
+Genre → Profile → Cast → Dynamics → Player Character → Setting → Launch
 ```
 
 ### Step contents
 
 - **Name** — free text input
-- **Age** — selection from `axis-vocabulary.json` age descriptors
-- **Gender presentation** — selection from `axis-vocabulary.json` (masc, fem, nb)
+- **Age** — selection from descriptors in `storyteller-data/training-data/descriptors/axis-vocabulary.json` (age categories)
+- **Gender presentation** — selection from `axis-vocabulary.json` gender descriptors (masc, fem, nb)
 - **Intent** — free text input with a pre-checked checkbox: "Let the system decide my character's intention"
   - When checked: composer generates intent using the same mechanism as NPC goal generation
   - When unchecked: player's free text feeds into the player character's goal structure in `composition.json`
@@ -364,10 +366,10 @@ A.3 creates the `DirectiveStore`, wires the read path into context assembly, and
 
 ### Files affected
 
-- `crates/storyteller-server/src/persistence/directives.rs` — new `DirectiveStore` implementation
-- `crates/storyteller-server/src/persistence/mod.rs` — export `DirectiveStore`
-- `crates/storyteller-server/src/persistence/session_store.rs` — add `directives` field to `SessionStore`
-- `crates/storyteller-engine/src/context/mod.rs` — directive read path in context assembly
+- `crates/storyteller-server/src/persistence/directives.rs` — **new file**: `DirectiveStore` implementation
+- `crates/storyteller-server/src/persistence/mod.rs` — modify: export `DirectiveStore`
+- `crates/storyteller-server/src/persistence/session_store.rs` — modify: add `directives` field to `SessionStore`
+- `crates/storyteller-engine/src/context/mod.rs` — modify: directive read path in `assemble_narrator_context()` function (the context module's assembly functions, called by the turn_cycle system)
 
 ---
 
@@ -379,7 +381,7 @@ Bottom-up infrastructure first, optimized for clarity and autonomous agent execu
 
 No behavior change. Internal refactoring and type definitions.
 
-1. Bevy pipeline collapse (`TurnCycleStage` 8→6, `EnrichmentPhase` sub-enum, `TurnCycleSets` consolidation)
+1. Bevy pipeline collapse (`TurnCycleStage` 7→5, `EnrichmentPhase` sub-enum, `TurnCycleSets` consolidation)
 2. `stream_complete()` on `LlmProvider` trait with default fallback, `NarratorTokenStream` / `NarratorTokenSender` newtypes
 3. `GameplayEvent` discriminated union in proto and TypeScript types
 4. `DirectiveStore` with append/query methods, `directives.jsonl` lifecycle
