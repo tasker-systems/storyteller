@@ -1346,7 +1346,7 @@ In `engine_service.rs`, read from directive store before calling context assembl
 ```rust
 let directive_context = session_store
     .directives
-    .applicable_for_turn(turn_number)
+    .applicable_for_turn(&session_id, turn_number)
     .ok()
     .and_then(|directives| {
         directives.last().map(|d| {
