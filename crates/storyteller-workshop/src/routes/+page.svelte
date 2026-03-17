@@ -68,9 +68,11 @@
   });
 
   function appendProseChunk(chunk: string, turn: number) {
-    const existingIdx = blocks.findIndex(
-      (b) => b.kind === "narrator" && b.turn === turn
-    );
+    const existingIdx = blocks.findIndex((b) => {
+      if (turn === 0 && b.kind === "opening") return true;
+      if (b.kind === "narrator" && b.turn === turn) return true;
+      return false;
+    });
     if (existingIdx >= 0) {
       blocks[existingIdx] = {
         ...blocks[existingIdx],
