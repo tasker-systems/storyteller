@@ -205,5 +205,6 @@ fn build_compose_request(
             .get("setting_override")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+        player_character: None,
     })
 }

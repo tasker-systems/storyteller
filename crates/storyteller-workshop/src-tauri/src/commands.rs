@@ -311,6 +311,7 @@ pub async fn compose_scene(
         title_override: None,
         setting_override: selections.setting_override,
         seed: selections.seed,
+        player_character: None,
     };
 
     // Acquire lock, start stream, then drop lock before consuming
@@ -612,9 +613,13 @@ fn translate_engine_event(turn: u32, payload: &engine_event::Payload) -> Option<
             message: e.message.clone(),
         }),
 
-        // These don't need debug forwarding
+        // These don't need debug forwarding — handled by gameplay channel (Task 8)
         engine_event::Payload::SceneComposed(_)
         | engine_event::Payload::TurnComplete(_)
-        | engine_event::Payload::NarratorToken(_) => None,
+        | engine_event::Payload::NarratorToken(_)
+        | engine_event::Payload::NarratorProse(_)
+        | engine_event::Payload::SceneReady(_)
+        | engine_event::Payload::InputReceived(_)
+        | engine_event::Payload::ProcessingUpdate(_) => None,
     }
 }

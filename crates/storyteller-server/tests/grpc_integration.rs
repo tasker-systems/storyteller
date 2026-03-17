@@ -248,6 +248,7 @@ async fn compose_scene_integration() {
         title_override: None,
         setting_override: None,
         seed: None,
+        player_character: None,
     };
 
     let response = client.compose_scene(request).await.unwrap();
@@ -483,6 +484,7 @@ async fn narrator_complete_has_enriched_fields() {
         title_override: None,
         setting_override: None,
         seed: None,
+        player_character: None,
     };
 
     let response = client.compose_scene(request).await.unwrap();

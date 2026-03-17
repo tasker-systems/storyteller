@@ -97,6 +97,7 @@ pub async fn run(args: ComposeArgs) -> Result<(), Box<dyn std::error::Error>> {
         seed: args.seed,
         title_override: None,
         setting_override: None,
+        player_character: None,
     };
 
     let mut stream = client.compose_scene(request).await?;
