@@ -278,6 +278,46 @@ pub enum DebugEvent {
     },
 }
 
+/// Channel name for gameplay events emitted during a scene.
+pub const GAMEPLAY_CHANNEL: &str = "workshop:gameplay";
+
+/// Events emitted on the `workshop:gameplay` Tauri channel during a scene.
+///
+/// All variants flow server → client (downstream only). The frontend listens
+/// on this channel to drive the play view: prose streaming, phase indicators,
+/// and turn lifecycle transitions.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "kind")]
+#[ts(export, export_to = "../../src/lib/generated/")]
+pub enum GameplayEvent {
+    SceneReady {
+        scene_id: String,
+        title: String,
+        setting_summary: String,
+        cast_names: Vec<String>,
+        player_character: String,
+        player_intent: Option<String>,
+    },
+    InputReceived {
+        turn: u32,
+    },
+    ProcessingUpdate {
+        phase: String,
+    },
+    NarratorProse {
+        chunk: String,
+        turn: u32,
+    },
+    NarratorComplete {
+        prose: String,
+        turn: u32,
+    },
+    TurnComplete {
+        turn: u32,
+        ready_for_input: bool,
+    },
+}
+
 /// Log entry from the server's tracing stream.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/generated/")]
