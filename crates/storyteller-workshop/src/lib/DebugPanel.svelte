@@ -5,10 +5,10 @@
   import type { DebugState, PhaseStatus } from "./types";
   import { DEBUG_EVENT_CHANNEL, LOG_EVENT_CHANNEL } from "./types";
   import type { DebugEvent, HealthReport, LogEntry } from "./generated";
-  import { checkHealth } from "./api";
+  import { checkHealth, getSceneState } from "./api";
   import { phaseStatus as computePhaseStatus, freshDebugState, applyDebugEvent } from "./logic";
 
-  let { visible }: { visible: boolean } = $props();
+  let { visible, sessionId = "" }: { visible: boolean; sessionId?: string } = $props();
 
   const TABS = ["LLM", "Context", "ML Predictions", "Characters", "Events", "Arbitration", "Goals", "Narrator", "Logs"] as const;
   type TabName = (typeof TABS)[number];
@@ -43,6 +43,40 @@
     goals: null,
     narrator: null,
     error: null,
+  });
+
+  interface CharacterInfo {
+    entity_id: string;
+    name: string;
+    role: string;
+    performance_notes: string;
+  }
+  let characters: CharacterInfo[] = $state([]);
+  let sceneGoalsJson: string | null = $state(null);
+  let intentionsJson: string | null = $state(null);
+  let charactersFetched = $state(false);
+
+  $effect(() => {
+    if (activeTab === "Characters" && sessionId && !charactersFetched) {
+      charactersFetched = true;
+      getSceneState(sessionId)
+        .then((result: unknown) => {
+          const data = result as Record<string, unknown>;
+          if (Array.isArray(data.characters)) {
+            characters = data.characters as CharacterInfo[];
+          }
+          if (typeof data.scene_goals_json === "string") {
+            sceneGoalsJson = data.scene_goals_json;
+          }
+          if (typeof data.intentions_json === "string") {
+            intentionsJson = data.intentions_json;
+          }
+          debugState.phases["characters"] = "complete";
+        })
+        .catch(() => {
+          debugState.phases["characters"] = "error";
+        });
+    }
   });
 
   let panelHeight = $state(0); // 0 means "use default 25%"
@@ -258,7 +292,10 @@
             {/if}
             <div class="debug-section">
               <h4>Prediction Data</h4>
-              <pre>{debugState.prediction.raw_json}</pre>
+              {#if debugState.prediction.raw_json}
+                {@const parsed = (() => { try { return JSON.parse(debugState.prediction.raw_json); } catch { return debugState.prediction.raw_json; } })()}
+                <JSONTree value={parsed} />
+              {/if}
             </div>
             <div class="debug-section">
               <h4>Prediction: {debugState.prediction.timing_ms}ms</h4>
@@ -269,7 +306,32 @@
         </div>
       {:else if activeTab === "Characters"}
         <div class="debug-tab-content">
-          <p class="debug-empty">Character state will be available via GetSceneState RPC.</p>
+          {#if characters.length > 0}
+            {#each characters as char}
+              <div class="debug-section">
+                <h4>{char.name} <span class="token-count">({char.role})</span></h4>
+                <pre>{char.performance_notes}</pre>
+              </div>
+            {/each}
+            {#if sceneGoalsJson}
+              {@const parsed = (() => { try { return JSON.parse(sceneGoalsJson); } catch { return sceneGoalsJson; } })()}
+              <div class="debug-section">
+                <h4>Scene Goals</h4>
+                <JSONTree value={parsed} />
+              </div>
+            {/if}
+            {#if intentionsJson}
+              {@const parsed = (() => { try { return JSON.parse(intentionsJson); } catch { return intentionsJson; } })()}
+              <div class="debug-section">
+                <h4>Character Intentions</h4>
+                <JSONTree value={parsed} />
+              </div>
+            {/if}
+          {:else if !sessionId}
+            <p class="debug-empty">No active session.</p>
+          {:else}
+            <p class="debug-empty">No character data available.</p>
+          {/if}
         </div>
       {:else if activeTab === "Events"}
         <div class="debug-tab-content">
@@ -280,9 +342,10 @@
                 <pre class="llm-fail">{debugState.decomposition.error}</pre>
               {/if}
               {#if debugState.decomposition.raw_json}
+                {@const parsed = (() => { try { return JSON.parse(debugState.decomposition.raw_json); } catch { return debugState.decomposition.raw_json; } })()}
                 <div class="debug-section">
                   <h4>Raw Response</h4>
-                  <pre>{debugState.decomposition.raw_json}</pre>
+                  <JSONTree value={parsed} />
                 </div>
               {:else if !debugState.decomposition.error}
                 <p class="debug-empty">No decomposition produced.</p>
@@ -300,9 +363,14 @@
               <pre class={debugState.arbitration.verdict === "Permitted" ? "arb-permitted" : debugState.arbitration.verdict === "Impossible" ? "arb-impossible" : "arb-ambiguous"}>{debugState.arbitration.verdict}</pre>
             </div>
             {#if debugState.arbitration.details}
+              {@const parsed = (() => { try { return JSON.parse(debugState.arbitration.details); } catch { return null; } })()}
               <div class="debug-section">
                 <h4>Details</h4>
-                <pre>{debugState.arbitration.details}</pre>
+                {#if parsed}
+                  <JSONTree value={parsed} />
+                {:else}
+                  <pre>{debugState.arbitration.details}</pre>
+                {/if}
               </div>
             {/if}
             <div class="debug-section">

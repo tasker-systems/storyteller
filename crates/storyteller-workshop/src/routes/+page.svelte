@@ -271,7 +271,7 @@
     </div>
   </div>
 
-  <DebugPanel visible={debugVisible && view === "playing"} />
+  <DebugPanel visible={debugVisible && view === "playing"} {sessionId} />
 </div>
 
 <style>

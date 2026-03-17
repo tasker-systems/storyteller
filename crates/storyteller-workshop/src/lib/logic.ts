@@ -224,7 +224,9 @@ export function freshDebugState(turn: number): DebugState {
  * Resets state if the event's turn differs from the current turn.
  */
 export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugState {
-  let next = event.turn !== state.turn ? freshDebugState(event.turn) : { ...state, phases: { ...state.phases } };
+  let next = event.turn !== state.turn
+    ? { ...freshDebugState(event.turn), goals: state.goals }
+    : { ...state, phases: { ...state.phases } };
 
   switch (event.type) {
     case "phase_started":
