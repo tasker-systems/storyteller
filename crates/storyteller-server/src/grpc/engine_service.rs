@@ -22,6 +22,7 @@ use storyteller_composer::{
 };
 use storyteller_core::{
     traits::{
+        llm::NarratorTokenStream,
         phase_observer::{CollectingObserver, PhaseEventDetail},
         NoopObserver,
     },
@@ -29,6 +30,7 @@ use storyteller_core::{
         capability_lexicon::CapabilityLexicon,
         character::{CharacterSheet, SceneData},
         entity::EntityId,
+        message::NarratorRendering,
         prediction::{EmotionalRegister, EventType},
     },
 };
@@ -120,6 +122,60 @@ fn make_event(session_id: &str, turn: Option<u32>, payload: engine_event::Payloa
         timestamp: Utc::now().to_rfc3339(),
         payload: Some(payload),
     }
+}
+
+/// Consume a token stream, batch by sentence/paragraph boundaries,
+/// and emit `NarratorProse` events. Returns the full accumulated prose.
+async fn stream_narrator_prose(
+    mut token_stream: NarratorTokenStream,
+    tx: &mpsc::Sender<Result<EngineEvent, Status>>,
+    session_id: &str,
+    turn: u32,
+) -> String {
+    let mut full_buffer = String::new();
+    let mut chunk_buffer = String::new();
+
+    while let Some(token) = token_stream.0.recv().await {
+        full_buffer.push_str(&token);
+        chunk_buffer.push_str(&token);
+
+        // Flush on sentence-ending punctuation or paragraph break
+        let should_flush = chunk_buffer.ends_with(". ")
+            || chunk_buffer.ends_with(".\n")
+            || chunk_buffer.ends_with("? ")
+            || chunk_buffer.ends_with("?\n")
+            || chunk_buffer.ends_with("! ")
+            || chunk_buffer.ends_with("!\n")
+            || chunk_buffer.contains("\n\n");
+
+        if should_flush && !chunk_buffer.trim().is_empty() {
+            let event = make_event(
+                session_id,
+                Some(turn),
+                engine_event::Payload::NarratorProse(NarratorProse {
+                    chunk: chunk_buffer.clone(),
+                    turn,
+                }),
+            );
+            let _ = tx.send(Ok(event)).await;
+            chunk_buffer.clear();
+        }
+    }
+
+    // Flush any remaining content
+    if !chunk_buffer.trim().is_empty() {
+        let event = make_event(
+            session_id,
+            Some(turn),
+            engine_event::Payload::NarratorProse(NarratorProse {
+                chunk: chunk_buffer,
+                turn,
+            }),
+        );
+        let _ = tx.send(Ok(event)).await;
+    }
+
+    full_buffer
 }
 
 #[tonic::async_trait]
@@ -320,6 +376,17 @@ impl StorytellerEngine for EngineServiceImpl {
                 player_entity_id,
             );
 
+            // Emit ProcessingUpdate before rendering
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(0),
+                    engine_event::Payload::ProcessingUpdate(ProcessingUpdate {
+                        phase: "rendering".into(),
+                    }),
+                )))
+                .await;
+
             let narrator = NarratorAgent::new(&context, Arc::clone(&providers.narrator_llm))
                 .with_temperature(0.8);
             let opening_system_prompt = narrator.system_prompt().to_string();
@@ -329,8 +396,8 @@ impl StorytellerEngine for EngineServiceImpl {
             let narrator_model_name = providers.narrator_model.clone();
             let noop = NoopObserver;
             let llm_start = Instant::now();
-            let opening_prose = match narrator.render_opening(&noop).await {
-                Ok(r) => r.text,
+            let opening_prose = match narrator.stream_render_opening(&noop).await {
+                Ok(token_stream) => stream_narrator_prose(token_stream, &tx, &session_id, 0).await,
                 Err(e) => {
                     tracing::error!(
                         error = %e,
@@ -355,7 +422,7 @@ impl StorytellerEngine for EngineServiceImpl {
                         model: narrator_model_name,
                         temperature: 0.8,
                         max_tokens: 600,
-                        tokens_used: 0, // not available from NarratorRendering
+                        tokens_used: 0, // not available from streaming
                     }),
                 )))
                 .await;
@@ -513,6 +580,15 @@ impl StorytellerEngine for EngineServiceImpl {
             };
             let turn = snapshot.turn_count + 1;
 
+            // Emit InputReceived at the start of processing
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::InputReceived(InputReceived { turn }),
+                )))
+                .await;
+
             // Derive player entity ID from scene cast (protagonist role)
             let player_entity_id = scene
                 .cast
@@ -520,6 +596,17 @@ impl StorytellerEngine for EngineServiceImpl {
                 .find(|c| c.role.to_lowercase().contains("protagonist"))
                 .map(|c| c.entity_id)
                 .or(snapshot.player_entity_id);
+
+            // Emit ProcessingUpdate before enrichment phase
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::ProcessingUpdate(ProcessingUpdate {
+                        phase: "enriching".into(),
+                    }),
+                )))
+                .await;
 
             // --- Phase 1: Event Decomposition ---
             let _ = tx
@@ -730,6 +817,17 @@ impl StorytellerEngine for EngineServiceImpl {
                 )))
                 .await;
 
+            // Emit ProcessingUpdate before context assembly
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::ProcessingUpdate(ProcessingUpdate {
+                        phase: "assembling".into(),
+                    }),
+                )))
+                .await;
+
             // --- Phase 5: Context Assembly ---
             let observer = CollectingObserver::new();
             let assembly_start = Instant::now();
@@ -822,6 +920,17 @@ impl StorytellerEngine for EngineServiceImpl {
                 )))
                 .await;
 
+            // Emit ProcessingUpdate before rendering
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(turn),
+                    engine_event::Payload::ProcessingUpdate(ProcessingUpdate {
+                        phase: "rendering".into(),
+                    }),
+                )))
+                .await;
+
             let narrator = NarratorAgent::new(&context, Arc::clone(&providers.narrator_llm))
                 .with_temperature(0.8);
             let turn_system_prompt = narrator.system_prompt().to_string();
@@ -831,19 +940,24 @@ impl StorytellerEngine for EngineServiceImpl {
             );
             let noop = NoopObserver;
             let llm_start = Instant::now();
-            let rendering = match narrator.render(&context, &noop).await {
-                Ok(r) => r,
+            let token_stream = match narrator.stream_render(&context, &noop).await {
+                Ok(s) => s,
                 Err(e) => {
                     tracing::error!(
                         error = %e,
                         session = %session_id,
-                        "Narrator render failed"
+                        "Narrator stream failed"
                     );
                     let _ = tx
                         .send(Err(Status::internal(format!("Narrator failed: {e}"))))
                         .await;
                     return;
                 }
+            };
+            let prose = stream_narrator_prose(token_stream, &tx, &session_id, turn).await;
+            let rendering = NarratorRendering {
+                text: prose,
+                stage_directions: Some(resolver_output.scene_dynamics.clone()),
             };
             let narrator_ms = llm_start.elapsed().as_millis() as u64;
 
@@ -869,7 +983,7 @@ impl StorytellerEngine for EngineServiceImpl {
                         model: providers.narrator_model.clone(),
                         temperature: 0.8,
                         max_tokens: 400,
-                        tokens_used: 0, // not available from NarratorRendering
+                        tokens_used: 0, // not available from streaming
                     }),
                 )))
                 .await;
