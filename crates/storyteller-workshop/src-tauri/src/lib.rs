@@ -66,6 +66,9 @@ pub fn run() {
                     }
                 }
 
+                // Wait briefly for the webview to mount and register event listeners
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
                 // Start log streaming on a separate client connection
                 let log_config = ClientConfig::from_env();
                 match StorytellerClient::connect(log_config).await {
