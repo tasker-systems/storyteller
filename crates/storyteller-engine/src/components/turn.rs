@@ -15,7 +15,7 @@ use storyteller_core::types::message::NarratorRendering;
 use storyteller_core::types::narrator_context::{NarratorContextInput, SceneJournal};
 use storyteller_core::types::prediction::CharacterPrediction;
 use storyteller_core::types::resolver::ResolverOutput;
-use storyteller_core::types::turn_cycle::TurnCycleStage;
+use storyteller_core::types::turn_cycle::{EnrichmentPhase, TurnCycleStage};
 use storyteller_core::types::world_model::ActionPossibility;
 use storyteller_core::StorytellerResult;
 
@@ -31,6 +31,11 @@ use crate::inference::event_classifier::ClassificationOutput;
 /// when its work completes.
 #[derive(Debug, Default, Resource)]
 pub struct ActiveTurnStage(pub TurnCycleStage);
+
+/// Tracks the current phase within the Enriching stage.
+/// Reset to default (EventClassification) when Enriching begins.
+#[derive(Debug, Default, Resource)]
+pub struct EnrichmentState(pub EnrichmentPhase);
 
 /// Bevy Resource: accumulated context for the current turn.
 ///

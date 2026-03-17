@@ -8,12 +8,11 @@ use bevy_ecs::prelude::IntoSystemConfigs;
 use bevy_ecs::schedule::IntoSystemSetConfigs;
 
 use crate::components::turn::{
-    ActiveTurnStage, NarratorTask, PendingInput, TurnContext, TurnHistory,
+    ActiveTurnStage, EnrichmentState, NarratorTask, PendingInput, TurnContext, TurnHistory,
 };
 use crate::systems::rendering::rendering_system;
 use crate::systems::turn_cycle::{
-    assemble_context_system, classify_system, commit_previous_system, in_stage, predict_system,
-    resolve_system, TurnCycleSets,
+    assemble_context_system, commit_previous_system, enrichment_system, in_stage, TurnCycleSets,
 };
 use storyteller_core::types::turn_cycle::TurnCycleStage;
 
@@ -31,7 +30,8 @@ impl Plugin for StorytellerEnginePlugin {
             .init_resource::<TurnContext>()
             .init_resource::<NarratorTask>()
             .init_resource::<TurnHistory>()
-            .init_resource::<PendingInput>();
+            .init_resource::<PendingInput>()
+            .init_resource::<EnrichmentState>();
 
         // System set ordering — sequential pipeline within a single frame
         app.configure_sets(
@@ -39,10 +39,8 @@ impl Plugin for StorytellerEnginePlugin {
             (
                 TurnCycleSets::Input,
                 TurnCycleSets::CommittingPrevious.after(TurnCycleSets::Input),
-                TurnCycleSets::Classification.after(TurnCycleSets::CommittingPrevious),
-                TurnCycleSets::Prediction.after(TurnCycleSets::Classification),
-                TurnCycleSets::Resolution.after(TurnCycleSets::Prediction),
-                TurnCycleSets::ContextAssembly.after(TurnCycleSets::Resolution),
+                TurnCycleSets::Enrichment.after(TurnCycleSets::CommittingPrevious),
+                TurnCycleSets::ContextAssembly.after(TurnCycleSets::Enrichment),
                 TurnCycleSets::Rendering.after(TurnCycleSets::ContextAssembly),
             ),
         );
@@ -54,15 +52,9 @@ impl Plugin for StorytellerEnginePlugin {
                 commit_previous_system
                     .run_if(in_stage(TurnCycleStage::CommittingPrevious))
                     .in_set(TurnCycleSets::CommittingPrevious),
-                classify_system
-                    .run_if(in_stage(TurnCycleStage::Classifying))
-                    .in_set(TurnCycleSets::Classification),
-                predict_system
-                    .run_if(in_stage(TurnCycleStage::Predicting))
-                    .in_set(TurnCycleSets::Prediction),
-                resolve_system
-                    .run_if(in_stage(TurnCycleStage::Resolving))
-                    .in_set(TurnCycleSets::Resolution),
+                enrichment_system
+                    .run_if(in_stage(TurnCycleStage::Enriching))
+                    .in_set(TurnCycleSets::Enrichment),
                 assemble_context_system
                     .run_if(in_stage(TurnCycleStage::AssemblingContext))
                     .in_set(TurnCycleSets::ContextAssembly),
