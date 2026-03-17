@@ -8,15 +8,15 @@ use std::sync::Arc;
 
 use storyteller_client::{
     engine_event, CastMember, ComposeSceneRequest, DynamicPairing, GetSceneStateRequest,
-    ResumeSessionRequest, StorytellerClient, SubmitInputRequest,
+    PlayerCharacter, ResumeSessionRequest, StorytellerClient, SubmitInputRequest,
 };
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 
 use crate::types::{
-    ArchetypeSummary, ContextTokens, DebugEvent, DynamicSummary, GenreSummary, HealthReport,
-    ProfileSummary, ResumeResult, SceneInfo, SceneSelections, SessionInfo, SettingSummary,
-    SubsystemStatus, TurnResult, TurnSummary, TurnTiming,
+    ArchetypeSummary, ContextTokens, DebugEvent, DynamicSummary, GameplayEvent, GenreSummary,
+    HealthReport, ProfileSummary, ResumeResult, SceneInfo, SceneSelections, SessionInfo,
+    SettingSummary, SubsystemStatus, TurnResult, TurnSummary, TurnTiming, GAMEPLAY_CHANNEL,
 };
 
 /// Shared client state managed by Tauri.
@@ -311,7 +311,12 @@ pub async fn compose_scene(
         title_override: None,
         setting_override: selections.setting_override,
         seed: selections.seed,
-        player_character: None,
+        player_character: selections.player_character.map(|pc| PlayerCharacter {
+            name: pc.name,
+            age: pc.age,
+            gender_presentation: pc.gender_presentation,
+            intent: pc.intent,
+        }),
     };
 
     // Acquire lock, start stream, then drop lock before consuming
@@ -347,9 +352,81 @@ pub async fn compose_scene(
                     title = sc.title.clone();
                     setting_description = sc.setting_description.clone();
                     cast = sc.cast_names.clone();
+
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::SceneReady {
+                            scene_id: session_id.clone(),
+                            title: sc.title.clone(),
+                            setting_summary: sc.setting_description.clone(),
+                            cast_names: sc.cast_names.clone(),
+                            player_character: String::new(), // populated in Task 13
+                            player_intent: None,             // populated in Task 13
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
                 }
                 engine_event::Payload::NarratorComplete(nc) => {
                     opening_prose = nc.prose.clone();
+
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::NarratorComplete {
+                            prose: nc.prose.clone(),
+                            turn: 0,
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::TurnComplete(tc) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::TurnComplete {
+                            turn: tc.turn,
+                            ready_for_input: tc.ready_for_input,
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::NarratorProse(np) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::NarratorProse {
+                            chunk: np.chunk.clone(),
+                            turn: np.turn,
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::ProcessingUpdate(pu) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::ProcessingUpdate {
+                            phase: pu.phase.clone(),
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::InputReceived(ir) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::InputReceived { turn: ir.turn },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::SceneReady(sr) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::SceneReady {
+                            scene_id: sr.scene_id.clone(),
+                            title: sr.title.clone(),
+                            setting_summary: sr.setting_summary.clone(),
+                            cast_names: sr.cast_names.clone(),
+                            player_character: sr.player_character.clone(),
+                            player_intent: sr.player_intent.clone(),
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
                 }
                 _ => {}
             }
@@ -392,6 +469,13 @@ pub async fn submit_input(
         total: 0,
     };
 
+    // Notify frontend that input was received and processing is starting
+    app.emit(
+        GAMEPLAY_CHANNEL,
+        &GameplayEvent::InputReceived { turn: turn_number },
+    )
+    .map_err(|e| e.to_string())?;
+
     while let Some(event) = stream
         .message()
         .await
@@ -420,9 +504,67 @@ pub async fn submit_input(
                 engine_event::Payload::NarratorComplete(nc) => {
                     narrator_prose = nc.prose.clone();
                     narrator_ms = nc.generation_ms;
+
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::NarratorComplete {
+                            prose: nc.prose.clone(),
+                            turn: turn_number,
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
                 }
                 engine_event::Payload::TurnComplete(tc) => {
                     turn_number = tc.turn;
+
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::TurnComplete {
+                            turn: tc.turn,
+                            ready_for_input: tc.ready_for_input,
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::NarratorProse(np) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::NarratorProse {
+                            chunk: np.chunk.clone(),
+                            turn: np.turn,
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::ProcessingUpdate(pu) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::ProcessingUpdate {
+                            phase: pu.phase.clone(),
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::InputReceived(ir) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::InputReceived { turn: ir.turn },
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                engine_event::Payload::SceneReady(sr) => {
+                    app.emit(
+                        GAMEPLAY_CHANNEL,
+                        &GameplayEvent::SceneReady {
+                            scene_id: sr.scene_id.clone(),
+                            title: sr.title.clone(),
+                            setting_summary: sr.setting_summary.clone(),
+                            cast_names: sr.cast_names.clone(),
+                            player_character: sr.player_character.clone(),
+                            player_intent: sr.player_intent.clone(),
+                        },
+                    )
+                    .map_err(|e| e.to_string())?;
                 }
                 _ => {}
             }

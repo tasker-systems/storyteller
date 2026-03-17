@@ -133,22 +133,22 @@ describe("canAdvance", () => {
   };
 
   it("step 0: requires genre selection", () => {
-    expect(canAdvance(0, { selectedGenreId: null, selectedProfileId: null, cast: [], launching: false }, null)).toBe(false);
-    expect(canAdvance(0, { selectedGenreId: "fantasy", selectedProfileId: null, cast: [], launching: false }, null)).toBe(true);
+    expect(canAdvance(0, { selectedGenreId: null, selectedProfileId: null, cast: [], playerName: "", launching: false }, null)).toBe(false);
+    expect(canAdvance(0, { selectedGenreId: "fantasy", selectedProfileId: null, cast: [], playerName: "", launching: false }, null)).toBe(true);
   });
 
   it("step 1: requires profile selection", () => {
-    expect(canAdvance(1, { selectedGenreId: "fantasy", selectedProfileId: null, cast: [], launching: false }, null)).toBe(false);
-    expect(canAdvance(1, { selectedGenreId: "fantasy", selectedProfileId: "p1", cast: [], launching: false }, null)).toBe(true);
+    expect(canAdvance(1, { selectedGenreId: "fantasy", selectedProfileId: null, cast: [], playerName: "", launching: false }, null)).toBe(false);
+    expect(canAdvance(1, { selectedGenreId: "fantasy", selectedProfileId: "p1", cast: [], playerName: "", launching: false }, null)).toBe(true);
   });
 
   it("step 2: validates cast size, archetypes, names, and protagonist", () => {
-    const state = { selectedGenreId: "f", selectedProfileId: "p1", cast: makeCast("Alice", "Bob"), launching: false };
+    const state = { selectedGenreId: "f", selectedProfileId: "p1", cast: makeCast("Alice", "Bob"), playerName: "", launching: false };
     expect(canAdvance(2, state, profile)).toBe(true);
   });
 
   it("step 2: rejects cast below minimum", () => {
-    const state = { selectedGenreId: "f", selectedProfileId: "p1", cast: makeCast("Alice"), launching: false };
+    const state = { selectedGenreId: "f", selectedProfileId: "p1", cast: makeCast("Alice"), playerName: "", launching: false };
     expect(canAdvance(2, state, profile)).toBe(false);
   });
 
@@ -157,7 +157,7 @@ describe("canAdvance", () => {
       { archetype_id: "hero", name: "Alice", role: "protagonist" },
       { archetype_id: "", name: "Bob", role: "cast" },
     ];
-    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, launching: false }, profile)).toBe(false);
+    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, playerName: "", launching: false }, profile)).toBe(false);
   });
 
   it("step 2: rejects empty name", () => {
@@ -165,7 +165,7 @@ describe("canAdvance", () => {
       { archetype_id: "hero", name: "Alice", role: "protagonist" },
       { archetype_id: "sidekick", name: "", role: "cast" },
     ];
-    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, launching: false }, profile)).toBe(false);
+    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, playerName: "", launching: false }, profile)).toBe(false);
   });
 
   it("step 2: rejects whitespace-only name", () => {
@@ -173,7 +173,7 @@ describe("canAdvance", () => {
       { archetype_id: "hero", name: "Alice", role: "protagonist" },
       { archetype_id: "sidekick", name: "   ", role: "cast" },
     ];
-    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, launching: false }, profile)).toBe(false);
+    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, playerName: "", launching: false }, profile)).toBe(false);
   });
 
   it("step 2: rejects null name", () => {
@@ -181,7 +181,7 @@ describe("canAdvance", () => {
       { archetype_id: "hero", name: "Alice", role: "protagonist" },
       { archetype_id: "sidekick", name: null, role: "cast" },
     ];
-    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, launching: false }, profile)).toBe(false);
+    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, playerName: "", launching: false }, profile)).toBe(false);
   });
 
   it("step 2: rejects zero protagonists", () => {
@@ -189,7 +189,7 @@ describe("canAdvance", () => {
       { archetype_id: "hero", name: "Alice", role: "cast" },
       { archetype_id: "sidekick", name: "Bob", role: "cast" },
     ];
-    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, launching: false }, profile)).toBe(false);
+    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, playerName: "", launching: false }, profile)).toBe(false);
   });
 
   it("step 2: rejects multiple protagonists", () => {
@@ -197,22 +197,32 @@ describe("canAdvance", () => {
       { archetype_id: "hero", name: "Alice", role: "protagonist" },
       { archetype_id: "sidekick", name: "Bob", role: "protagonist" },
     ];
-    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, launching: false }, profile)).toBe(false);
+    expect(canAdvance(2, { selectedGenreId: "f", selectedProfileId: "p1", cast, playerName: "", launching: false }, profile)).toBe(false);
   });
 
-  it("steps 3 and 4 always advance", () => {
-    const state = { selectedGenreId: "f", selectedProfileId: "p1", cast: [], launching: false };
+  it("step 3: dynamics always advance", () => {
+    const state = { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "", launching: false };
     expect(canAdvance(3, state, null)).toBe(true);
-    expect(canAdvance(4, state, null)).toBe(true);
   });
 
-  it("step 5: blocked while launching", () => {
-    expect(canAdvance(5, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], launching: true }, null)).toBe(false);
-    expect(canAdvance(5, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], launching: false }, null)).toBe(true);
+  it("step 4: player character requires non-empty name", () => {
+    expect(canAdvance(4, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "", launching: false }, null)).toBe(false);
+    expect(canAdvance(4, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "   ", launching: false }, null)).toBe(false);
+    expect(canAdvance(4, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "Aria", launching: false }, null)).toBe(true);
+  });
+
+  it("step 5: setting always advances", () => {
+    const state = { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "", launching: false };
+    expect(canAdvance(5, state, null)).toBe(true);
+  });
+
+  it("step 6: blocked while launching", () => {
+    expect(canAdvance(6, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "", launching: true }, null)).toBe(false);
+    expect(canAdvance(6, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "", launching: false }, null)).toBe(true);
   });
 
   it("unknown step returns false", () => {
-    expect(canAdvance(99, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], launching: false }, null)).toBe(false);
+    expect(canAdvance(99, { selectedGenreId: "f", selectedProfileId: "p1", cast: [], playerName: "", launching: false }, null)).toBe(false);
   });
 });
 
@@ -226,6 +236,7 @@ describe("nextStep", () => {
     expect(nextStep(1, 3)).toBe(2);
     expect(nextStep(3, 3)).toBe(4);
     expect(nextStep(4, 3)).toBe(5);
+    expect(nextStep(5, 3)).toBe(6);
   });
 
   it("skips dynamics (step 3) when cast < 2", () => {
@@ -238,13 +249,14 @@ describe("nextStep", () => {
     expect(nextStep(2, 5)).toBe(3);
   });
 
-  it("clamps at step 5", () => {
-    expect(nextStep(5, 3)).toBe(5);
+  it("clamps at step 6", () => {
+    expect(nextStep(6, 3)).toBe(6);
   });
 });
 
 describe("prevStep", () => {
   it("goes back normally", () => {
+    expect(prevStep(6, 3)).toBe(5);
     expect(prevStep(5, 3)).toBe(4);
     expect(prevStep(3, 3)).toBe(2);
     expect(prevStep(1, 3)).toBe(0);

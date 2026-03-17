@@ -164,6 +164,16 @@ pub struct ResumeResult {
     pub turns: Vec<TurnSummary>,
 }
 
+/// Player character input from the wizard.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/generated/")]
+pub struct PlayerCharacterInput {
+    pub name: String,
+    pub age: Option<String>,
+    pub gender_presentation: Option<String>,
+    pub intent: Option<String>,
+}
+
 /// Scene selections for composition (received from Svelte wizard).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/generated/")]
@@ -174,6 +184,7 @@ pub struct SceneSelections {
     pub dynamics: Vec<DynamicSelection>,
     pub setting_override: Option<String>,
     pub seed: Option<u64>,
+    pub player_character: Option<PlayerCharacterInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
