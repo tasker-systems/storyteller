@@ -1586,19 +1586,33 @@ impl StorytellerEngine for EngineServiceImpl {
         let (tx, rx_out) = mpsc::channel(32);
 
         tokio::spawn(async move {
-            while let Ok(entry) = rx.recv().await {
-                if let Some(ref level) = filter.level {
-                    if entry.level != *level {
-                        continue;
+            loop {
+                match rx.recv().await {
+                    Ok(entry) => {
+                        if let Some(ref level) = filter.level {
+                            if entry.level != *level {
+                                continue;
+                            }
+                        }
+                        if let Some(ref target) = filter.target {
+                            if !entry.target.starts_with(target.as_str()) {
+                                continue;
+                            }
+                        }
+                        if tx.send(Ok(entry)).await.is_err() {
+                            break; // receiver dropped
+                        }
                     }
-                }
-                if let Some(ref target) = filter.target {
-                    if !entry.target.starts_with(target.as_str()) {
-                        continue;
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::debug!(
+                            skipped = n,
+                            "Log stream subscriber lagged, skipping entries"
+                        );
+                        continue; // keep going, don't end the stream
                     }
-                }
-                if tx.send(Ok(entry)).await.is_err() {
-                    break;
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        break; // sender dropped, stream is done
+                    }
                 }
             }
         });
