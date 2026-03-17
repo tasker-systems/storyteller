@@ -6233,6 +6233,7 @@ dependencies = [
  "storyteller-ml",
  "tokenizers",
  "tokio",
+ "tokio-stream",
  "tracing",
  "uuid",
 ]
