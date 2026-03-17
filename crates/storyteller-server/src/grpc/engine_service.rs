@@ -48,7 +48,7 @@ use storyteller_engine::{
             event_decomposition_schema, event_decomposition_system_prompt, EventDecomposition,
         },
         intent_synthesis::synthesize_intents,
-        intention_generation::{intentions_to_preamble, GeneratedIntentions},
+        intention_generation::{generate_intentions, intentions_to_preamble, GeneratedIntentions},
     },
     systems::arbitration::check_action_possibility,
 };
@@ -302,6 +302,31 @@ impl StorytellerEngine for EngineServiceImpl {
             // Goal intersection
             let goals = composer.intersect_goals(&selections, &composed);
 
+            // Generate intentions from goals via LLM
+            let intention_start = Instant::now();
+            let characters_for_intentions: Vec<&CharacterSheet> =
+                composed.characters.iter().collect();
+            let generated_intentions = generate_intentions(
+                providers.narrator_llm.as_ref(),
+                &composed.scene,
+                &characters_for_intentions,
+                &goals,
+            )
+            .await;
+            let intention_ms = intention_start.elapsed().as_millis() as u64;
+            if generated_intentions.is_some() {
+                tracing::info!(
+                    session = %session_id,
+                    timing_ms = intention_ms,
+                    "Generated scene intentions from composed goals"
+                );
+            } else {
+                tracing::warn!(
+                    session = %session_id,
+                    "Intention generation returned None — scene proceeds without intentions"
+                );
+            }
+
             // Persist composition to session directory
             let player_character_json = player_character.as_ref().map(|pc| {
                 serde_json::json!({
@@ -316,7 +341,7 @@ impl StorytellerEngine for EngineServiceImpl {
                 "scene": composed.scene,
                 "characters": composed.characters,
                 "goals": goals,
-                "intentions": null,
+                "intentions": serde_json::to_value(&generated_intentions).unwrap_or(serde_json::Value::Null),
                 "player_character": player_character_json,
             });
 
@@ -334,17 +359,68 @@ impl StorytellerEngine for EngineServiceImpl {
                 .map(|g| format!("{} ({})", g.goal_id, g.category))
                 .collect();
 
+            // Build goal/intention fields for GoalsGenerated event
+            let character_goal_strs: Vec<String> = generated_intentions
+                .as_ref()
+                .map(|gi| {
+                    gi.character_intentions
+                        .iter()
+                        .map(|ci| format!("{}: {}", ci.character, ci.objective))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let (goals_scene_direction, goals_character_drives) = generated_intentions
+                .as_ref()
+                .map(|gi| {
+                    let (sd, cd) = intentions_to_preamble(gi);
+                    (
+                        Some(sd.dramatic_tension),
+                        cd.iter()
+                            .map(|d| format!("{}: {}", d.name, d.behavioral_stance))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .unwrap_or((None, vec![]));
+
+            // Build player context from goals (overt/signaled goals visible to player)
+            let player_entity_id_for_goals = composed
+                .scene
+                .cast
+                .iter()
+                .find(|c| c.role.to_lowercase().contains("protagonist"))
+                .map(|c| c.entity_id);
+            let goals_player_context = {
+                use storyteller_composer::goals::GoalVisibility;
+                player_entity_id_for_goals
+                    .and_then(|pid| goals.character_goals.get(&pid))
+                    .map(|player_goals| {
+                        player_goals
+                            .iter()
+                            .filter(|g| {
+                                matches!(
+                                    g.visibility,
+                                    GoalVisibility::Overt | GoalVisibility::Signaled
+                                )
+                            })
+                            .map(|g| g.goal_id.replace('_', " "))
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    })
+                    .filter(|s| !s.is_empty())
+            };
+
             let _ = tx
                 .send(Ok(make_event(
                     &session_id,
                     Some(0),
                     engine_event::Payload::Goals(GoalsGenerated {
                         scene_goals: scene_goal_strs,
-                        character_goals: vec![],
-                        scene_direction: None,
-                        player_context: None,
-                        timing_ms: 0,
-                        character_drives: vec![],
+                        character_goals: character_goal_strs,
+                        scene_direction: goals_scene_direction,
+                        player_context: goals_player_context.clone(),
+                        timing_ms: intention_ms,
+                        character_drives: goals_character_drives,
                     }),
                 )))
                 .await;
@@ -386,7 +462,7 @@ impl StorytellerEngine for EngineServiceImpl {
             };
 
             let obs = CollectingObserver::new();
-            let context = assemble_narrator_context(
+            let mut context = assemble_narrator_context(
                 &composed.scene,
                 &characters_refs,
                 &opening_journal,
@@ -398,6 +474,17 @@ impl StorytellerEngine for EngineServiceImpl {
                 player_entity_id,
                 None, // directive_context — no directives at scene open
             );
+
+            // Inject composition-time intentions into opening preamble
+            if let Some(ref intentions) = generated_intentions {
+                let (scene_direction, character_drives) = intentions_to_preamble(intentions);
+                context.preamble.scene_direction = Some(scene_direction);
+                context.preamble.character_drives = character_drives;
+            }
+            // Inject player context from composed goals
+            if let Some(player_ctx) = &goals_player_context {
+                context.preamble.player_context = Some(player_ctx.clone());
+            }
 
             // Emit ProcessingUpdate before rendering
             let _ = tx
@@ -459,7 +546,9 @@ impl StorytellerEngine for EngineServiceImpl {
                     .map(|c| serde_json::to_value(c).unwrap_or_default())
                     .collect(),
                 goals: Some(serde_json::to_value(&goals).unwrap_or_default()),
-                intentions: None,
+                intentions: generated_intentions
+                    .as_ref()
+                    .map(|gi| serde_json::to_value(gi).unwrap_or_default()),
                 selections: serde_json::to_value(&selections).unwrap_or_default(),
             };
             state_manager.create_session(&session_id, composition);
