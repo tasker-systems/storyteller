@@ -7,6 +7,7 @@
 //! local inference (candle), and external servers (Ollama).
 
 use crate::errors::StorytellerResult;
+use tokio::sync::mpsc;
 
 /// A request to an LLM for text completion.
 #[derive(Debug, Clone)]
@@ -50,6 +51,22 @@ pub struct CompletionResponse {
     pub tokens_used: u32,
 }
 
+/// Newtype for the receiving end of a narrator token stream.
+///
+/// Bounded channel (capacity 64) per project convention.
+#[derive(Debug)]
+pub struct NarratorTokenStream(pub mpsc::Receiver<String>);
+
+/// Newtype for the sending end of a narrator token stream.
+#[derive(Debug, Clone)]
+pub struct NarratorTokenSender(pub mpsc::Sender<String>);
+
+/// Create a bounded narrator token channel pair.
+pub fn narrator_token_channel() -> (NarratorTokenSender, NarratorTokenStream) {
+    let (tx, rx) = mpsc::channel(64);
+    (NarratorTokenSender(tx), NarratorTokenStream(rx))
+}
+
 /// Abstraction over LLM backends.
 ///
 /// Implementations: `CloudLlmProvider`, `CandleLlmProvider`, `ExternalServerProvider`.
@@ -57,4 +74,20 @@ pub struct CompletionResponse {
 pub trait LlmProvider: Send + Sync + std::fmt::Debug {
     /// Send a completion request and receive a response.
     async fn complete(&self, request: CompletionRequest) -> StorytellerResult<CompletionResponse>;
+
+    /// Stream completion tokens.
+    ///
+    /// Default implementation calls `complete()` and sends the full response
+    /// as a single chunk. Override for real streaming (e.g., `ExternalServerProvider`).
+    async fn stream_complete(
+        &self,
+        request: CompletionRequest,
+    ) -> StorytellerResult<NarratorTokenStream> {
+        let response = self.complete(request).await?;
+        let (sender, receiver) = narrator_token_channel();
+        tokio::spawn(async move {
+            let _ = sender.0.send(response.content).await;
+        });
+        Ok(receiver)
+    }
 }

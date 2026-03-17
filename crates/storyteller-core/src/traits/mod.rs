@@ -9,7 +9,7 @@ pub mod structured_llm;
 
 pub use emotional_grammar::EmotionalGrammar;
 pub use game_design::GameDesignSystem;
-pub use llm::LlmProvider;
+pub use llm::{narrator_token_channel, LlmProvider, NarratorTokenSender, NarratorTokenStream};
 pub use phase_observer::{CollectingObserver, NoopObserver, PhaseObserver};
 pub use storykeeper::{Storykeeper, StorykeeperCommit, StorykeeperLifecycle, StorykeeperQuery};
 pub use structured_llm::{StructuredLlmConfig, StructuredLlmProvider, StructuredRequest};
