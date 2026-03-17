@@ -203,6 +203,19 @@ impl StorytellerEngine for EngineServiceImpl {
                 .create_session()
                 .unwrap_or_else(|_| Uuid::now_v7().to_string());
 
+            // Extract player character data before req fields are consumed.
+            let player_character = req.player_character;
+            if let Some(ref pc) = player_character {
+                tracing::info!(
+                    session = %session_id,
+                    player_name = %pc.name,
+                    player_age = ?pc.age,
+                    player_gender = ?pc.gender_presentation,
+                    player_intent = ?pc.intent,
+                    "ComposeScene: player character provided"
+                );
+            }
+
             // Phase 1: Composition
             let _ = tx
                 .send(Ok(make_event(
@@ -290,12 +303,21 @@ impl StorytellerEngine for EngineServiceImpl {
             let goals = composer.intersect_goals(&selections, &composed);
 
             // Persist composition to session directory
+            let player_character_json = player_character.as_ref().map(|pc| {
+                serde_json::json!({
+                    "name": pc.name,
+                    "age": pc.age,
+                    "gender_presentation": pc.gender_presentation,
+                    "intent": pc.intent,
+                })
+            });
             let composition_value = serde_json::json!({
                 "selections": selections,
                 "scene": composed.scene,
                 "characters": composed.characters,
                 "goals": goals,
                 "intentions": null,
+                "player_character": player_character_json,
             });
 
             if let Err(e) = session_store
@@ -489,6 +511,27 @@ impl StorytellerEngine for EngineServiceImpl {
                         turn: 0,
                         total_ms: narrator_ms,
                         ready_for_input: true,
+                    }),
+                )))
+                .await;
+
+            // SceneReady — carries session, player identity, and intent for the Tauri layer.
+            let player_name = player_character
+                .as_ref()
+                .map(|pc| pc.name.clone())
+                .unwrap_or_default();
+            let player_intent = player_character.as_ref().and_then(|pc| pc.intent.clone());
+            let _ = tx
+                .send(Ok(make_event(
+                    &session_id,
+                    Some(0),
+                    engine_event::Payload::SceneReady(SceneReady {
+                        scene_id: composed.scene.scene_id.to_string(),
+                        title: composed.scene.title.clone(),
+                        setting_summary: composed.scene.setting.description.clone(),
+                        cast_names,
+                        player_character: player_name,
+                        player_intent,
                     }),
                 )))
                 .await;
