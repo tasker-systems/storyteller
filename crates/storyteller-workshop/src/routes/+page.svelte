@@ -22,6 +22,11 @@
   let turnCount = $state(0);
   let debugVisible = $state(true);
   let sessionPanelVisible = $state(false);
+  let sceneMetadata = $state<{
+    player_character: string;
+    player_intent: string | null;
+    cast_names: string[];
+  } | null>(null);
 
   onMount(() => {
     function handleKeydown(e: KeyboardEvent) {
@@ -57,7 +62,11 @@
           }
           break;
         case "SceneReady":
-          // Store scene metadata for UI chrome (future use)
+          sceneMetadata = {
+            player_character: payload.player_character,
+            player_intent: payload.player_intent,
+            cast_names: payload.cast_names,
+          };
           break;
         case "ProcessingUpdate":
           // Future: update processing indicator
@@ -167,6 +176,7 @@
     sessionId = "";
     blocks = [];
     turnCount = 0;
+    sceneMetadata = null;
     error = null;
     loading = false;
   }
@@ -246,6 +256,16 @@
         </div>
       {:else}
         <StoryPane {blocks} loading={loading || gameplayLoading} />
+        {#if sceneMetadata?.player_intent}
+          <div class="player-intent-bar">
+            <span class="intent-label">Playing as {sceneMetadata.player_character}:</span>
+            <span class="intent-text">{sceneMetadata.player_intent}</span>
+          </div>
+        {:else if sceneMetadata?.player_character}
+          <div class="player-intent-bar">
+            <span class="intent-label">Playing as {sceneMetadata.player_character}</span>
+          </div>
+        {/if}
         <InputBar disabled={loading || gameplayLoading} onsubmit={handleSubmit} />
       {/if}
     </div>
@@ -393,6 +413,24 @@
     align-items: center;
     overflow-y: auto;
     padding: 2rem 1rem;
+  }
+
+  .player-intent-bar {
+    padding: 0.3rem 1.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    max-width: 816px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .intent-label {
+    font-style: italic;
+  }
+
+  .intent-text {
+    margin-left: 0.3rem;
   }
 
 </style>

@@ -352,19 +352,6 @@ pub async fn compose_scene(
                     title = sc.title.clone();
                     setting_description = sc.setting_description.clone();
                     cast = sc.cast_names.clone();
-
-                    app.emit(
-                        GAMEPLAY_CHANNEL,
-                        &GameplayEvent::SceneReady {
-                            scene_id: session_id.clone(),
-                            title: sc.title.clone(),
-                            setting_summary: sc.setting_description.clone(),
-                            cast_names: sc.cast_names.clone(),
-                            player_character: String::new(), // populated in Task 13
-                            player_intent: None,             // populated in Task 13
-                        },
-                    )
-                    .map_err(|e| e.to_string())?;
                 }
                 engine_event::Payload::NarratorComplete(nc) => {
                     opening_prose = nc.prose.clone();
