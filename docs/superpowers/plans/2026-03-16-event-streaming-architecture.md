@@ -227,6 +227,10 @@ pub fn enrichment_system(
             // via structured 3b-instruct LLM, not in the Bevy pipeline.
             // DistilBERT was removed; the structured LLM replaced it with
             // richer semantic decomposition (actor→action→target triples).
+            //
+            // Future: event classification may migrate into this enrichment
+            // sub-pipeline as the Bevy ECS runtime takes on more orchestration
+            // responsibility. The slot exists for that purpose.
             enrichment.0 = enrichment.0.next();
         }
         EnrichmentPhase::BehaviorPrediction => {
