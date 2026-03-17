@@ -431,7 +431,17 @@
             <div class="debug-section">
               <h4>Intention Generation: {debugState.goals.timing_ms}ms</h4>
             </div>
-          {:else}
+          {/if}
+
+          {#if debugState.intent_synthesis}
+            <div class="events-divider"></div>
+            <div class="debug-section">
+              <h4>Intent Synthesis <span class="token-count">{debugState.intent_synthesis.timing_ms}ms</span></h4>
+              <pre class="goals-drive">{debugState.intent_synthesis.intent_statements}</pre>
+            </div>
+          {/if}
+
+          {#if !debugState.goals && !debugState.intent_synthesis}
             <p class="debug-empty">Waiting for scene setup...</p>
           {/if}
         </div>
@@ -470,6 +480,9 @@
             bind:this={logContainer}
             onscroll={handleLogScroll}
           >
+            {#if logEntries.length === 0}
+              <p class="debug-empty">No log entries received. Check that the server is running and log streaming is connected (workshop:logs channel).</p>
+            {/if}
             {#each logEntries as entry, i}
               <div class="log-line" onclick={() => toggleLogExpand(i)}>
                 <span class="log-ts">{shortTimestamp(entry.timestamp)}</span>
