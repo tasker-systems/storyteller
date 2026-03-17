@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { checkHealth, submitInput, resumeSession } from "$lib/api";
   import type { StoryBlock } from "$lib/types";
+  import { GAMEPLAY_CHANNEL, type GameplayEvent } from "$lib/types";
   import type { SceneInfo, ResumeResult } from "$lib/generated";
   import { hydrateBlocks } from "$lib/logic";
   import StoryPane from "$lib/StoryPane.svelte";
@@ -15,6 +17,7 @@
   let sessionId = $state("");
   let blocks: StoryBlock[] = $state([]);
   let loading = $state(false);
+  let gameplayLoading = $state(false);
   let error: string | null = $state(null);
   let turnCount = $state(0);
   let debugVisible = $state(true);
@@ -34,6 +37,66 @@
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
   });
+
+  $effect(() => {
+    const unlisten = listen<GameplayEvent>(GAMEPLAY_CHANNEL, (event) => {
+      const payload = event.payload;
+      switch (payload.kind) {
+        case "NarratorProse":
+          appendProseChunk(payload.chunk, payload.turn);
+          break;
+        case "NarratorComplete":
+          reconcileNarratorBlock(payload.prose, payload.turn);
+          break;
+        case "InputReceived":
+          gameplayLoading = true;
+          break;
+        case "TurnComplete":
+          if (payload.ready_for_input) {
+            gameplayLoading = false;
+          }
+          break;
+        case "SceneReady":
+          // Store scene metadata for UI chrome (future use)
+          break;
+        case "ProcessingUpdate":
+          // Future: update processing indicator
+          break;
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  });
+
+  function appendProseChunk(chunk: string, turn: number) {
+    const existingIdx = blocks.findIndex(
+      (b) => b.kind === "narrator" && b.turn === turn
+    );
+    if (existingIdx >= 0) {
+      blocks[existingIdx] = {
+        ...blocks[existingIdx],
+        text: blocks[existingIdx].text + chunk,
+      };
+    } else if (turn === 0) {
+      blocks.push({ kind: "opening", text: chunk });
+    } else {
+      blocks.push({ kind: "narrator", turn, text: chunk });
+    }
+  }
+
+  function reconcileNarratorBlock(prose: string, turn: number) {
+    const existingIdx = blocks.findIndex((b) => {
+      if (b.kind === "opening") return turn === 0;
+      if (b.kind === "narrator") return b.turn === turn;
+      return false;
+    });
+    if (existingIdx >= 0) {
+      blocks[existingIdx] = { ...blocks[existingIdx], text: prose };
+    } else if (turn === 0) {
+      blocks.push({ kind: "opening", text: prose });
+    } else {
+      blocks.push({ kind: "narrator", turn, text: prose });
+    }
+  }
 
   async function checkServerHealthy(): Promise<boolean> {
     try {
@@ -173,8 +236,8 @@
           <SceneSetup onlaunch={handleSceneLaunched} />
         </div>
       {:else}
-        <StoryPane {blocks} {loading} />
-        <InputBar disabled={loading} onsubmit={handleSubmit} />
+        <StoryPane {blocks} loading={loading || gameplayLoading} />
+        <InputBar disabled={loading || gameplayLoading} onsubmit={handleSubmit} />
       {/if}
     </div>
   </div>
