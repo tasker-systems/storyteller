@@ -421,6 +421,7 @@ impl StorytellerEngine for EngineServiceImpl {
                     engine_event::Payload::TurnComplete(TurnComplete {
                         turn: 0,
                         total_ms: narrator_ms,
+                        ready_for_input: true,
                     }),
                 )))
                 .await;
@@ -909,7 +910,11 @@ impl StorytellerEngine for EngineServiceImpl {
                 .send(Ok(make_event(
                     &session_id,
                     Some(turn),
-                    engine_event::Payload::TurnComplete(TurnComplete { turn, total_ms }),
+                    engine_event::Payload::TurnComplete(TurnComplete {
+                        turn,
+                        total_ms,
+                        ready_for_input: true,
+                    }),
                 )))
                 .await;
         });
@@ -1059,6 +1064,7 @@ impl StorytellerEngine for EngineServiceImpl {
                         engine_event::Payload::TurnComplete(TurnComplete {
                             turn: turn.turn,
                             total_ms: 0,
+                            ready_for_input: true,
                         }),
                     )))
                     .await;
