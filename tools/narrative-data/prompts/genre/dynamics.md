@@ -27,4 +27,14 @@ Describe the typical escalation pattern. How does this dynamic intensify or tran
 
 Include any genre-specific notes: how this dynamic interacts with the genre's thematic commitments, what narrative promises it carries, and how it would change if transplanted to a neighboring genre.
 
+## Genre Integration
+
+The genre region data in Additional Context includes dimensions beyond the basics — temporal dynamics, agency, locus of power, epistemological stance, exclusions, state variables, and boundary conditions. Use these to deepen your analysis:
+
+- How does this dynamic interact with the genre's **state variables**? Which resources does it deplete or accumulate between the two roles? (e.g., does this dynamic erode trust progressively? Does it accumulate shared secrets or mutual obligation?)
+- How does the genre's **locus of power** shape this dynamic? A rivals dynamic in a genre where power resides in *place* may be territorial; in a genre where power resides in *lineage*, rivalry may be about inheritance and legitimacy.
+- How does the genre's **temporal orientation** affect this dynamic? Cyclical genres may produce dynamics that repeat and ritualize rather than resolve; linear-progression genres push dynamics toward irreversible transformation.
+- What does the genre's **exclusion list** mean for this dynamic? If the genre rejects reconciliation, how does that constrain the dynamic's trajectory? Which resolutions are structurally unavailable?
+- How does this dynamic change if the genre functions as a **modifier** applied to another genre? Which aspects of the dynamic's texture survive genre transplantation and which are host-specific?
+
 Be expansive. This is exploratory research, not a database entry.

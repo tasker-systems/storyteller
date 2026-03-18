@@ -28,4 +28,14 @@ Describe the tension profile: how does tension characteristically move through t
 
 Identify the genre associations. Which genres naturally produce this shape, and which genres would warp or resist it? What happens when a story follows this shape but in a genre that doesn't expect it?
 
+## Genre Integration
+
+The genre region data in Additional Context includes dimensions beyond the basics — temporal dynamics, agency, locus of power, epistemological stance, exclusions, state variables, and boundary conditions. Use these to deepen your analysis:
+
+- How does this narrative shape interact with the genre's **state variables**? Which resources does the arc deplete or accumulate as it progresses? (e.g., does this shape systematically drain the protagonist's allies? Does it accumulate revelations that cannot be unforgiven?)
+- How does the genre's **locus of power** shape this arc structure? A descent-and-return shape in a genre where power resides in *place* is literally spatial; in a genre where power resides in *relationship*, the descent is social.
+- How does the genre's **temporal orientation** affect this narrative shape? Cyclical genres may loop this arc rather than complete it; episodic genres may fragment it across disconnected installments.
+- What does the genre's **exclusion list** mean for this arc? If the genre rejects resolution, which beats become impossible or must be transformed? How does the shape adapt when its natural endpoint is structurally forbidden?
+- How does this narrative shape change if the genre functions as a **modifier** applied to another genre? Which beats are portable and which are load-bearing for the host genre's identity?
+
 Be expansive. This is exploratory research, not a database entry.

@@ -24,4 +24,14 @@ Identify the characteristic moments — the scene types that define this genre. 
 
 Include any genre-specific notes about scene construction: conventions, reader expectations, common pitfalls, or distinctive techniques.
 
+## Genre Integration
+
+The genre region data in Additional Context includes dimensions beyond the basics — temporal dynamics, agency, locus of power, epistemological stance, exclusions, state variables, and boundary conditions. Use these to deepen your analysis:
+
+- How does this genre profile interact with the genre's **state variables**? Which resources does a characteristic scene deplete or accumulate? (e.g., does the typical scene in this genre drain character agency? Does it accumulate atmospheric dread that persists between scenes?)
+- How does the genre's **locus of power** shape scene construction? In a genre where power resides in *place*, scenes are likely to emphasize spatial presence and physical environment. In a genre where power resides in *information*, scenes build around what is said, withheld, or overheard.
+- How does the genre's **temporal orientation** affect scene rhythm and pacing? Cyclical genres may construct scenes that feel like repetitions or rituals; linear-progression genres push scenes toward irreversibility.
+- What does the genre's **exclusion list** mean for scene construction? If the genre rejects humor, how does that change what scenes can do? Which scene types are structurally unavailable?
+- How does this scene profile change if the genre functions as a **modifier** applied to another genre? Which scene-level characteristics transfer and which depend on the host genre's specific commitments?
+
 Be expansive. This is exploratory research, not a database entry.

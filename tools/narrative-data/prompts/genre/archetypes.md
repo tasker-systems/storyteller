@@ -28,4 +28,14 @@ Explore what is distinctive about this archetype in this genre versus how it mig
 
 Include any genre-specific notes: behavioral patterns, speech registers, relationship tendencies, or narrative promises this archetype carries.
 
+## Genre Integration
+
+The genre region data in Additional Context includes dimensions beyond the basics — temporal dynamics, agency, locus of power, epistemological stance, exclusions, state variables, and boundary conditions. Use these to deepen your analysis:
+
+- How does this archetype interact with the genre's **state variables**? Which resources does it deplete or accumulate? (e.g., does this archetype erode trust? Does it accumulate secrets, obligations, or dread?)
+- How does the genre's **locus of power** shape this archetype? A mentor in a genre where power resides in *place* behaves differently than one where power resides in *relationship* or *lineage*.
+- How does the genre's **temporal orientation** affect this archetype? Cyclical genres produce different archetypes than linear-progression genres — the trickster in a cyclical genre may be an agent of renewal, not merely chaos.
+- What does the genre's **exclusion list** mean for this archetype? If the genre rejects moral clarity, how does that constrain the archetype's available roles? Which expressions of this archetype are structurally forbidden?
+- How does this archetype change if the genre functions as a **modifier** applied to another genre? (e.g., the folk horror mentor archetype applied to a romance — what survives, what warps?)
+
 Be expansive. This is exploratory research, not a database entry.
