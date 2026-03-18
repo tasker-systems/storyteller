@@ -269,19 +269,60 @@ class DimensionalPosition(BaseModel):
 
 ```python
 class WorldAffordances(BaseModel):
-    magic: str
+    magic: str                           # absent / subtle / rule-bound / wild-mythic / technological mimicry
     technology: str
     violence: str
     death: str
     supernatural: str
     commentary: str | None = None
 
+class EpistemologicalStance(BaseModel):
+    """The genre's relationship to knowledge and knowability."""
+    knowability: str                     # knowable ←→ unknowable
+    knowledge_valence: str               # knowledge rewarded ←→ knowledge punished
+    narration_reliability: str           # reliable ←→ unreliable
+    commentary: str | None = None
+
+class StateVariable(BaseModel):
+    """A resource or metric tracked turn-by-turn in this genre. Proposed — pending stabilization."""
+    name: str                            # e.g., "trust", "sanity", "mask_integrity"
+    direction: str                       # "depletes", "accumulates", "oscillates"
+    starting_state: str | None = None    # typical initial condition
+    triggers: str | None = None          # what causes change
+
+class BoundaryCondition(BaseModel):
+    """Where this genre blurs with a neighbor. Proposed — pending stabilization."""
+    adjacent_genre: str                  # name or slug of the neighboring genre
+    boundary_axis: str                   # the dimension(s) along which the boundary exists
+    minimum_change: str                  # what pushes a story across the boundary
+
+class GenreTopology(BaseModel):
+    """Whether this genre is standalone or a modifier/constraint layer. Proposed — pending stabilization."""
+    classification: str                  # "standalone", "modifier", "constraint_layer"
+    modifies: list[str] = []             # which genres this modifies (if modifier)
+    how_it_transforms: str | None = None # description of the transformation
+
 class GenreRegion(NarrativeEntity):
+    """A named cluster in multidimensional narrative space.
+
+    Expanded from pass-1 to include temporal, agency, locus of power, and
+    epistemological dimensions, plus exclusions, state variables, genre topology,
+    and boundary conditions — all discovered through cross-genre analysis of
+    the initial 25-region elicitation.
+    """
     aesthetic: list[DimensionalPosition]
-    tonal: list[DimensionalPosition]
+    tonal: list[DimensionalPosition]     # now includes surface_irony/sincerity and structural_irony/sincerity
+    temporal: list[DimensionalPosition]  # linear/cyclical, compressed/expansive, mythic/specific, episodic/saga
     thematic: list[DimensionalPosition]
+    agency: list[DimensionalPosition]    # character control, individual/collective, competence relevance
+    locus_of_power: str                  # place / person / system / relationship / cosmos
     structural: list[DimensionalPosition]
     world_affordances: WorldAffordances
+    epistemological_stance: EpistemologicalStance
+    exclusions: list[str] = []           # what this genre deliberately rejects
+    state_variables: list[StateVariable] = []
+    genre_topology: GenreTopology | None = None
+    boundary_conditions: list[BoundaryCondition] = []
     trope_refs: list[str] = []
 
 class Trope(NarrativeEntity):
@@ -546,9 +587,9 @@ Following established project patterns:
 
 ---
 
-## Target Genre Regions (~25)
+## Target Genre Regions (~30)
 
-The list is designed for broad dimensional coverage: genre clusters that test differentiation within proximity (how does the system distinguish related genres?) as well as distance (how does it handle genres with almost no overlap?). These are starting points, not a closed set. The tool supports adding new regions at any time.
+The list evolved through two passes of exploratory elicitation. Pass 1 (25 regions, original prompt) produced rich data whose cross-genre analysis revealed dimensional gaps — genre-space intersections with no named occupant. Pass 2 added 5 discovered regions and reclassified 4 existing regions as modifiers. The list is not closed; the tool supports adding new regions at any time.
 
 **Horror:**
 1. Folk horror — rural dread, community as threat, pagan undercurrents
@@ -560,38 +601,50 @@ The list is designed for broad dimensional coverage: genre clusters that test di
 5. Cozy fantasy — low stakes, community warmth, gentle conflicts
 6. Fairy tale / mythic — archetypal, transformative, rule-of-three logic
 7. Urban fantasy — magic in modern mundane, hidden worlds, identity straddling
+8. Quiet / contemplative fantasy — wonder + spare + intimate journey (Miyazaki, Le Guin, Chambers) **[NEW: gap analysis]**
 
 **Science fiction:**
-8. Hard sci-fi — extrapolation, epistemic rigor, ideas-as-character
-9. Space opera — vast scale, political intrigue, operatic emotion
-10. Cyberpunk — corporate dystopia, body modification, street-level resistance
-11. Solarpunk — optimistic futures, ecological harmony, community solutions
+9. Hard sci-fi — extrapolation, epistemic rigor, ideas-as-character
+10. Space opera — vast scale, political intrigue, operatic emotion
+11. Cyberpunk — corporate dystopia, body modification, street-level resistance
 
 **Mystery / thriller:**
 12. Nordic noir — institutional rot, bleak landscapes, procedural
 13. Cozy mystery — amateur sleuth, tight community, no graphic violence
 14. Psychological thriller — unreliable perception, paranoia, interior tension
+15. Domestic noir — intimate betrayal, family as trap, trust as depleting resource **[NEW: gap analysis]**
 
 **Romance & intersections:**
-15. Romantasy — fantasy + romance dual engines, relationship as plot
-16. Historical romance — period constraints, social navigation, emotional core
-17. Contemporary romance — modern relationships, identity, emotional realism
+16. Romantasy — fantasy + romance dual engines, relationship as plot
+17. Historical romance — period constraints, social navigation, emotional core
+18. Contemporary romance — modern relationships, identity, emotional realism
 
-**Literary / realistic:**
-18. Literary fiction — interiority, ambiguity, language-as-subject
-19. Magical realism — the uncanny within the ordinary, culturally grounded
-20. Southern gothic — decay, grotesque, place-as-character, social critique
+**Gothic:**
+19. Southern gothic — decay, grotesque, place-as-character, social critique
 
 **Historical / period:**
-21. Historical fiction — research-grounded, period immersion, real constraints
-22. Westerns — frontier, moral codes, landscape, expansion/displacement tension
+20. Westerns — frontier, moral codes, landscape, expansion/displacement tension
 
 **Adventure / action:**
-23. Swashbuckling adventure — wit, daring, set pieces, moral lightness
-24. Survival fiction — resource scarcity, environmental hostility, human limits
+21. Swashbuckling adventure — wit, daring, set pieces, moral lightness
+22. Survival fiction — resource scarcity, environmental hostility, human limits
 
-**Speculative / liminal:**
+**Comedy-horror:**
+23. Horror-comedy — dread + earnest + comedic structure (Shaun of the Dead, What We Do in the Shadows) **[NEW: gap analysis]**
+
+**Realism:**
+24. Working-class realism — earnest + gritty + community, economic pressure as force (Ken Loach, The Wire) **[NEW: gap analysis]**
 25. Pastoral / rural fiction — seasonal rhythms, land-as-relationship, quiet tension
+
+**Tragedy:**
+26. Classical tragedy — high agency + mythic + inevitable fall (Greek tragedy, Shakespeare, Breaking Bad) **[NEW: gap analysis]**
+
+**Modifier regions** — these self-identify as dimensional modifiers or constraint layers applied to other genres, rather than standalone regions. They are elicited with the same prompt (which asks about genre topology) and produce data about what they transform and how:
+
+27. Solarpunk — tonal inversion of cyberpunk (earnestness + wonder + collective agency)
+28. Historical fiction — temporal constraint layer (period + verisimilitude requirements)
+29. Literary fiction — interiority/prose-quality modifier applicable across genres
+30. Magical realism — density setting on realism-fantasy continuum
 
 ## Target Setting Types (~22)
 
@@ -643,6 +696,38 @@ The existing flat descriptors include `cross-dimensions.json` (age, gender, spec
 ## Cross-Genre Analysis
 
 The meta-plan lists "cross-genre analysis: dimensional overlap, natural clusters, discriminating dimensions, false boundaries" as a B.1 scope item, with an analysis doc as output. This is **human-guided analytical work**, not automated tooling. The `list` command provides the data access needed to support this analysis (e.g., `narrative-data list genres | jq` to compare dimensional positions across regions), but the analysis itself — identifying patterns, surprises, and recommendations for Tier C — is a human activity that produces a standalone document, not a tool feature. The B.3 cross-pollination synthesis partially overlaps with this concern but focuses on genre×setting intersections rather than genre×genre patterns.
+
+## Pass-1 Analysis Findings
+
+The first elicitation pass (25 regions, original 5-dimensional prompt) produced ~290KB of rich narrative research data. Cross-genre analysis of the `_commentary` and `_suggestions` sections revealed systematic patterns that informed the enriched prompt and schema evolution:
+
+**Framework gaps discovered:**
+- **Temporal dimension missing** — 12+ genres needed it. Linear/cyclical/mythic/episodic/seasonal.
+- **Agency dimension missing** — 8+ genres. Folk horror (none) vs swashbuckling (total) vs cosmic horror (illusory).
+- **Locus of power** — reframes the existing power/corruption theme. Place (folk horror), person (swashbuckling), system (nordic noir), relationship (romantasy), cosmos (cosmic horror).
+- **Epistemological stance** — knowable/unknowable, knowledge rewarded/punished, narrator reliability.
+- **Irony/sincerity needs splitting** — surface irony (dialogue/narration) vs structural sincerity (does the emotional payoff land genuinely?).
+
+**Structural insights:**
+- **Exclusions define genres more than inclusions** — what a genre rejects is more definitionally useful than what it contains.
+- **State variables emerged** — trust, sanity, reputation, relationship status, mask integrity. These are what the dramaturge tracks turn by turn.
+- **Genre-as-modifier** — solarpunk, historical fiction, literary fiction, and magical realism are better modeled as dimensional adjustments than standalone regions.
+- **Tonal dimensions cluster** — if one shifts, others shift in tandem. They form a correlated subspace, not independent axes.
+- **Structural hybridity is the norm** — most genres blend 2-3 structural shapes in tension, not a single arc.
+
+**Topological gap analysis** produced 5 new genre regions from dimensional intersections with no named occupant (see genre list above).
+
+Full analysis: `storyteller-data/narrative-data/genres/ANALYSIS-pass-1.md`
+
+## Schema Evolution Strategy
+
+The Pydantic schemas in code currently reflect the original spec. The `GenreRegion` schema documented above reflects the enriched pass-2 data shape. **Code schemas are deliberately not updated yet** — the data shape is still stabilizing through exploratory passes. Schemas will be hardened when:
+
+1. Derivative category elicitation (archetypes, tropes, etc.) has been run and reviewed
+2. Spatial setting elicitation has been run and reviewed
+3. The dimensional framework has stopped producing new axis suggestions at a meaningful rate
+
+Until then, Stage 1 raw.md files are the primary research artifact, and Stage 2 structuring is deferred.
 
 ## What This Spec Does Not Contain
 
