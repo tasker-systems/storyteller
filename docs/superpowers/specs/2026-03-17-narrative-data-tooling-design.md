@@ -546,41 +546,90 @@ Following established project patterns:
 
 ---
 
-## Target Genre Regions (~20)
+## Target Genre Regions (~25)
 
-The meta-plan specifies ~20 genre regions covering meaningful narrative space. Initial candidates (to be refined during elicitation):
+The list is designed for broad dimensional coverage: genre clusters that test differentiation within proximity (how does the system distinguish related genres?) as well as distance (how does it handle genres with almost no overlap?). These are starting points, not a closed set. The tool supports adding new regions at any time.
 
-1. Folk horror
-2. Nordic noir
-3. Gothic romance
-4. Cozy fantasy
-5. Hard sci-fi
-6. Literary fiction
-7. Magical realism
-8. Romantasy
-9. Cosmic/eldritch horror
-10. Body horror
-11. Cozy horror
-12. Cyberpunk
-13. Solarpunk
-14. Dark fantasy
-15. Fairy tale / mythic
-16. Historical fiction
-17. Psychological thriller
-18. Post-apocalyptic
-19. Urban fantasy
-20. Pastoral / rural fiction
+**Horror:**
+1. Folk horror — rural dread, community as threat, pagan undercurrents
+2. Cosmic horror — insignificance, incomprehensible scale, epistemological dread
 
-These are starting points, not a closed set. The tool supports adding new regions at any time.
+**Fantasy:**
+3. High / epic fantasy — quest structures, moral clarity, world-at-stake
+4. Dark fantasy — moral ambiguity, cost of power, grimdark adjacent
+5. Cozy fantasy — low stakes, community warmth, gentle conflicts
+6. Fairy tale / mythic — archetypal, transformative, rule-of-three logic
+7. Urban fantasy — magic in modern mundane, hidden worlds, identity straddling
 
-## Target Setting Types (~5-6)
+**Science fiction:**
+8. Hard sci-fi — extrapolation, epistemic rigor, ideas-as-character
+9. Space opera — vast scale, political intrigue, operatic emotion
+10. Cyberpunk — corporate dystopia, body modification, street-level resistance
+11. Solarpunk — optimistic futures, ecological harmony, community solutions
 
-1. Gothic mansion
-2. Pastoral village
-3. Urban noir streetscape
-4. Fantasy wilderness
-5. Sci-fi station
-6. Fairy-tale forest
+**Mystery / thriller:**
+12. Nordic noir — institutional rot, bleak landscapes, procedural
+13. Cozy mystery — amateur sleuth, tight community, no graphic violence
+14. Psychological thriller — unreliable perception, paranoia, interior tension
+
+**Romance & intersections:**
+15. Romantasy — fantasy + romance dual engines, relationship as plot
+16. Historical romance — period constraints, social navigation, emotional core
+17. Contemporary romance — modern relationships, identity, emotional realism
+
+**Literary / realistic:**
+18. Literary fiction — interiority, ambiguity, language-as-subject
+19. Magical realism — the uncanny within the ordinary, culturally grounded
+20. Southern gothic — decay, grotesque, place-as-character, social critique
+
+**Historical / period:**
+21. Historical fiction — research-grounded, period immersion, real constraints
+22. Westerns — frontier, moral codes, landscape, expansion/displacement tension
+
+**Adventure / action:**
+23. Swashbuckling adventure — wit, daring, set pieces, moral lightness
+24. Survival fiction — resource scarcity, environmental hostility, human limits
+
+**Speculative / liminal:**
+25. Pastoral / rural fiction — seasonal rhythms, land-as-relationship, quiet tension
+
+## Target Setting Types (~22)
+
+Settings cover genre-agnostic spaces (a kitchen is a kitchen in any genre), genre-inflected spaces (a village square reads differently in cozy mystery vs folk horror), and genre-specific spaces (a space station only makes sense in sci-fi). Spatial diversity spans indoor/outdoor, urban/rural/wilderness, intimate/vast, natural/built. These are starting points, not a closed set.
+
+**Domestic / intimate:**
+1. Family home — kitchen, bedrooms, attic, basement, garden
+2. Inn / tavern — social hub, travelers, rumors, warmth against the outside
+3. Boarding school — hierarchy, secrets, enclosed community, coming-of-age
+
+**Urban:**
+4. City streets — alleys, storefronts, crowds, anonymity
+5. Market / bazaar — commerce, noise, sensory overload, chance encounters
+6. Government building — bureaucracy, power, corridors, restricted areas
+7. Underground / subway — transit, liminal, strangers in proximity, unease
+
+**Grand / institutional:**
+8. Gothic mansion — decay, rooms with purpose, verticality, secrets in architecture
+9. Cathedral / temple — sacred space, acoustics, light, moral weight
+10. Castle / fortress — defense, hierarchy, hidden passages, siege
+11. University / library — knowledge, stacks, quiet intensity, discovery
+
+**Rural / pastoral:**
+12. Pastoral village — square, church, pub, surrounding fields, community rhythms
+13. Farmstead — isolation, seasonal labor, land-as-relationship, self-sufficiency
+14. Coastal settlement — harbor, cliffs, weather, the sea as presence
+
+**Wilderness / natural:**
+15. Dense forest — disorientation, canopy, trails that mislead, things watching
+16. Mountain pass — exposure, altitude, narrow paths, weather as adversary
+17. Desert / wasteland — emptiness, heat/cold extremes, mirages, endurance
+18. River / lake shore — boundary between worlds, reflection, crossing
+
+**Speculative / constructed:**
+19. Space station — enclosed, artificial atmosphere, viewports, systems dependency
+20. Sailing vessel — confined, hierarchy, weather, isolation from land
+21. Train / carriage — motion, compartments, forced proximity, destination-driven
+22. Ruins / archaeological site — layered time, what was here before, discovery and danger
 
 ---
 
