@@ -53,6 +53,26 @@ def is_stale(
     return bool(upstream_digest and entry.get("content_digest") != upstream_digest)
 
 
+def archive_existing(path: Path) -> Path | None:
+    """Archive an existing file by renaming to .v{N} before overwriting.
+
+    Returns the archive path, or None if no file existed to archive.
+    Finds the next available version number (v1, v2, ...).
+    """
+    if not path.exists():
+        return None
+    # Find next version number
+    stem = path.stem  # e.g., "region.raw"
+    suffix = path.suffix  # e.g., ".md"
+    parent = path.parent
+    version = 1
+    while (parent / f"{stem}.v{version}{suffix}").exists():
+        version += 1
+    archive_path = parent / f"{stem}.v{version}{suffix}"
+    path.rename(archive_path)
+    return archive_path
+
+
 def write_run_log(output_base: Path, run_data: dict[str, Any]) -> Path:
     """Write a generation run log to meta/runs/."""
     runs_dir = output_base / "meta" / "runs"

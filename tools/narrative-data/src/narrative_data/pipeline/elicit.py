@@ -5,7 +5,11 @@ from typing import Any
 
 from narrative_data.config import ELICITATION_MODEL
 from narrative_data.ollama import OllamaClient
-from narrative_data.pipeline.invalidation import compute_content_digest, compute_prompt_hash
+from narrative_data.pipeline.invalidation import (
+    archive_existing,
+    compute_content_digest,
+    compute_prompt_hash,
+)
 from narrative_data.prompts import PromptBuilder
 
 
@@ -34,10 +38,12 @@ def run_elicitation(
     raw_content = client.generate(model=model, prompt=prompt)
     output_dir.mkdir(parents=True, exist_ok=True)
     raw_path = output_dir / f"{category}.raw.md"
+    archived = archive_existing(raw_path)
     raw_path.write_text(raw_content)
     content_digest = compute_content_digest(raw_content)
     return {
         "prompt_hash": prompt_hash,
         "content_digest": content_digest,
         "raw_path": str(raw_path),
+        "archived_from": str(archived) if archived else None,
     }

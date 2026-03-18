@@ -67,6 +67,45 @@ class TestManifest:
         assert "folk-horror" in manifest["entries"]
 
 
+class TestArchiveExisting:
+    def test_no_archive_when_file_missing(self, tmp_path: Path):
+        from narrative_data.pipeline.invalidation import archive_existing
+        result = archive_existing(tmp_path / "nonexistent.raw.md")
+        assert result is None
+
+    def test_archives_to_v1(self, tmp_path: Path):
+        from narrative_data.pipeline.invalidation import archive_existing
+        original = tmp_path / "region.raw.md"
+        original.write_text("v1 content")
+        archived = archive_existing(original)
+        assert archived == tmp_path / "region.raw.v1.md"
+        assert archived.exists()
+        assert archived.read_text() == "v1 content"
+        assert not original.exists()
+
+    def test_archives_to_v2_when_v1_exists(self, tmp_path: Path):
+        from narrative_data.pipeline.invalidation import archive_existing
+        (tmp_path / "region.raw.v1.md").write_text("old v1")
+        original = tmp_path / "region.raw.md"
+        original.write_text("v2 content")
+        archived = archive_existing(original)
+        assert archived == tmp_path / "region.raw.v2.md"
+        assert archived.exists()
+        assert (tmp_path / "region.raw.v1.md").exists()  # v1 untouched
+
+    def test_sequential_archives(self, tmp_path: Path):
+        from narrative_data.pipeline.invalidation import archive_existing
+        # Simulate three passes
+        for i in range(1, 4):
+            original = tmp_path / "region.raw.md"
+            original.write_text(f"pass {i} content")
+            archived = archive_existing(original)
+            assert archived == tmp_path / f"region.raw.v{i}.md"
+            # Write the "new" version back so next iteration has something to archive
+            if i < 3:
+                original.write_text(f"pass {i + 1} content")
+
+
 class TestRunLog:
     def test_write_run_log(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import write_run_log
