@@ -39,6 +39,7 @@ rand = { workspace = true }
 
 # HTTP client — always available for ExternalServerProvider (Ollama etc.)
 reqwest = { workspace = true }
+tokio-stream = { workspace = true }
 
 # Optional: local LLM inference
 candle-core = { workspace = true, optional = true }

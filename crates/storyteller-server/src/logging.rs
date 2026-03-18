@@ -110,16 +110,44 @@ impl Visit for FieldVisitor {
     }
 }
 
+/// Targets that produce high-volume transport or runtime noise not useful
+/// in the workshop Logs tab. Filtered at the layer level so the broadcast
+/// channel doesn't overflow.
+const NOISY_TARGETS: &[&str] = &[
+    "h2",
+    "hyper",
+    "tower",
+    "tonic::transport",
+    "ort",     // ONNX Runtime internals (+NEW/+DROP Value, lifetime tracking)
+    "reqwest", // HTTP client internals
+    "log",     // bridged log crate entries ("log shouldn't retry")
+];
+
 impl<S: Subscriber> Layer<S> for BroadcastTracingLayer {
     fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
         let metadata = event.metadata();
+
+        // Skip TRACE entirely — too noisy for the workshop Logs tab.
+        // Skip DEBUG from known-noisy targets (transport, runtime internals).
+        let level = *metadata.level();
+        let target = metadata.target();
+        if level >= tracing::Level::TRACE {
+            return;
+        }
+        if level >= tracing::Level::DEBUG
+            && NOISY_TARGETS
+                .iter()
+                .any(|prefix| target.starts_with(prefix))
+        {
+            return;
+        }
 
         let mut visitor = FieldVisitor::new();
         event.record(&mut visitor);
 
         let entry = LogEntry {
             level: metadata.level().to_string(),
-            target: metadata.target().to_string(),
+            target: target.to_string(),
             message: visitor.message.unwrap_or_default(),
             timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             fields: visitor.fields,

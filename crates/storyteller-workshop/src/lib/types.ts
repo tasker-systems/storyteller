@@ -48,3 +48,19 @@ export interface DebugState {
 // ---------------------------------------------------------------------------
 
 export const LOG_EVENT_CHANNEL = "workshop:logs";
+
+// ---------------------------------------------------------------------------
+// Gameplay event streaming — events arrive on "workshop:gameplay" channel.
+// All variants are server → client. The play view listens to drive prose
+// streaming, phase indicators, and turn lifecycle transitions.
+// ---------------------------------------------------------------------------
+
+export const GAMEPLAY_CHANNEL = "workshop:gameplay";
+
+export type GameplayEvent =
+  | { kind: "SceneReady"; scene_id: string; title: string; setting_summary: string; cast_names: string[]; player_character: string; player_intent: string | null }
+  | { kind: "InputReceived"; turn: number }
+  | { kind: "ProcessingUpdate"; phase: string }
+  | { kind: "NarratorProse"; chunk: string; turn: number }
+  | { kind: "NarratorComplete"; prose: string; turn: number }
+  | { kind: "TurnComplete"; turn: number; ready_for_input: boolean };

@@ -13,5 +13,5 @@ pub use client::{ClientConfig, ClientError, StorytellerClient};
 // Re-export commonly used proto types for consumer convenience
 pub use proto::{
     engine_event, CastMember, ComposeSceneRequest, DynamicPairing, EngineEvent,
-    GetSceneStateRequest, ResumeSessionRequest, SubmitInputRequest,
+    GetSceneStateRequest, PlayerCharacter, ResumeSessionRequest, SubmitInputRequest,
 };

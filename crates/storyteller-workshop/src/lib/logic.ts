@@ -65,6 +65,7 @@ export interface WizardState {
   selectedGenreId: string | null;
   selectedProfileId: string | null;
   cast: CastSelection[];
+  playerName: string;
   launching: boolean;
 }
 
@@ -90,8 +91,10 @@ export function canAdvance(
     case 3:
       return true; // dynamics are optional
     case 4:
-      return true; // setting override is optional
+      return state.playerName.trim() !== ""; // player character name required
     case 5:
+      return true; // setting override is optional
+    case 6:
       return !state.launching;
     default:
       return false;
@@ -107,7 +110,7 @@ export function nextStep(currentStep: number, castLength: number): number {
   if (currentStep === 2 && castLength < 2) {
     return 4;
   }
-  return Math.min(currentStep + 1, 5);
+  return Math.min(currentStep + 1, 6);
 }
 
 /**
@@ -221,7 +224,9 @@ export function freshDebugState(turn: number): DebugState {
  * Resets state if the event's turn differs from the current turn.
  */
 export function applyDebugEvent(state: DebugState, event: DebugEvent): DebugState {
-  let next = event.turn !== state.turn ? freshDebugState(event.turn) : { ...state, phases: { ...state.phases } };
+  let next = event.turn !== state.turn
+    ? { ...freshDebugState(event.turn), goals: state.goals }
+    : { ...state, phases: { ...state.phases } };
 
   switch (event.type) {
     case "phase_started":

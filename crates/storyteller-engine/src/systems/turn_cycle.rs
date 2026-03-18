@@ -6,10 +6,10 @@
 //! does its work, and advances the stage. The pipeline runs one
 //! stage per frame — no stage skipping.
 //!
-//! Five synchronous systems live here:
+//! Four synchronous systems live here:
 //! - `commit_previous_system`: archives previous turn, moves PendingInput
-//! - `predict_system`: ML character prediction (parallel across cast)
-//! - `resolve_system`: pass-through wrapping predictions into ResolverOutput
+//! - `enrichment_system`: unified sub-pipeline (classification, prediction,
+//!   arbitration, intent synthesis) managed by EnrichmentPhase
 //! - `assemble_context_system`: three-tier Narrator context assembly
 //!
 //! The async narrator rendering system lives in [`super::rendering`].
@@ -19,11 +19,11 @@ use bevy_ecs::schedule::SystemSet;
 
 use storyteller_core::traits::NoopObserver;
 use storyteller_core::types::resolver::ResolverOutput;
-use storyteller_core::types::turn_cycle::TurnCycleStage;
+use storyteller_core::types::turn_cycle::{EnrichmentPhase, TurnCycleStage};
 
 use crate::components::turn::{
-    ActiveTurnStage, CompletedTurn, JournalResource, PendingInput, StructuredLlmResource,
-    TokioRuntime, TurnContext, TurnHistory,
+    ActiveTurnStage, CompletedTurn, EnrichmentState, JournalResource, PendingInput,
+    StructuredLlmResource, TokioRuntime, TurnContext, TurnHistory,
 };
 
 // ---------------------------------------------------------------------------
@@ -41,12 +41,8 @@ pub enum TurnCycleSets {
     Input,
     /// Commit previous turn's provisional data (predictions, rendering).
     CommittingPrevious,
-    /// Event classifier (ML or keyword fallback).
-    Classification,
-    /// ML character prediction (parallel across cast).
-    Prediction,
-    /// Rules engine resolution.
-    Resolution,
+    /// Unified enrichment: classification, prediction, arbitration, intent synthesis.
+    Enrichment,
     /// Three-tier Narrator context assembly.
     ContextAssembly,
     /// Narrator LLM call (async bridge).
@@ -63,75 +59,117 @@ pub fn in_stage(target: TurnCycleStage) -> impl Fn(Res<ActiveTurnStage>) -> bool
 }
 
 // ---------------------------------------------------------------------------
-// Systems — Classification (pass-through)
+// Systems — Enrichment (unified sub-pipeline)
 // ---------------------------------------------------------------------------
 
-/// Classification stage pass-through.
+/// Unified enrichment system managing the sub-pipeline internally.
 ///
-/// DistilBERT-based classification has been removed. Classification now happens
-/// via LLM decomposition in `commit_previous_system`. This system exists only
-/// to advance the pipeline stage from `Classifying` to `Predicting`.
-pub fn classify_system(mut stage: ResMut<ActiveTurnStage>) {
-    stage.0 = stage.0.next();
-}
-
-// ---------------------------------------------------------------------------
-// Systems — Prediction (REAL)
-// ---------------------------------------------------------------------------
-
-/// Run ML character prediction for all cast members.
-///
-/// Reads `TurnContext.player_input`, calls `predict_character_behaviors()`,
-/// writes predictions and advances to `Resolving`.
-pub fn predict_system(
+/// Loops through all `EnrichmentPhase` stages in a single Bevy update:
+/// - EventClassification: pass-through (decomposition at server layer via 3b-instruct)
+/// - BehaviorPrediction: ML character prediction (parallel across cast)
+/// - GameSystemArbitration: action arbitration + wrap predictions into ResolverOutput
+/// - IntentSynthesis: pass-through placeholder
+/// - Complete: reset EnrichmentState, advance top-level stage to AssemblingContext
+pub fn enrichment_system(
     mut stage: ResMut<ActiveTurnStage>,
+    mut enrichment: ResMut<EnrichmentState>,
     mut turn_ctx: ResMut<TurnContext>,
     predictor: Option<Res<PredictorResource>>,
     scene_res: Option<Res<SceneResource>>,
     grammar_res: Option<Res<GrammarResource>>,
 ) {
-    let Some(ref predictor) = predictor else {
-        tracing::debug!("predict_system: no CharacterPredictor, skipping");
-        stage.0 = stage.0.next();
-        return;
-    };
+    loop {
+        match enrichment.0 {
+            EnrichmentPhase::EventClassification => {
+                // Pass-through: event decomposition happens at server layer via
+                // structured 3b-instruct LLM, not in the Bevy pipeline.
+                // Future: may migrate decomposition here.
+                tracing::debug!("enrichment_system: EventClassification (pass-through)");
+                enrichment.0 = enrichment.0.next();
+            }
+            EnrichmentPhase::BehaviorPrediction => {
+                // ML character prediction (logic from former predict_system)
+                if let (Some(ref predictor), Some(ref scene_res), Some(ref grammar_res)) =
+                    (&predictor, &scene_res, &grammar_res)
+                {
+                    let input = turn_ctx.player_input.as_deref().unwrap_or("");
+                    let characters: Vec<&storyteller_core::types::character::CharacterSheet> =
+                        scene_res.characters.iter().collect();
 
-    let Some(ref scene_res) = scene_res else {
-        tracing::warn!("predict_system: no SceneResource");
-        stage.0 = stage.0.next();
-        return;
-    };
+                    let event_features = storyteller_ml::feature_schema::EventFeatureInput {
+                        event_type: storyteller_core::types::prediction::EventType::Interaction,
+                        emotional_register:
+                            storyteller_core::types::prediction::EmotionalRegister::Neutral,
+                        confidence: 0.5,
+                        target_count: characters.len().saturating_sub(1) as u8,
+                    };
+                    let predictions = crate::context::prediction::predict_character_behaviors(
+                        &predictor.0,
+                        &characters,
+                        &scene_res.scene,
+                        input,
+                        grammar_res.0.as_ref(),
+                        event_features,
+                        &std::collections::HashMap::new(),
+                    );
+                    turn_ctx.predictions = Some(predictions);
+                } else {
+                    tracing::debug!(
+                        "enrichment_system: BehaviorPrediction skipped (missing resources)"
+                    );
+                }
+                enrichment.0 = enrichment.0.next();
+            }
+            EnrichmentPhase::GameSystemArbitration => {
+                // Action arbitration + wrap predictions into ResolverOutput
+                // (logic from former resolve_system)
+                if let Some(ref input) = turn_ctx.player_input {
+                    let result = crate::systems::arbitration::check_action_possibility(
+                        input,
+                        &[], // genre_constraints — will come from scene resource later
+                        &storyteller_core::types::capability_lexicon::CapabilityLexicon::new(),
+                        None, // actor_zone — will come from spatial tracking later
+                    );
 
-    let Some(ref grammar_res) = grammar_res else {
-        tracing::warn!("predict_system: no GrammarResource");
-        stage.0 = stage.0.next();
-        return;
-    };
+                    tracing::debug!(
+                        permitted = result.is_permitted(),
+                        impossible = result.is_impossible(),
+                        ambiguous = result.is_ambiguous(),
+                        "enrichment_system: action arbitration check"
+                    );
 
-    let input = turn_ctx.player_input.as_deref().unwrap_or("");
+                    turn_ctx.arbitration = Some(result);
+                }
 
-    let characters: Vec<&storyteller_core::types::character::CharacterSheet> =
-        scene_res.characters.iter().collect();
+                let predictions = turn_ctx.predictions.clone().unwrap_or_default();
+                let resolver_output = ResolverOutput {
+                    sequenced_actions: vec![],
+                    original_predictions: predictions,
+                    scene_dynamics: String::new(),
+                    conflicts: vec![],
+                    intent_statements: None,
+                };
+                turn_ctx.resolver_output = Some(resolver_output);
 
-    let event_features = storyteller_ml::feature_schema::EventFeatureInput {
-        event_type: storyteller_core::types::prediction::EventType::Interaction,
-        emotional_register: storyteller_core::types::prediction::EmotionalRegister::Neutral,
-        confidence: 0.5,
-        target_count: characters.len().saturating_sub(1) as u8,
-    };
-    let predictions = crate::context::prediction::predict_character_behaviors(
-        &predictor.0,
-        &characters,
-        &scene_res.scene,
-        input,
-        grammar_res.0.as_ref(),
-        event_features,
-        &std::collections::HashMap::new(),
-    );
-
-    turn_ctx.predictions = Some(predictions);
-
-    stage.0 = stage.0.next();
+                tracing::debug!(
+                    "enrichment_system: GameSystemArbitration wrapped predictions into ResolverOutput"
+                );
+                enrichment.0 = enrichment.0.next();
+            }
+            EnrichmentPhase::IntentSynthesis => {
+                // Pass-through placeholder: intent synthesis will be implemented
+                // in a future task.
+                tracing::debug!("enrichment_system: IntentSynthesis (pass-through)");
+                enrichment.0 = enrichment.0.next();
+            }
+            EnrichmentPhase::Complete => {
+                // Reset enrichment state for next turn, advance top-level stage
+                enrichment.0 = EnrichmentPhase::default();
+                stage.0 = stage.0.next(); // → AssemblingContext
+                break;
+            }
+        }
+    }
 }
 
 /// Bevy Resource wrapping a `CharacterPredictor`.
@@ -163,53 +201,6 @@ impl std::fmt::Debug for GrammarResource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GrammarResource").finish()
     }
-}
-
-// ---------------------------------------------------------------------------
-// Systems — Stubs (advance stage only)
-// ---------------------------------------------------------------------------
-
-/// Resolve predictions via rules engine.
-///
-/// Runs action arbitration against genre constraints and spatial zones,
-/// then wraps ML predictions into a `ResolverOutput`. Real resolver logic
-/// (RPG-like mechanics, conflict detection, graduated success) is future work.
-pub fn resolve_system(mut stage: ResMut<ActiveTurnStage>, mut turn_ctx: ResMut<TurnContext>) {
-    // Run arbitration if we have player input
-    if let Some(ref input) = turn_ctx.player_input {
-        // For now, run with empty constraints and lexicon
-        // Future: pull from scene/story resources
-        let result = crate::systems::arbitration::check_action_possibility(
-            input,
-            &[], // genre_constraints — will come from scene resource later
-            &storyteller_core::types::capability_lexicon::CapabilityLexicon::new(),
-            None, // actor_zone — will come from spatial tracking later
-        );
-
-        tracing::debug!(
-            permitted = result.is_permitted(),
-            impossible = result.is_impossible(),
-            ambiguous = result.is_ambiguous(),
-            "resolve_system: action arbitration check"
-        );
-
-        turn_ctx.arbitration = Some(result);
-    }
-
-    let predictions = turn_ctx.predictions.clone().unwrap_or_default();
-
-    let resolver_output = ResolverOutput {
-        sequenced_actions: vec![],
-        original_predictions: predictions,
-        scene_dynamics: String::new(),
-        conflicts: vec![],
-        intent_statements: None,
-    };
-
-    turn_ctx.resolver_output = Some(resolver_output);
-
-    tracing::debug!("resolve_system: wrapped predictions into ResolverOutput");
-    stage.0 = stage.0.next();
 }
 
 /// Assemble three-tier Narrator context from scene data, journal, and resolver output.
@@ -257,6 +248,7 @@ pub fn assemble_context_system(
         crate::context::DEFAULT_TOTAL_TOKEN_BUDGET,
         &NoopObserver,
         None, // player_entity_id — Bevy system doesn't track player entity yet
+        None, // directive_context — Bevy path has no directive store access yet
     );
 
     tracing::debug!(
@@ -292,7 +284,7 @@ fn build_committed_text(rendering: Option<&str>, player_input: Option<&str>) -> 
 /// 2. Run committed-turn classification on the combined narrator + player text (D.3).
 /// 3. Reset TurnContext for the new turn.
 /// 4. Move `PendingInput` → `TurnContext.player_input`.
-/// 5. Advance to `Classifying`.
+/// 5. Advance to `Enriching`.
 ///
 /// On the first turn of a scene, there is no previous data to archive —
 /// the system simply moves PendingInput and advances.
@@ -421,7 +413,7 @@ pub fn commit_previous_system(
     // Move pending input into the fresh context
     turn_ctx.player_input = pending.0.take();
 
-    stage.0 = stage.0.next(); // → Classifying
+    stage.0 = stage.0.next(); // → Enriching
 }
 
 #[cfg(test)]
@@ -441,6 +433,7 @@ mod tests {
         app.init_resource::<NarratorTask>();
         app.init_resource::<TurnHistory>();
         app.init_resource::<PendingInput>();
+        app.init_resource::<EnrichmentState>();
         app
     }
 
@@ -451,56 +444,114 @@ mod tests {
     #[test]
     fn in_stage_condition_matches() {
         let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Classifying;
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Enriching;
 
         let stage = app.world().resource::<ActiveTurnStage>();
-        assert!(stage.0 == TurnCycleStage::Classifying);
+        assert!(stage.0 == TurnCycleStage::Enriching);
     }
 
     // -----------------------------------------------------------------------
-    // classify_system (pass-through)
+    // enrichment_system
     // -----------------------------------------------------------------------
 
     #[test]
-    fn classify_system_advances_without_input() {
+    fn enrichment_advances_through_all_phases_without_resources() {
         let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Classifying;
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Enriching;
 
-        app.add_systems(Update, classify_system);
+        app.add_systems(Update, enrichment_system);
         app.update();
 
         let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::Predicting);
+        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
+
+        // EnrichmentState should be reset to default
+        let enrichment = app.world().resource::<EnrichmentState>();
+        assert_eq!(enrichment.0, EnrichmentPhase::EventClassification);
+
+        // Without predictor, predictions should be None; resolver output still set
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.predictions.is_none());
+        assert!(ctx.resolver_output.is_some());
     }
 
     #[test]
-    fn classify_system_with_input_advances() {
+    fn enrichment_sets_arbitration_with_player_input() {
         let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Classifying;
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Enriching;
         app.world_mut().resource_mut::<TurnContext>().player_input =
-            Some("I walk to the door".to_string());
+            Some("I walk through the meadow".to_string());
 
-        app.add_systems(Update, classify_system);
+        app.add_systems(Update, enrichment_system);
         app.update();
 
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.arbitration.is_some());
+        assert!(ctx.arbitration.as_ref().unwrap().is_permitted());
+        assert!(ctx.resolver_output.is_some());
+
         let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::Predicting);
+        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
     }
 
-    // -----------------------------------------------------------------------
-    // predict_system
-    // -----------------------------------------------------------------------
+    #[test]
+    fn enrichment_skips_arbitration_without_player_input() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Enriching;
+        // No player input set
+
+        app.add_systems(Update, enrichment_system);
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.arbitration.is_none());
+        assert!(ctx.resolver_output.is_some());
+    }
 
     #[test]
-    fn predict_system_advances_without_predictor() {
+    fn enrichment_wraps_predictions_into_resolver_output() {
         let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Predicting;
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Enriching;
+        app.world_mut().resource_mut::<TurnContext>().predictions = Some(vec![]);
 
-        app.add_systems(Update, predict_system);
+        app.add_systems(Update, enrichment_system);
         app.update();
 
         let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::Resolving);
+        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
+
+        let ctx = app.world().resource::<TurnContext>();
+        assert!(ctx.resolver_output.is_some());
+    }
+
+    #[test]
+    fn enrichment_handles_no_predictions() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Enriching;
+        // predictions is None
+
+        app.add_systems(Update, enrichment_system);
+        app.update();
+
+        let ctx = app.world().resource::<TurnContext>();
+        let resolver = ctx.resolver_output.as_ref().unwrap();
+        assert!(resolver.original_predictions.is_empty());
+    }
+
+    #[test]
+    fn enrichment_resets_state_after_completion() {
+        let mut app = test_app();
+        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Enriching;
+
+        app.add_systems(Update, enrichment_system);
+        app.update();
+
+        let enrichment = app.world().resource::<EnrichmentState>();
+        assert_eq!(
+            enrichment.0,
+            EnrichmentPhase::EventClassification,
+            "EnrichmentState should be reset to default after completion"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -517,7 +568,7 @@ mod tests {
         app.update();
 
         let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::Classifying);
+        assert_eq!(stage.0, TurnCycleStage::Enriching);
 
         let ctx = app.world().resource::<TurnContext>();
         assert_eq!(ctx.player_input.as_deref(), Some("new input"));
@@ -659,40 +710,6 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // resolve_system
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn resolve_wraps_predictions_into_resolver_output() {
-        let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Resolving;
-        app.world_mut().resource_mut::<TurnContext>().predictions = Some(vec![]);
-
-        app.add_systems(Update, resolve_system);
-        app.update();
-
-        let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
-
-        let ctx = app.world().resource::<TurnContext>();
-        assert!(ctx.resolver_output.is_some());
-    }
-
-    #[test]
-    fn resolve_handles_no_predictions() {
-        let mut app = test_app();
-        app.world_mut().resource_mut::<ActiveTurnStage>().0 = TurnCycleStage::Resolving;
-        // predictions is None
-
-        app.add_systems(Update, resolve_system);
-        app.update();
-
-        let ctx = app.world().resource::<TurnContext>();
-        let resolver = ctx.resolver_output.as_ref().unwrap();
-        assert!(resolver.original_predictions.is_empty());
-    }
-
-    // -----------------------------------------------------------------------
     // assemble_context_system
     // -----------------------------------------------------------------------
 
@@ -764,10 +781,8 @@ mod tests {
             Update,
             (
                 commit_previous_system,
-                classify_system.after(commit_previous_system),
-                predict_system.after(classify_system),
-                resolve_system.after(predict_system),
-                assemble_context_system.after(resolve_system),
+                enrichment_system.after(commit_previous_system),
+                assemble_context_system.after(enrichment_system),
                 rendering_system.after(assemble_context_system),
             ),
         );
@@ -810,10 +825,8 @@ mod tests {
             Update,
             (
                 commit_previous_system,
-                classify_system.after(commit_previous_system),
-                predict_system.after(classify_system),
-                resolve_system.after(predict_system),
-                assemble_context_system.after(resolve_system),
+                enrichment_system.after(commit_previous_system),
+                assemble_context_system.after(enrichment_system),
                 rendering_system.after(assemble_context_system),
             ),
         );
@@ -1083,7 +1096,7 @@ mod tests {
         app.update();
 
         let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::Classifying);
+        assert_eq!(stage.0, TurnCycleStage::Enriching);
 
         let history = app.world().resource::<TurnHistory>();
         assert_eq!(history.turns.len(), 1);
@@ -1129,61 +1142,5 @@ mod tests {
         assert!(history.turns[1].committed_classification.is_none());
         assert_eq!(history.turns[0].turn_number, 1);
         assert_eq!(history.turns[1].turn_number, 2);
-    }
-
-    // -----------------------------------------------------------------------
-    // Action arbitration wiring
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn resolve_system_sets_arbitration() {
-        let mut app = App::new();
-        app.init_resource::<ActiveTurnStage>();
-        app.init_resource::<TurnContext>();
-
-        {
-            let mut stage = app.world_mut().resource_mut::<ActiveTurnStage>();
-            stage.0 = TurnCycleStage::Resolving;
-        }
-        {
-            let mut ctx = app.world_mut().resource_mut::<TurnContext>();
-            ctx.player_input = Some("I walk through the meadow".to_string());
-        }
-
-        app.add_systems(
-            Update,
-            resolve_system.run_if(in_stage(TurnCycleStage::Resolving)),
-        );
-        app.update();
-
-        let ctx = app.world().resource::<TurnContext>();
-        assert!(ctx.arbitration.is_some());
-        assert!(ctx.arbitration.as_ref().unwrap().is_permitted());
-        assert!(ctx.resolver_output.is_some());
-
-        let stage = app.world().resource::<ActiveTurnStage>();
-        assert_eq!(stage.0, TurnCycleStage::AssemblingContext);
-    }
-
-    #[test]
-    fn resolve_system_without_input_skips_arbitration() {
-        let mut app = App::new();
-        app.init_resource::<ActiveTurnStage>();
-        app.init_resource::<TurnContext>();
-
-        {
-            let mut stage = app.world_mut().resource_mut::<ActiveTurnStage>();
-            stage.0 = TurnCycleStage::Resolving;
-        }
-
-        app.add_systems(
-            Update,
-            resolve_system.run_if(in_stage(TurnCycleStage::Resolving)),
-        );
-        app.update();
-
-        let ctx = app.world().resource::<TurnContext>();
-        assert!(ctx.arbitration.is_none());
-        assert!(ctx.resolver_output.is_some());
     }
 }

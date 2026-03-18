@@ -11,6 +11,7 @@ export type { GenreSummary } from './GenreSummary';
 export type { HealthReport } from './HealthReport';
 export type { HealthStatus } from './HealthStatus';
 export type { LogEntry } from './LogEntry';
+export type { PlayerCharacterInput } from './PlayerCharacterInput';
 export type { ProfileSummary } from './ProfileSummary';
 export type { ResumeResult } from './ResumeResult';
 export type { SceneInfo } from './SceneInfo';

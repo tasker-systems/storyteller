@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { checkHealth, submitInput, resumeSession } from "$lib/api";
   import type { StoryBlock } from "$lib/types";
+  import { GAMEPLAY_CHANNEL, type GameplayEvent } from "$lib/types";
   import type { SceneInfo, ResumeResult } from "$lib/generated";
   import { hydrateBlocks } from "$lib/logic";
   import StoryPane from "$lib/StoryPane.svelte";
@@ -15,10 +17,16 @@
   let sessionId = $state("");
   let blocks: StoryBlock[] = $state([]);
   let loading = $state(false);
+  let gameplayLoading = $state(false);
   let error: string | null = $state(null);
   let turnCount = $state(0);
   let debugVisible = $state(true);
   let sessionPanelVisible = $state(false);
+  let sceneMetadata = $state<{
+    player_character: string;
+    player_intent: string | null;
+    cast_names: string[];
+  } | null>(null);
 
   onMount(() => {
     function handleKeydown(e: KeyboardEvent) {
@@ -34,6 +42,72 @@
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
   });
+
+  $effect(() => {
+    const unlisten = listen<GameplayEvent>(GAMEPLAY_CHANNEL, (event) => {
+      const payload = event.payload;
+      switch (payload.kind) {
+        case "NarratorProse":
+          appendProseChunk(payload.chunk, payload.turn);
+          break;
+        case "NarratorComplete":
+          reconcileNarratorBlock(payload.prose, payload.turn);
+          break;
+        case "InputReceived":
+          gameplayLoading = true;
+          break;
+        case "TurnComplete":
+          if (payload.ready_for_input) {
+            gameplayLoading = false;
+          }
+          break;
+        case "SceneReady":
+          sceneMetadata = {
+            player_character: payload.player_character,
+            player_intent: payload.player_intent,
+            cast_names: payload.cast_names,
+          };
+          break;
+        case "ProcessingUpdate":
+          // Future: update processing indicator
+          break;
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  });
+
+  function appendProseChunk(chunk: string, turn: number) {
+    const existingIdx = blocks.findIndex((b) => {
+      if (turn === 0 && b.kind === "opening") return true;
+      if (b.kind === "narrator" && b.turn === turn) return true;
+      return false;
+    });
+    if (existingIdx >= 0) {
+      blocks[existingIdx] = {
+        ...blocks[existingIdx],
+        text: blocks[existingIdx].text + chunk,
+      };
+    } else if (turn === 0) {
+      blocks.push({ kind: "opening", text: chunk });
+    } else {
+      blocks.push({ kind: "narrator", turn, text: chunk });
+    }
+  }
+
+  function reconcileNarratorBlock(prose: string, turn: number) {
+    const existingIdx = blocks.findIndex((b) => {
+      if (b.kind === "opening") return turn === 0;
+      if (b.kind === "narrator") return b.turn === turn;
+      return false;
+    });
+    if (existingIdx >= 0) {
+      blocks[existingIdx] = { ...blocks[existingIdx], text: prose };
+    } else if (turn === 0) {
+      blocks.push({ kind: "opening", text: prose });
+    } else {
+      blocks.push({ kind: "narrator", turn, text: prose });
+    }
+  }
 
   async function checkServerHealthy(): Promise<boolean> {
     try {
@@ -54,7 +128,11 @@
   function transitionToPlaying(info: SceneInfo) {
     sceneInfo = info;
     sessionId = info.session_id;
-    blocks = [{ kind: "opening", text: info.opening_prose }];
+    // Do not pre-populate blocks from opening_prose — the gameplay channel already
+    // received NarratorProse/NarratorComplete events during compose_scene streaming
+    // and built the opening block incrementally. Resetting blocks here would discard
+    // that work. If the gameplay channel somehow missed the events, blocks stays []
+    // and the scene still opens (just without prose until the next event or reload).
     turnCount = 0;
     error = null;
     loading = false;
@@ -98,6 +176,7 @@
     sessionId = "";
     blocks = [];
     turnCount = 0;
+    sceneMetadata = null;
     error = null;
     loading = false;
   }
@@ -111,8 +190,11 @@
     error = null;
 
     try {
-      const result = await submitInput(sessionId, text);
-      blocks = [...blocks, { kind: "narrator", turn: result.turn, text: result.narrator_prose }];
+      // submitInput triggers server-side processing that emits gameplay channel events.
+      // The gameplay channel listener (NarratorProse/NarratorComplete) handles narrator
+      // block rendering incrementally. We do NOT append from the TurnResult return value
+      // here — that would duplicate the narrator output already built by the channel.
+      await submitInput(sessionId, text);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -173,13 +255,23 @@
           <SceneSetup onlaunch={handleSceneLaunched} />
         </div>
       {:else}
-        <StoryPane {blocks} {loading} />
-        <InputBar disabled={loading} onsubmit={handleSubmit} />
+        <StoryPane {blocks} loading={loading || gameplayLoading} />
+        {#if sceneMetadata?.player_intent}
+          <div class="player-intent-bar">
+            <span class="intent-label">Playing as {sceneMetadata.player_character}:</span>
+            <span class="intent-text">{sceneMetadata.player_intent}</span>
+          </div>
+        {:else if sceneMetadata?.player_character}
+          <div class="player-intent-bar">
+            <span class="intent-label">Playing as {sceneMetadata.player_character}</span>
+          </div>
+        {/if}
+        <InputBar disabled={loading || gameplayLoading} onsubmit={handleSubmit} />
       {/if}
     </div>
   </div>
 
-  <DebugPanel visible={debugVisible && view === "playing"} />
+  <DebugPanel visible={debugVisible && view === "playing"} {sessionId} />
 </div>
 
 <style>
@@ -321,6 +413,24 @@
     align-items: center;
     overflow-y: auto;
     padding: 2rem 1rem;
+  }
+
+  .player-intent-bar {
+    padding: 0.3rem 1.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    max-width: 816px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .intent-label {
+    font-style: italic;
+  }
+
+  .intent-text {
+    margin-left: 0.3rem;
   }
 
 </style>

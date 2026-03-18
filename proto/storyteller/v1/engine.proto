@@ -27,6 +27,13 @@ service StorytellerEngine {
 
 // --- Requests ---
 
+message PlayerCharacter {
+  string name = 1;
+  optional string age = 2;
+  optional string gender_presentation = 3;
+  optional string intent = 4;
+}
+
 message ComposeSceneRequest {
   string genre_id = 1;
   string profile_id = 2;
@@ -35,6 +42,7 @@ message ComposeSceneRequest {
   optional string title_override = 5;
   optional string setting_override = 6;
   optional uint64 seed = 7;
+  optional PlayerCharacter player_character = 8;
 }
 
 message CastMember {
@@ -98,6 +106,10 @@ message EngineEvent {
     SceneComposed scene_composed = 18;
     GoalsGenerated goals = 19;
     TurnComplete turn_complete = 20;
+    NarratorProse narrator_prose = 21;
+    SceneReady scene_ready = 22;
+    InputReceived input_received = 23;
+    ProcessingUpdate processing_update = 24;
     ErrorOccurred error = 30;
   }
 }
@@ -142,6 +154,28 @@ message ContextAssembled {
 
 message NarratorToken { string token = 1; }
 
+message NarratorProse {
+  string chunk = 1;
+  uint32 turn = 2;
+}
+
+message SceneReady {
+  string scene_id = 1;
+  string title = 2;
+  string setting_summary = 3;
+  repeated string cast_names = 4;
+  string player_character = 5;
+  optional string player_intent = 6;
+}
+
+message InputReceived {
+  uint32 turn = 1;
+}
+
+message ProcessingUpdate {
+  string phase = 1;
+}
+
 message NarratorComplete {
   string prose = 1;
   uint64 generation_ms = 2;
@@ -166,7 +200,7 @@ message GoalsGenerated {
   repeated string character_drives = 7;
 }
 
-message TurnComplete { uint32 turn = 1; uint64 total_ms = 2; }
+message TurnComplete { uint32 turn = 1; uint64 total_ms = 2; bool ready_for_input = 3; }
 message ErrorOccurred { string phase = 1; string message = 2; }
 
 // --- Query responses ---

@@ -1,12 +1,13 @@
-//! Session persistence — composition, events, and turn index.
+//! Session persistence — composition, events, turn index, and directives.
 //!
-//! ## Three-file model
+//! ## Four-file model
 //!
 //! Each session is a directory under `.story/sessions/{uuidv7}/` containing:
 //!
 //! - `composition.json` — write-once scene composition and setup data
 //! - `events.jsonl` — append-only event stream (one [`PersistedEvent`] per line)
 //! - `turns.jsonl` — append-only turn index referencing event UUIDs
+//! - `directives.jsonl` — append-only async agent directives (dramaturge, world agent)
 //!
 //! ## Usage
 //!
@@ -25,11 +26,13 @@
 //! ```
 
 pub mod composition;
+pub mod directives;
 pub mod events;
 pub mod session_store;
 pub mod turns;
 
 pub use composition::CompositionWriter;
+pub use directives::{DirectiveEntry, DirectiveStore};
 pub use events::{EventWriter, PersistedEvent};
 pub use session_store::SessionStore;
 pub use turns::{TurnEntry, TurnWriter};

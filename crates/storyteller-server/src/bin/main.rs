@@ -10,9 +10,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_broadcast = storyteller_server::create_log_broadcast();
 
+    // Apply EnvFilter only to the console layer so the broadcast layer
+    // receives all events regardless of RUST_LOG setting. The workshop's
+    // Logs tab applies its own filtering client-side.
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().compact())
-        .with(EnvFilter::from_default_env())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .compact()
+                .with_filter(env_filter),
+        )
         .with(storyteller_server::BroadcastTracingLayer::new(
             log_broadcast.clone(),
         ))

@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::composition::CompositionWriter;
+use super::directives::DirectiveStore;
 use super::events::EventWriter;
 use super::turns::TurnWriter;
 
@@ -14,6 +15,7 @@ pub struct SessionStore {
     pub composition: CompositionWriter,
     pub events: EventWriter,
     pub turns: TurnWriter,
+    pub directives: DirectiveStore,
 }
 
 impl SessionStore {
@@ -31,6 +33,7 @@ impl SessionStore {
             composition: CompositionWriter::new(base_dir),
             events: EventWriter::new(base_dir),
             turns: TurnWriter::new(base_dir),
+            directives: DirectiveStore::new(base_dir),
         })
     }
 

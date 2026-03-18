@@ -16,8 +16,10 @@
   }
 
   $effect(() => {
-    // Re-run when blocks change
+    // Re-run when blocks change length or content (for prose streaming)
     blocks.length;
+    const lastBlock = blocks[blocks.length - 1];
+    const _ = lastBlock?.text; // reactive dependency on content
     if (!userScrolledUp && container) {
       // Use tick-like delay to ensure DOM has updated
       requestAnimationFrame(() => {

@@ -35,7 +35,7 @@
   // ---------------------------------------------------------------------------
 
   let step = $state(0);
-  const stepLabels = ["Genre", "Profile", "Cast", "Dynamics", "Setting", "Launch"];
+  const stepLabels = ["Genre", "Profile", "Cast", "Dynamics", "Player Character", "Setting", "Launch"];
 
   // Step 0: Genre
   let genres = $state<GenreSummary[]>([]);
@@ -63,13 +63,20 @@
   let dynamicsError = $state<string | null>(null);
   let dynamics = $state<DynamicSelection[]>([]);
 
-  // Step 4: Settings
+  // Step 4: Player Character
+  let playerName = $state("");
+  let playerAge = $state("");
+  let playerGender = $state("");
+  let playerIntent = $state("");
+  let systemDecidesIntent = $state(true);
+
+  // Step 5: Settings
   let settings = $state<SettingSummary[]>([]);
   let settingsLoading = $state(false);
   let settingsError = $state<string | null>(null);
   let settingOverride = $state("");
 
-  // Step 5: Launch
+  // Step 6: Launch
   let launching = $state(false);
   let launchError = $state<string | null>(null);
 
@@ -89,7 +96,7 @@
   let castPairs = $derived(computeCastPairs(cast));
 
   let canAdvance = $derived(
-    checkCanAdvance(step, { selectedGenreId, selectedProfileId, cast, launching }, selectedProfile),
+    checkCanAdvance(step, { selectedGenreId, selectedProfileId, cast, playerName, launching }, selectedProfile),
   );
 
   // ---------------------------------------------------------------------------
@@ -283,7 +290,7 @@
     } else if (step === 2 && cast.length >= 2) {
       initDynamics();
       loadDynamics();
-    } else if (step === 3) {
+    } else if (step === 4) {
       loadSettings();
     }
 
@@ -298,6 +305,12 @@
     launching = true;
     launchError = null;
     try {
+      const playerCharacterData = playerName.trim() ? {
+        name: playerName.trim(),
+        age: playerAge || null,
+        gender_presentation: playerGender || null,
+        intent: systemDecidesIntent ? null : (playerIntent.trim() || null),
+      } : null;
       const selections: SceneSelections = {
         genre_id: selectedGenreId!,
         profile_id: selectedProfileId!,
@@ -305,6 +318,7 @@
         dynamics: dynamics.filter((d) => d.dynamic_id !== ""),
         setting_override: settingOverride.trim() || null,
         seed: null,
+        player_character: playerCharacterData,
       };
       const result = await composeScene(selections);
       onlaunch(result);
@@ -509,8 +523,73 @@
         {/if}
       </div>
 
-    <!-- Step 4: Setting -->
+    <!-- Step 4: Player Character -->
     {:else if step === 4}
+      <div class="step-content">
+        <h3 class="step-title">Player Character</h3>
+        <p class="step-description">
+          Define your character for this scene. Only the name is required.
+        </p>
+
+        <div class="player-form">
+          <label class="form-field">
+            <span class="form-label">Character Name</span>
+            <input
+              class="form-input"
+              type="text"
+              placeholder="Enter your character's name"
+              bind:value={playerName}
+            />
+          </label>
+
+          <label class="form-field">
+            <span class="form-label">Age</span>
+            <select class="form-select" bind:value={playerAge}>
+              <option value="">-- not specified --</option>
+              <option value="Young">Young</option>
+              <option value="Adult">Adult</option>
+              <option value="Middle-aged">Middle-aged</option>
+              <option value="Elder">Elder</option>
+            </select>
+          </label>
+
+          <fieldset class="form-fieldset">
+            <legend class="form-label">Gender Presentation</legend>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="player-gender" value="Masculine" bind:group={playerGender} />
+                <span>Masculine</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="player-gender" value="Feminine" bind:group={playerGender} />
+                <span>Feminine</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="player-gender" value="Non-binary" bind:group={playerGender} />
+                <span>Non-binary</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <label class="form-field">
+            <span class="form-label">Intent</span>
+            <label class="checkbox-label">
+              <input type="checkbox" bind:checked={systemDecidesIntent} />
+              <span>Let the system decide my character's intention</span>
+            </label>
+            <textarea
+              class="form-textarea"
+              placeholder="What does your character want to accomplish in this scene?"
+              bind:value={playerIntent}
+              rows="3"
+              disabled={systemDecidesIntent}
+            ></textarea>
+          </label>
+        </div>
+      </div>
+
+    <!-- Step 5: Setting -->
+    {:else if step === 5}
       <div class="step-content">
         <h3 class="step-title">Setting</h3>
         <p class="step-description">
@@ -529,8 +608,8 @@
         {/if}
       </div>
 
-    <!-- Step 5: Launch -->
-    {:else if step === 5}
+    <!-- Step 6: Launch -->
+    {:else if step === 6}
       <div class="step-content">
         <h3 class="step-title">Launch Scene</h3>
 
@@ -553,6 +632,14 @@
               }).join(", ")}
             </span>
           </div>
+          {#if playerName.trim()}
+            <div class="summary-row">
+              <span class="summary-label">Player</span>
+              <span class="summary-value">
+                {playerName.trim()}{playerAge ? `, ${playerAge}` : ""}{playerGender ? `, ${playerGender}` : ""}{!systemDecidesIntent && playerIntent.trim() ? ` — "${playerIntent.trim()}"` : ""}
+              </span>
+            </div>
+          {/if}
           {#if dynamics.filter((d) => d.dynamic_id !== "").length > 0}
             <div class="summary-row">
               <span class="summary-label">Dynamics</span>
@@ -603,7 +690,7 @@
       <span></span>
     {/if}
 
-    {#if step < 5}
+    {#if step < 6}
       <button class="nav-btn nav-next" onclick={goNext} disabled={!canAdvance}>
         Next
       </button>
@@ -948,6 +1035,118 @@
     font-size: 0.85rem;
     color: var(--text-secondary);
     font-style: italic;
+  }
+
+  /* ------- Player Character ------- */
+
+  .player-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .form-label {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 0;
+    margin: 0;
+  }
+
+  .form-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4em 0.6em;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+  }
+
+  .form-input:focus {
+    border-color: var(--accent-dim);
+    outline: none;
+  }
+
+  .form-select {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4em 0.6em;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    max-width: 14rem;
+  }
+
+  .form-select:focus {
+    border-color: var(--accent-dim);
+    outline: none;
+  }
+
+  .form-fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .radio-group {
+    display: flex;
+    gap: 1.25rem;
+    margin-top: 0.25rem;
+  }
+
+  .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+  }
+
+  .form-textarea {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4em 0.6em;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  .form-textarea:focus {
+    border-color: var(--accent-dim);
+  }
+
+  .form-textarea:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .form-textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.6;
   }
 
   /* ------- Setting ------- */

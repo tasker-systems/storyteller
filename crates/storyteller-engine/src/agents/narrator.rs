@@ -12,7 +12,9 @@ use std::time::Instant;
 use chrono::Utc;
 
 use storyteller_core::errors::StorytellerResult;
-use storyteller_core::traits::llm::{CompletionRequest, LlmProvider, Message, MessageRole};
+use storyteller_core::traits::llm::{
+    CompletionRequest, LlmProvider, Message, MessageRole, NarratorTokenStream,
+};
 use storyteller_core::traits::phase_observer::{PhaseEvent, PhaseEventDetail, PhaseObserver};
 use storyteller_core::types::message::NarratorRendering;
 use storyteller_core::types::narrator_context::NarratorContextInput;
@@ -182,6 +184,69 @@ impl NarratorAgent {
             text: response.content,
             stage_directions: None,
         })
+    }
+
+    /// Stream a turn render as tokens. Caller accumulates into full prose.
+    pub async fn stream_render(
+        &self,
+        context: &NarratorContextInput,
+        observer: &dyn PhaseObserver,
+    ) -> StorytellerResult<NarratorTokenStream> {
+        let user_message = build_turn_message(context);
+
+        observer.emit(PhaseEvent {
+            timestamp: Utc::now(),
+            turn_number: context.journal.entries.last().map_or(0, |e| e.turn_number),
+            stage: TurnCycleStage::Rendering,
+            detail: PhaseEventDetail::NarratorPromptBuilt {
+                system_prompt_chars: self.system_prompt.len(),
+                user_message_chars: user_message.len(),
+            },
+        });
+
+        let request = CompletionRequest {
+            system_prompt: self.system_prompt.clone(),
+            messages: vec![Message {
+                role: MessageRole::User,
+                content: user_message,
+            }],
+            max_tokens: 400,
+            temperature: self.temperature,
+        };
+
+        self.llm.stream_complete(request).await
+    }
+
+    /// Stream a scene opening as tokens. Caller accumulates into full prose.
+    pub async fn stream_render_opening(
+        &self,
+        observer: &dyn PhaseObserver,
+    ) -> StorytellerResult<NarratorTokenStream> {
+        let user_message = "Open the scene. Establish the setting and mood. \
+            The characters have not yet interacted. Under 200 words."
+            .to_string();
+
+        observer.emit(PhaseEvent {
+            timestamp: Utc::now(),
+            turn_number: 0,
+            stage: TurnCycleStage::Rendering,
+            detail: PhaseEventDetail::NarratorPromptBuilt {
+                system_prompt_chars: self.system_prompt.len(),
+                user_message_chars: user_message.len(),
+            },
+        });
+
+        let request = CompletionRequest {
+            system_prompt: self.system_prompt.clone(),
+            messages: vec![Message {
+                role: MessageRole::User,
+                content: user_message,
+            }],
+            max_tokens: 600,
+            temperature: self.temperature,
+        };
+
+        self.llm.stream_complete(request).await
     }
 }
 
