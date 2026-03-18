@@ -67,6 +67,18 @@ class TestManifest:
         assert "folk-horror" in manifest["entries"]
 
 
+class TestRunLog:
+    def test_write_run_log(self, tmp_path: Path):
+        from narrative_data.pipeline.invalidation import write_run_log
+        log_path = write_run_log(tmp_path, {
+            "model": "qwen3.5:35b",
+            "cells_processed": 5,
+            "domain": "genre",
+        })
+        assert log_path.exists()
+        assert log_path.parent.name == "runs"
+
+
 class TestStaleness:
     def test_not_stale_when_hashes_match(self):
         entry = {"prompt_hash": "h1", "content_digest": "d1"}

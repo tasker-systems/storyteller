@@ -1,4 +1,4 @@
-"""Manifest I/O, content digest, prompt hash, and staleness detection."""
+"""Manifest I/O, content digest, prompt hash, staleness detection, and run logging."""
 
 import hashlib
 import json
@@ -51,3 +51,14 @@ def is_stale(
     if entry.get("prompt_hash") != current_prompt_hash:
         return True
     return bool(upstream_digest and entry.get("content_digest") != upstream_digest)
+
+
+def write_run_log(output_base: Path, run_data: dict[str, Any]) -> Path:
+    """Write a generation run log to meta/runs/."""
+    runs_dir = output_base / "meta" / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    from narrative_data.utils import now_iso
+    timestamp = now_iso().replace(":", "-").replace("+", "-")
+    log_path = runs_dir / f"{timestamp}.json"
+    log_path.write_text(json.dumps(run_data, indent=2))
+    return log_path
