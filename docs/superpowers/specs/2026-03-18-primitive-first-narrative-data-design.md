@@ -251,6 +251,131 @@ GENRE_NATIVE_TYPES: list[str] = [
 
 ---
 
+## Pipeline Control Plane
+
+With ~580 LLM calls across multiple sessions and days, the pipeline must be self-describing — no reliance on handoff documents or human memory to track where we are. An append-only event log provides observability, resumability, and review gate enforcement.
+
+### Event Log
+
+```
+storyteller-data/narrative-data/pipeline.jsonl
+```
+
+Each line is a JSON event recording a pipeline action:
+
+```jsonl
+{"event":"extract_started","phase":1,"type":"archetypes","genre":"folk-horror","timestamp":"2026-03-18T18:30:00Z"}
+{"event":"extract_completed","phase":1,"type":"archetypes","genre":"folk-horror","timestamp":"2026-03-18T18:35:12Z","output":"discovery/archetypes/folk-horror.raw.md","content_digest":"abc123..."}
+{"event":"synthesize_started","phase":2,"type":"archetypes","cluster":"horror","timestamp":"2026-03-18T19:00:00Z"}
+{"event":"synthesize_completed","phase":2,"type":"archetypes","cluster":"horror","timestamp":"2026-03-18T19:08:45Z","output":"discovery/archetypes/cluster-horror.raw.md","primitives_found":9}
+{"event":"review_gate","phase":2,"type":"archetypes","decision":"approved","primitives":["mentor","trickster","outsider","sacrifice","guardian","corrupted-authority"],"timestamp":"2026-03-18T20:00:00Z","note":"merged 3 duplicates, added 1 from gap analysis"}
+{"event":"elicit_started","phase":3,"type":"archetypes","primitive":"mentor","timestamp":"2026-03-19T08:00:00Z"}
+{"event":"elicit_completed","phase":3,"type":"archetypes","primitive":"mentor","timestamp":"2026-03-19T08:05:30Z","output":"archetypes/mentor/raw.md"}
+{"event":"elaborate_started","phase":4,"type":"archetypes","genre":"folk-horror","primitive":"mentor","timestamp":"2026-03-19T09:00:00Z"}
+{"event":"elaborate_completed","phase":4,"type":"archetypes","genre":"folk-horror","primitive":"mentor","timestamp":"2026-03-19T09:05:15Z","output":"genres/folk-horror/elaborations/archetypes/mentor.raw.md"}
+```
+
+**Design principles:**
+- **Append-only** — never edit or delete events. Same philosophy as the event ledger in storyteller-core.
+- **Events, not state** — current state is derived by replaying the log. What's completed is computed, not maintained.
+- **Review gates are events** — when a human approves Phase 2 output and confirms the primitive list, that decision is recorded with the approved list and any notes.
+- **Lightweight** — no separate database, just a JSONL file that grows.
+
+### Event Schema
+
+All events share common fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event` | string | Event type (see below) |
+| `phase` | int | Pipeline phase (1-4) |
+| `type` | string | Primitive type (archetypes, dynamics, etc.) |
+| `timestamp` | string | ISO 8601 UTC |
+
+Event-specific fields:
+
+| Event | Additional fields |
+|-------|------------------|
+| `extract_started` | `genre` |
+| `extract_completed` | `genre`, `output` (relative path), `content_digest` |
+| `synthesize_started` | `cluster` |
+| `synthesize_completed` | `cluster`, `output`, `primitives_found` (count) |
+| `review_gate` | `decision` (approved/rejected), `primitives` (approved list), `note` (optional) |
+| `elicit_started` | `primitive` |
+| `elicit_completed` | `primitive`, `output`, `content_digest` |
+| `elaborate_started` | `genre`, `primitive` |
+| `elaborate_completed` | `genre`, `primitive`, `output`, `content_digest` |
+| `elicit_native_started` | `genre`, `native_type` (tropes/narrative-shapes) |
+| `elicit_native_completed` | `genre`, `native_type`, `output`, `content_digest` |
+
+### CLI Commands
+
+```
+# Show pipeline progress for a primitive type (or all types)
+narrative-data pipeline status [--type archetypes]
+
+# Resume pipeline execution from where it left off
+narrative-data pipeline resume --type archetypes [--phase 1]
+
+# Record a human review gate decision
+narrative-data pipeline approve --type archetypes --phase 2 \
+  --primitives mentor,trickster,outsider,sacrifice,guardian,corrupted-authority \
+  [--note "merged 3 duplicates, added 1 from gap analysis"]
+```
+
+**`status`** reads the JSONL, computes current state per type and phase:
+
+```
+Pipeline Status: archetypes
+  Phase 1 (extract):     23/30 genres complete, 7 remaining
+  Phase 2 (synthesize):  3/6 clusters complete, 3 remaining
+  Phase 3 (elicit):      blocked — awaiting Phase 2 completion + review gate
+  Phase 4 (elaborate):   blocked — awaiting Phase 3 completion
+
+  Next action: narrative-data discover extract --type archetypes
+               (will process 7 remaining genres)
+```
+
+**`resume`** picks up where the last run left off — reads the log, determines incomplete work, and runs exactly those cells. Combines pipeline-level progress (what phases are done) with manifest-level staleness (is the file still valid).
+
+**`approve`** records a review gate event. Phase transitions that require human review (Phase 2 → 3, Phase 3 → 4) are blocked until the corresponding gate event exists.
+
+### Review Gate Enforcement
+
+The pipeline enforces human checkpoints between phases:
+
+- **Phase 2 → Phase 3**: Phase 3 elicitation for a type will not start until a `review_gate` event with `decision: "approved"` exists for that type at Phase 2. The approved `primitives` list in the gate event defines what gets elicited in Phase 3.
+- **Phase 3 → Phase 4**: Phase 4 elaboration will not start until Phase 3 is complete for the type. Phase 4 selectivity (which genre × primitive pairs to elaborate) can be specified via a Phase 3 review gate or derived from Phase 2 cluster synthesis data.
+
+### Interaction with Per-Directory Manifests
+
+The per-directory manifests (`genres/manifest.json`, `archetypes/manifest.json`, etc.) and the pipeline JSONL serve complementary purposes:
+
+| Concern | Manifest | Pipeline JSONL |
+|---------|----------|---------------|
+| Scope | Per-file staleness | Per-phase orchestration |
+| Granularity | Individual cell (prompt hash, content digest) | Phase × type × target |
+| Question answered | "Is this specific file up to date?" | "Where are we in the overall process?" |
+| Mutation model | Read-modify-write JSON | Append-only events |
+
+A `resume` command checks both: the pipeline log says Phase 1 extraction for folk-horror is done, and the manifest confirms the file exists with the expected digest. If a file is manually deleted, manifest staleness catches it even though the pipeline log says "completed." If a prompt template changes, the manifest hash detects staleness and the cell is re-run.
+
+### State Derivation
+
+Current pipeline state is computed by replaying the JSONL:
+
+1. Collect all `*_completed` events per (phase, type, target)
+2. Collect all `review_gate` events per (phase, type)
+3. For each type, determine the current phase boundary:
+   - Phase 1 complete = all 30 genres have `extract_completed` events
+   - Phase 2 complete = all 6 clusters have `synthesize_completed` events
+   - Phase 2 gate = `review_gate` event exists with `decision: "approved"`
+   - Phase 3 complete = all primitives from the gate's `primitives` list have `elicit_completed` events
+   - Phase 4 progress = count of `elaborate_completed` events against the selectivity target
+4. Cross-reference with manifests to detect file-level staleness (prompt changes, deleted files)
+
+---
+
 ## Prompt Design
 
 ### Prompt Size Budget
