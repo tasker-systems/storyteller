@@ -256,6 +256,7 @@ class NarrativeEntity(BaseModel):
     commentary: str | None = None        # Model's evaluative notes
     suggestions: list[str] = []          # Things it couldn't express in the schema
     provenance: GenerationProvenance
+    provenance_edges: list[ProvenanceEdge] = []  # Attribution model (see Provenance strawman)
 
 class DimensionalPosition(BaseModel):
     """Weighted position along a named dimension."""
@@ -317,18 +318,28 @@ class GenreDynamic(NarrativeEntity):
     """Genre-contextualized expression of a relational dynamic."""
     base_dynamic_ref: str | None = None
     genre_ref: str
+    role_a_expression: str               # How role_a manifests in this genre
+    role_b_expression: str               # How role_b manifests in this genre
+    relational_texture: str              # How the dynamic's emotional/trust axes feel in this genre
+    typical_escalation: str              # How tension in this dynamic typically builds genre-specifically
     genre_specific_notes: str
 
 class GenreProfile(NarrativeEntity):
     """Genre-contextualized expression of a scene profile."""
     base_profile_ref: str | None = None
     genre_ref: str
+    scene_shape: str                     # How this scene type unfolds in this genre
+    tension_signature: str               # Genre-specific tension characteristics
+    characteristic_moments: list[str]    # Key beats that define this profile in this genre
     genre_specific_notes: str
 
 class GenreGoal(NarrativeEntity):
     """Genre-contextualized expression of a narrative goal."""
     base_goal_ref: str | None = None
     genre_ref: str
+    pursuit_expression: str              # How characters pursue this goal in this genre
+    success_shape: str                   # What success looks like genre-specifically
+    failure_shape: str                   # What failure looks like genre-specifically
     genre_specific_notes: str
 
 class GenreSetting(NarrativeEntity):
@@ -404,12 +415,42 @@ class IntersectionSynthesis(NarrativeEntity):
     new_entries: list[str]               # UUIDv7s of any new entities created
 ```
 
+### Collection convention
+
+Each category `.json` file contains a JSON array of the relevant entity type. For example, `archetypes.json` contains `[GenreArchetype, ...]`, `tropes.json` contains `[Trope, ...]`. Stage 2 validation wraps the target Pydantic model in `list[TargetType]` and validates the entire array.
+
+The `region.json` and `setting-type.json` files are exceptions — they contain a single object (the genre region or setting type itself), not an array.
+
+### Provenance strawman (`schemas/shared.py`)
+
+The meta-plan requires a provenance graph strawman to validate the multi-source attribution model from Part IV of the roadmap. For this cycle, only LLM elicitation (strategy 1) populates provenance. The schema is designed to accommodate future multi-source integration:
+
+```python
+class ProvenanceEdge(BaseModel):
+    """Attribution edge from source to knowledge node.
+
+    Currently populated only for LLM elicitation. Schema designed
+    to support future strategies: public domain analysis, CC-BY-SA
+    RPG module extraction, and cross-source synthesis.
+    """
+    source_id: str                       # Identifier for the source
+    source_type: str                     # "llm_elicited" | "public_domain" | "cc_by_sa" | "hand_authored"
+    contribution_type: str               # "originated" | "reinforced" | "refined"
+    weight: float                        # 0.0 to 1.0
+    license: str | None = None           # License identifier for non-LLM sources
+    extractable: bool = True             # Can this source's contribution be isolated for removal?
+    notes: str | None = None
+```
+
+For this cycle, all generated entities carry `GenerationProvenance` (tracks the mechanical generation process) and optionally `provenance_edges: list[ProvenanceEdge]` on `NarrativeEntity` (tracks the attribution model). LLM-elicited entities get a single `ProvenanceEdge` with `source_type="llm_elicited"` and `weight=1.0`. Multi-source convergence weighting is deferred to a future cycle when strategies 2-3 are implemented.
+
 ### Schema design principles
 
 - **Strings over enums** for exploratory fields. This is research tooling generating data whose shape is still being discovered. Premature enumeration constrains the LLM's expressiveness. Enums can be tightened as patterns stabilize across runs.
 - **`commentary` and `suggestions` on `NarrativeEntity`** make elicitation collaborative. Every generated entity can carry the model's notes about what it couldn't express within the schema, patterns it noticed, or connections it wants to flag. These fields are populated in Stage 1 and preserved through Stage 2.
 - **Cross-references use UUIDv7 strings**, not embedded objects. Keeps files flat, independently loadable, and avoids deep nesting that would complicate both LLM output and human review.
-- **`base_*_ref` fields** on genre-contextualized types link back to existing flat descriptors where applicable, maintaining the relationship between the naive data and the enriched data without requiring migration.
+- **`base_*_ref` fields** on genre-contextualized types link back to existing flat descriptors by `entity_id` (UUIDv7), matching the identifiers added by the `descriptor-migration` tool. Where a genre-contextualized entity doesn't correspond to an existing flat descriptor, this field is `None`.
+- **Domain-specific structure on genre-contextualized types** rather than flattening to a single `genre_specific_notes` string. Each type carries fields that reflect its source descriptor's domain (e.g., GenreDynamic has relational texture and escalation patterns, GenreProfile has scene shape and characteristic moments). This gives Stage 2 concrete targets and makes the data more useful for Tier C consumption.
 
 ---
 
@@ -542,6 +583,17 @@ These are starting points, not a closed set. The tool supports adding new region
 6. Fairy-tale forest
 
 ---
+
+## Deliberately Excluded Descriptor Categories
+
+The existing flat descriptors include `cross-dimensions.json` (age, gender, species demographic axes) and `axis-vocabulary.json` (tensor axis definitions). These are **not genre-contextualized** in this cycle:
+
+- **Cross-dimensions** are demographic axes that modify character tensors additively. They are genre-independent by design — age affects personality axes the same way regardless of whether the story is folk horror or cozy fantasy. If genre-specific demographic expressions emerge as a need during elicitation (e.g., "youth means something different in fairy tale than in noir"), the schema can be extended, but this is not assumed upfront.
+- **Axis vocabulary** defines the tensor dimensions themselves. These are structural/mathematical definitions, not narrative content that varies by genre. The genre-contextualized archetypes already carry `personality_axes: list[DimensionalPosition]` that reference these axes in context.
+
+## Cross-Genre Analysis
+
+The meta-plan lists "cross-genre analysis: dimensional overlap, natural clusters, discriminating dimensions, false boundaries" as a B.1 scope item, with an analysis doc as output. This is **human-guided analytical work**, not automated tooling. The `list` command provides the data access needed to support this analysis (e.g., `narrative-data list genres | jq` to compare dimensional positions across regions), but the analysis itself — identifying patterns, surprises, and recommendations for Tier C — is a human activity that produces a standalone document, not a tool feature. The B.3 cross-pollination synthesis partially overlaps with this concern but focuses on genre×setting intersections rather than genre×genre patterns.
 
 ## What This Spec Does Not Contain
 
