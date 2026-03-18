@@ -269,10 +269,10 @@ impl LlmProvider for ExternalServerProvider {
                             match serde_json::from_str::<OllamaChatStreamChunk>(&line) {
                                 Ok(chunk) => {
                                     let token = &chunk.message.content;
-                                    if !token.is_empty() {
-                                        if sender.0.send(token.clone()).await.is_err() {
-                                            return; // receiver dropped — caller cancelled
-                                        }
+                                    if !token.is_empty()
+                                        && sender.0.send(token.clone()).await.is_err()
+                                    {
+                                        return; // receiver dropped — caller cancelled
                                     }
                                     if chunk.done {
                                         return;

@@ -9,7 +9,7 @@
 //! Four synchronous systems live here:
 //! - `commit_previous_system`: archives previous turn, moves PendingInput
 //! - `enrichment_system`: unified sub-pipeline (classification, prediction,
-//!    arbitration, intent synthesis) managed by EnrichmentPhase
+//!   arbitration, intent synthesis) managed by EnrichmentPhase
 //! - `assemble_context_system`: three-tier Narrator context assembly
 //!
 //! The async narrator rendering system lives in [`super::rendering`].
