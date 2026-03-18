@@ -27,6 +27,7 @@ tools/narrative-data/
 │   ├── __init__.py                             # Package docstring
 │   ├── cli.py                                  # Click CLI: genre, spatial, cross-pollinate, status, list
 │   ├── config.py                               # Data path resolution, model config, constants
+│   ├── utils.py                                # Shared helpers (slug_to_name, now_iso)
 │   ├── ollama.py                               # Thin httpx Ollama client (generate + generate_structured)
 │   ├── prompts.py                              # Prompt loader + compositional builder
 │   ├── schemas/
@@ -1126,6 +1127,7 @@ class OllamaClient:
         max_retries: int = 3,
     ) -> str:
         """Stage 1: Generate raw text from the model. Returns the response string."""
+        assert max_retries >= 1, "max_retries must be >= 1"
         for attempt in range(max_retries):
             try:
                 response = httpx.post(
@@ -1144,6 +1146,7 @@ class OllamaClient:
                 if attempt < max_retries - 1:
                     continue
                 raise
+        raise RuntimeError("unreachable")
 
     def generate_structured(
         self,
@@ -1412,7 +1415,8 @@ class PromptBuilder:
         prompt += self._load_commentary_directive()
         return prompt
 
-    def build_stage2(self, raw_content: str, schema: dict) -> str:
+    @staticmethod
+    def build_stage2(raw_content: str, schema: dict) -> str:
         """Build a Stage 2 structuring prompt from raw content + JSON Schema."""
         schema_str = json.dumps(schema, indent=2)
         return f"""Given the following content:
@@ -1858,8 +1862,7 @@ from narrative_data.prompts import PromptBuilder
 
 def _build_stage2_prompt(raw_content: str, schema: dict) -> str:
     """Build the Stage 2 structuring prompt."""
-    builder = PromptBuilder.__new__(PromptBuilder)
-    return builder.build_stage2(raw_content, schema)
+    return PromptBuilder.build_stage2(raw_content, schema)
 
 
 def run_structuring(
@@ -1955,7 +1958,26 @@ git commit -m "feat: add two-stage pipeline (elicitation + structuring with vali
 - Create: `tools/narrative-data/src/narrative_data/cross_pollination/__init__.py`
 - Create: `tools/narrative-data/src/narrative_data/cross_pollination/commands.py`
 
-- [ ] **Step 1: Create genre __init__.py and commands.py**
+- [ ] **Step 1: Create shared utils module**
+
+`src/narrative_data/utils.py`:
+```python
+"""Shared helpers for narrative-data commands."""
+
+from datetime import datetime, timezone
+
+
+def slug_to_name(slug: str) -> str:
+    """Convert a slug to a display name: 'folk-horror' → 'Folk Horror'."""
+    return slug.replace("-", " ").title()
+
+
+def now_iso() -> str:
+    """Return current UTC time as ISO 8601."""
+    return datetime.now(timezone.utc).isoformat()
+```
+
+- [ ] **Step 2: Create genre __init__.py and commands.py**
 
 `src/narrative_data/genre/__init__.py`: empty file.
 
@@ -1972,6 +1994,7 @@ from narrative_data.config import (
     ELICITATION_MODEL,
     GENRE_CATEGORIES,
     STRUCTURING_MODEL,
+    resolve_descriptor_dir,
 )
 from narrative_data.ollama import OllamaClient
 from narrative_data.pipeline.elicit import run_elicitation
@@ -1992,6 +2015,7 @@ from narrative_data.schemas.genre import (
     NarrativeShape,
     Trope,
 )
+from narrative_data.utils import now_iso, slug_to_name
 
 console = Console()
 
@@ -2022,8 +2046,11 @@ def elicit_genre(
     cats = categories or GENRE_CATEGORIES
     manifest_path = output_base / "genres" / "manifest.json"
 
+    # Load existing flat descriptors for context injection
+    descriptor_context = _load_descriptor_context()
+
     for region_slug in (regions or _default_regions()):
-        region_name = _slug_to_name(region_slug)
+        region_name = slug_to_name(region_slug)
         region_dir = output_base / "genres" / region_slug
 
         # Ensure "region" runs first if any categories depend on it
@@ -2047,12 +2074,12 @@ def elicit_genre(
 
             console.print(f"  [bold]Eliciting {entry_key}...[/bold]")
 
-            # Build context from prior region data if category != "region"
-            context = None
+            # Build context: existing flat descriptors + prior region data
+            context = dict(descriptor_context)  # Copy base context
             if cat != "region":
                 region_json = region_dir / "region.json"
                 if region_json.exists():
-                    context = {"genre_region": region_json.read_text()}
+                    context["genre_region"] = region_json.read_text()
 
             result = run_elicitation(
                 client=client,
@@ -2071,7 +2098,7 @@ def elicit_genre(
                 "prompt_hash": result["prompt_hash"],
                 "content_digest": result["content_digest"],
                 "stage": "elicited",
-                "generated_at": _now_iso(),
+                "generated_at": now_iso(),
             })
             console.print(f"  [green]✓ {entry_key}[/green]")
 
@@ -2100,7 +2127,17 @@ def structure_genre(
                 continue
 
             output_path = region_dir / f"{cat}.json"
-            console.print(f"  [bold]Structuring {region_slug}/{cat}...[/bold]")
+            entry_key = f"{region_slug}/{cat}"
+
+            # Skip if already structured and not forced
+            if not force and output_path.exists():
+                manifest = load_manifest(manifest_path)
+                entry = manifest["entries"].get(entry_key)
+                if entry and entry.get("stage") == "structured":
+                    console.print(f"  [dim]Skipping {entry_key} (already structured)[/dim]")
+                    continue
+
+            console.print(f"  [bold]Structuring {entry_key}...[/bold]")
 
             result = run_structuring(
                 client=client,
@@ -2111,7 +2148,6 @@ def structure_genre(
                 is_collection=is_collection,
             )
 
-            entry_key = f"{region_slug}/{cat}"
             if result["success"]:
                 from uuid_utils import uuid7
 
@@ -2125,16 +2161,25 @@ def structure_genre(
                 console.print(f"  [red]✗ {entry_key} (see .errors.json)[/red]")
 
 
+def _load_descriptor_context() -> dict[str, str]:
+    """Load existing flat descriptors for injection into elicitation prompts."""
+    context: dict[str, str] = {}
+    try:
+        desc_dir = resolve_descriptor_dir()
+        for name in ["archetypes", "dynamics", "profiles", "goals", "genres"]:
+            path = desc_dir / f"{name}.json"
+            if path.exists():
+                context[f"existing_{name}"] = path.read_text()
+    except RuntimeError:
+        pass  # STORYTELLER_DATA_PATH not set; proceed without descriptors
+    return context
+
+
 def _order_categories(cats: list[str]) -> list[str]:
     """Ensure 'region' comes first if present."""
     if "region" in cats:
         return ["region"] + [c for c in cats if c != "region"]
     return cats
-
-
-def _slug_to_name(slug: str) -> str:
-    """Convert a slug to a display name: 'folk-horror' → 'Folk Horror'."""
-    return slug.replace("-", " ").title()
 
 
 def _default_regions() -> list[str]:
@@ -2151,13 +2196,6 @@ def _default_regions() -> list[str]:
         "swashbuckling-adventure", "survival-fiction",
         "pastoral-rural-fiction",
     ]
-
-
-def _now_iso() -> str:
-    """Return current UTC time as ISO 8601."""
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).isoformat()
 ```
 
 - [ ] **Step 2: Create spatial __init__.py and commands.py**
@@ -2194,6 +2232,7 @@ from narrative_data.schemas.spatial import (
     TonalInheritanceRule,
     TopologyEdge,
 )
+from narrative_data.utils import now_iso, slug_to_name
 
 console = Console()
 
@@ -2220,7 +2259,7 @@ def elicit_spatial(
     manifest_path = output_base / "spatial" / "manifest.json"
 
     for setting_slug in (settings or _default_settings()):
-        setting_name = _slug_to_name(setting_slug)
+        setting_name = slug_to_name(setting_slug)
         setting_dir = output_base / "spatial" / setting_slug
 
         for cat in SPATIAL_CATEGORIES:
@@ -2259,7 +2298,7 @@ def elicit_spatial(
                 "prompt_hash": result["prompt_hash"],
                 "content_digest": result["content_digest"],
                 "stage": "elicited",
-                "generated_at": _now_iso(),
+                "generated_at": now_iso(),
             })
             console.print(f"  [green]✓ {entry_key}[/green]")
 
@@ -2286,7 +2325,17 @@ def structure_spatial(
                 continue
 
             output_path = setting_dir / f"{cat}.json"
-            console.print(f"  [bold]Structuring {setting_slug}/{cat}...[/bold]")
+            entry_key = f"{setting_slug}/{cat}"
+
+            # Skip if already structured and not forced
+            if not force and output_path.exists():
+                manifest = load_manifest(manifest_path)
+                entry = manifest["entries"].get(entry_key)
+                if entry and entry.get("stage") == "structured":
+                    console.print(f"  [dim]Skipping {entry_key} (already structured)[/dim]")
+                    continue
+
+            console.print(f"  [bold]Structuring {entry_key}...[/bold]")
 
             result = run_structuring(
                 client=client,
@@ -2297,7 +2346,6 @@ def structure_spatial(
                 is_collection=is_collection,
             )
 
-            entry_key = f"{setting_slug}/{cat}"
             if result["success"]:
                 from uuid_utils import uuid7
 
@@ -2329,10 +2377,6 @@ def _build_spatial_context(setting_dir: Path, category: str) -> dict[str, str] |
     return context if context else None
 
 
-def _slug_to_name(slug: str) -> str:
-    return slug.replace("-", " ").title()
-
-
 def _default_settings() -> list[str]:
     return [
         "family-home", "inn-tavern", "boarding-school",
@@ -2342,12 +2386,6 @@ def _default_settings() -> list[str]:
         "dense-forest", "mountain-pass", "desert-wasteland", "river-lake-shore",
         "space-station", "sailing-vessel", "train-carriage", "ruins-archaeological-site",
     ]
-
-
-def _now_iso() -> str:
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).isoformat()
 ```
 
 - [ ] **Step 3: Create cross-pollination stub**
@@ -2778,29 +2816,56 @@ Expected: No errors.
 Run: `cd tools/narrative-data && uv run narrative-data --help && uv run narrative-data genre --help && uv run narrative-data list --help && uv run narrative-data status`
 Expected: All help texts display correctly. Status shows empty state.
 
-- [ ] **Step 4: Export JSON Schemas from Pydantic models**
+- [ ] **Step 4: Export JSON Schemas to `meta/schemas/`**
 
-Run a quick script to verify schema export works:
+Write a small script or add a CLI command to export schemas. For now, run directly:
 ```bash
 cd tools/narrative-data && uv run python -c "
 import json
-from narrative_data.schemas.genre import GenreRegion
-from narrative_data.schemas.spatial import PlaceEntity
+from pathlib import Path
+from narrative_data.config import resolve_output_path
+from narrative_data.schemas.genre import GenreRegion, Trope, NarrativeShape, GenreArchetype, GenreDynamic, GenreProfile, GenreGoal, GenreSetting
+from narrative_data.schemas.spatial import SettingType, PlaceEntity, TopologyEdge, TonalInheritanceRule
 from narrative_data.schemas.intersections import IntersectionSynthesis
-for cls in [GenreRegion, PlaceEntity, IntersectionSynthesis]:
-    schema = cls.model_json_schema()
-    print(f'{cls.__name__}: {len(json.dumps(schema))} chars')
-    assert 'properties' in schema
-print('All schemas export OK')
+
+schemas_dir = resolve_output_path() / 'meta' / 'schemas'
+schemas_dir.mkdir(parents=True, exist_ok=True)
+
+for cls in [GenreRegion, Trope, NarrativeShape, GenreArchetype, GenreDynamic, GenreProfile, GenreGoal, GenreSetting, SettingType, PlaceEntity, TopologyEdge, TonalInheritanceRule, IntersectionSynthesis]:
+    name = cls.__name__
+    # Convert CamelCase to kebab-case
+    kebab = ''.join(['-' + c.lower() if c.isupper() else c for c in name]).lstrip('-')
+    path = schemas_dir / f'{kebab}.schema.json'
+    path.write_text(json.dumps(cls.model_json_schema(), indent=2))
+    print(f'Exported: {path.name}')
+print('All schemas exported OK')
 "
 ```
-Expected: Schema sizes printed, "All schemas export OK".
+Expected: Schema files written to `storyteller-data/narrative-data/meta/schemas/`, confirmation printed.
 
-- [ ] **Step 5: Final commit**
+- [ ] **Step 5: Write generation run log to `meta/runs/`**
+
+Add a `write_run_log` function to `pipeline/invalidation.py` (or a new `pipeline/logging.py`):
+
+```python
+def write_run_log(output_base: Path, run_data: dict) -> Path:
+    """Write a generation run log to meta/runs/."""
+    runs_dir = output_base / "meta" / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    from narrative_data.utils import now_iso
+    timestamp = now_iso().replace(":", "-")
+    path = runs_dir / f"{timestamp}.json"
+    path.write_text(json.dumps(run_data, indent=2))
+    return path
+```
+
+Wire this into the `elicit_genre`, `elicit_spatial`, `structure_genre`, and `structure_spatial` functions — each writes a run log at the end with: timestamp, model versions, prompt versions used, cells processed, validation results.
+
+- [ ] **Step 6: Final commit**
 
 ```bash
 git add -A tools/narrative-data/
-git commit -m "chore: finalize narrative-data package, all tests passing"
+git commit -m "chore: finalize narrative-data package with schema export and run logging"
 ```
 
 ---
@@ -2815,6 +2880,8 @@ git commit -m "chore: finalize narrative-data package, all tests passing"
 
 4. **Cross-pollination (B.3)** is stubbed. Full implementation depends on B.1 and B.2 producing initial data to synthesize against.
 
-5. **The `_PROMPTS_DIR` resolution** in `cli.py` uses a path relative to the source file. This works for both `uv run narrative-data` (installed entry point) and direct execution. If prompts are not found, the `PromptBuilder` raises `FileNotFoundError` with the expected path.
+5. **The `_PROMPTS_DIR` resolution** in `cli.py` uses a path relative to the source file. This works for `uv sync --dev` (editable install) and `uv run`. A non-editable install would need prompts included as package data in `pyproject.toml` — this is a known limitation acceptable for dev tooling that's only run from the source tree.
 
 6. **Genre and spatial category prompt templates** (Task 11) are the highest-value creative work in the plan. The structural code (Tasks 1-10) is mechanical; the prompts determine elicitation quality.
+
+7. **Task 9 command orchestration** should be tested with mocked Ollama. The review identified this gap — add tests for dependency ordering, context building, staleness checks, and manifest updates. Use the same mock patterns from `test_pipeline.py`.
