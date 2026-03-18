@@ -132,9 +132,13 @@ def elicit_genre(
             manifest_key = f"{region_slug}/{category}"
             entry: dict[str, Any] | None = manifest["entries"].get(manifest_key)
 
-            # Build context for this cell
-            context = dict(descriptor_context)
+            # Build context for this cell.
+            # "region" needs no descriptor context — it's about dimensional positioning.
+            # Derivative categories (archetypes, tropes, etc.) get existing descriptors
+            # so the model knows what vocabulary exists and can extend/contextualize it.
+            context: dict[str, str] = {}
             if category != "region":
+                context.update(descriptor_context)
                 region_json_path = region_dir / "region.json"
                 if region_json_path.exists():
                     context["region"] = region_json_path.read_text()
