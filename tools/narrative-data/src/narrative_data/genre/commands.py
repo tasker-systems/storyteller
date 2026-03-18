@@ -36,31 +36,48 @@ from narrative_data.utils import now_iso, slug_to_name
 console = Console()
 
 GENRE_REGIONS: list[str] = [
+    # Horror
     "folk-horror",
     "cosmic-horror",
+    # Fantasy
     "high-epic-fantasy",
     "dark-fantasy",
     "cozy-fantasy",
     "fairy-tale-mythic",
     "urban-fantasy",
+    "quiet-contemplative-fantasy",
+    # Science fiction
     "hard-sci-fi",
     "space-opera",
     "cyberpunk",
-    "solarpunk",
+    # Mystery / thriller
     "nordic-noir",
     "cozy-mystery",
     "psychological-thriller",
+    "domestic-noir",
+    # Romance
     "romantasy",
     "historical-romance",
     "contemporary-romance",
-    "literary-fiction",
-    "magical-realism",
+    # Gothic
     "southern-gothic",
-    "historical-fiction",
+    # Historical / period
     "westerns",
+    # Adventure / action
     "swashbuckling-adventure",
     "survival-fiction",
+    # Comedy-horror
+    "horror-comedy",
+    # Realism
+    "working-class-realism",
     "pastoral-rural-fiction",
+    # Tragedy
+    "classical-tragedy",
+    # Modifier regions (self-identify via enriched prompt)
+    "solarpunk",
+    "historical-fiction",
+    "literary-fiction",
+    "magical-realism",
 ]
 
 CATEGORY_SCHEMAS: dict[str, tuple[type, bool]] = {
