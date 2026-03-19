@@ -56,3 +56,33 @@ def derive_state(log_path: Path, primitive_type: str) -> dict:
             case "elicit_native_completed":
                 state["phase4_native_completed"].add((ev["genre"], ev["native_type"]))
     return state
+
+
+def format_status(log_path: Path, primitive_type: str) -> str:
+    """Format pipeline status for a primitive type as a human-readable string."""
+    from narrative_data.config import GENRE_CLUSTERS
+    from narrative_data.genre.commands import GENRE_REGIONS
+
+    state = derive_state(log_path, primitive_type)
+    n_genres = len(GENRE_REGIONS)
+    n_clusters = len(GENRE_CLUSTERS)
+    p1 = len(state["phase1_completed"])
+    p2 = len(state["phase2_completed"])
+    p3 = len(state["phase3_completed"])
+    p4 = len(state["phase4_completed"])
+    gate = state["phase2_gate"]
+
+    lines = [f"Pipeline Status: {primitive_type}"]
+    lines.append(f"  Phase 1 (extract):     {p1}/{n_genres} genres complete")
+    lines.append(f"  Phase 2 (synthesize):  {p2}/{n_clusters} clusters complete")
+
+    if gate:
+        n_prims = len(gate["primitives"])
+        lines.append(f"  Phase 3 (elicit):      {p3}/{n_prims} primitives complete")
+    elif p2 >= n_clusters:
+        lines.append("  Phase 3 (elicit):      blocked — awaiting review gate")
+    else:
+        lines.append("  Phase 3 (elicit):      blocked — awaiting Phase 2 completion")
+
+    lines.append(f"  Phase 4 (elaborate):   {p4} pairs complete")
+    return "\n".join(lines)

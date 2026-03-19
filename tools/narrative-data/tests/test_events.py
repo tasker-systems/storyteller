@@ -3,7 +3,8 @@
 import json
 from pathlib import Path
 
-from narrative_data.pipeline.events import append_event, derive_state, read_events
+from narrative_data.config import GENRE_CLUSTERS
+from narrative_data.pipeline.events import append_event, derive_state, format_status, read_events
 
 
 class TestAppendEvent:
@@ -190,3 +191,65 @@ class TestDeriveState:
         )
         state = derive_state(log_path, "archetypes")
         assert ("folk-horror", "mentor") in state["phase4_completed"]
+
+
+class TestFormatStatus:
+    def test_empty_status(self, tmp_path):
+        log_path = tmp_path / "pipeline.jsonl"
+        status = format_status(log_path, "archetypes")
+        assert "Phase 1" in status
+        assert "0/" in status
+
+    def test_partial_phase1(self, tmp_path):
+        log_path = tmp_path / "pipeline.jsonl"
+        for genre in ["folk-horror", "cosmic-horror"]:
+            append_event(
+                log_path,
+                event="extract_completed",
+                phase=1,
+                type="archetypes",
+                genre=genre,
+                output=f"x/{genre}.raw.md",
+                content_digest="sha256:a",
+            )
+        status = format_status(log_path, "archetypes")
+        assert "2/" in status
+
+    def test_blocked_phase3(self, tmp_path):
+        log_path = tmp_path / "pipeline.jsonl"
+        # Phase 2 complete but no review gate
+        for cluster in GENRE_CLUSTERS:
+            append_event(
+                log_path,
+                event="synthesize_completed",
+                phase=2,
+                type="archetypes",
+                cluster=cluster,
+                output=f"x/cluster-{cluster}.raw.md",
+                content_digest="sha256:a",
+                primitives_found=8,
+            )
+        status = format_status(log_path, "archetypes")
+        assert "blocked" in status.lower() or "awaiting" in status.lower()
+
+    def test_with_review_gate(self, tmp_path):
+        log_path = tmp_path / "pipeline.jsonl"
+        append_event(
+            log_path,
+            event="review_gate",
+            phase=2,
+            type="archetypes",
+            decision="approved",
+            primitives=["mentor", "trickster", "outsider"],
+        )
+        append_event(
+            log_path,
+            event="elicit_completed",
+            phase=3,
+            type="archetypes",
+            primitive="mentor",
+            output="archetypes/mentor/raw.md",
+            content_digest="sha256:a",
+        )
+        status = format_status(log_path, "archetypes")
+        assert "1/3" in status  # 1 of 3 primitives elicited
