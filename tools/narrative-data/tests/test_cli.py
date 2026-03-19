@@ -34,3 +34,49 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(cli, ["list", "--help"])
         assert result.exit_code == 0
+
+
+class TestNewCLICommands:
+    def test_discover_extract_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["discover", "extract", "--help"])
+        assert result.exit_code == 0
+        assert "--type" in result.output
+
+    def test_discover_synthesize_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["discover", "synthesize", "--help"])
+        assert result.exit_code == 0
+        assert "--type" in result.output
+        assert "--cluster" in result.output
+
+    def test_primitive_elicit_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["primitive", "elicit", "--help"])
+        assert result.exit_code == 0
+        assert "--type" in result.output
+
+    def test_genre_elaborate_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["genre", "elaborate", "--help"])
+        assert result.exit_code == 0
+        assert "--type" in result.output
+
+    def test_genre_elicit_native_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["genre", "elicit-native", "--help"])
+        assert result.exit_code == 0
+        assert "--type" in result.output
+
+    def test_pipeline_status_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pipeline", "status", "--help"])
+        assert result.exit_code == 0
+
+    def test_pipeline_approve_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pipeline", "approve", "--help"])
+        assert result.exit_code == 0
+        assert "--type" in result.output
+        assert "--phase" in result.output
+        assert "--primitives" in result.output

@@ -57,6 +57,64 @@ def genre_elicit(regions: str | None, categories: str | None, force: bool) -> No
     )
 
 
+@genre.command("elaborate")
+@click.option("--type", "primitive_type", required=True, help="Primitive type to elaborate.")
+@click.option("--genres", default=None, help="Comma-separated genre slugs (default: all).")
+@click.option("--primitives", default=None, help="Comma-separated primitive slugs.")
+@click.option("--force", is_flag=True, default=False, help="Re-elaborate even if exists.")
+def genre_elaborate(
+    primitive_type: str, genres: str | None, primitives: str | None, force: bool
+) -> None:
+    """Phase 4a: Elaborate genre x primitive pairs."""
+    from narrative_data.config import OLLAMA_BASE_URL, resolve_output_path
+    from narrative_data.genre.commands import GENRE_REGIONS, elaborate_genre
+    from narrative_data.ollama import OllamaClient
+
+    output_base = resolve_output_path()
+    log_path = output_base / "pipeline.jsonl"
+    client = OllamaClient(base_url=OLLAMA_BASE_URL)
+    genre_list = _parse_list(genres) or GENRE_REGIONS
+    prim_list = _parse_list(primitives) or []
+    elaborate_genre(
+        client=client,
+        output_base=output_base,
+        log_path=log_path,
+        primitive_type=primitive_type,
+        genres=genre_list,
+        primitives=prim_list,
+        force=force,
+    )
+
+
+@genre.command("elicit-native")
+@click.option(
+    "--type",
+    "native_type",
+    required=True,
+    help="Genre-native type (tropes, narrative-shapes).",
+)
+@click.option("--genres", default=None, help="Comma-separated genre slugs (default: all).")
+@click.option("--force", is_flag=True, default=False, help="Re-elicit even if exists.")
+def genre_elicit_native(native_type: str, genres: str | None, force: bool) -> None:
+    """Phase 4b: Elicit genre-native tropes or narrative-shapes."""
+    from narrative_data.config import OLLAMA_BASE_URL, resolve_output_path
+    from narrative_data.genre.commands import GENRE_REGIONS, elicit_native
+    from narrative_data.ollama import OllamaClient
+
+    output_base = resolve_output_path()
+    log_path = output_base / "pipeline.jsonl"
+    client = OllamaClient(base_url=OLLAMA_BASE_URL)
+    genre_list = _parse_list(genres) or GENRE_REGIONS
+    elicit_native(
+        client=client,
+        output_base=output_base,
+        log_path=log_path,
+        native_type=native_type,
+        genres=genre_list,
+        force=force,
+    )
+
+
 @genre.command("structure")
 @click.option("--regions", default=None, help="Comma-separated list of region slugs.")
 @click.option(
@@ -358,3 +416,197 @@ def list_intersections(stale: bool, fmt: str) -> None:
                 item.get("structured_at", "—"),
             )
         console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# discover subgroup
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def discover() -> None:
+    """Primitive discovery: extract from genres and synthesize across clusters."""
+
+
+@discover.command("extract")
+@click.option(
+    "--type",
+    "primitive_type",
+    required=True,
+    help="Primitive type (archetypes, dynamics, goals, profiles, settings).",
+)
+@click.option("--genres", default=None, help="Comma-separated genre slugs (default: all).")
+@click.option("--force", is_flag=True, default=False, help="Re-extract even if up to date.")
+def discover_extract(primitive_type: str, genres: str | None, force: bool) -> None:
+    """Phase 1: Extract primitive candidates from each genre's region description."""
+    from narrative_data.config import OLLAMA_BASE_URL, resolve_output_path
+    from narrative_data.discovery.commands import extract_primitives
+    from narrative_data.genre.commands import GENRE_REGIONS
+    from narrative_data.ollama import OllamaClient
+
+    output_base = resolve_output_path()
+    log_path = output_base / "pipeline.jsonl"
+    client = OllamaClient(base_url=OLLAMA_BASE_URL)
+    genre_list = _parse_list(genres) if genres is not None else GENRE_REGIONS
+    extract_primitives(
+        client=client,
+        output_base=output_base,
+        log_path=log_path,
+        primitive_type=primitive_type,
+        genres=genre_list,
+        force=force,
+    )
+
+
+@discover.command("synthesize")
+@click.option("--type", "primitive_type", required=True, help="Primitive type.")
+@click.option(
+    "--cluster",
+    "cluster_name",
+    required=True,
+    help="Genre cluster name (horror, fantasy, sci-fi, mystery-thriller, "
+    "romance, realism-gothic-other).",
+)
+@click.option("--force", is_flag=True, default=False, help="Re-synthesize even if exists.")
+def discover_synthesize(primitive_type: str, cluster_name: str, force: bool) -> None:
+    """Phase 2: Synthesize per-genre extractions into deduplicated cluster list."""
+    from narrative_data.config import GENRE_CLUSTERS, OLLAMA_BASE_URL, resolve_output_path
+    from narrative_data.discovery.commands import synthesize_cluster
+    from narrative_data.ollama import OllamaClient
+
+    output_base = resolve_output_path()
+    log_path = output_base / "pipeline.jsonl"
+    client = OllamaClient(base_url=OLLAMA_BASE_URL)
+    genres = GENRE_CLUSTERS.get(cluster_name, [])
+    if not genres:
+        click.echo(f"Unknown cluster: {cluster_name}", err=True)
+        raise SystemExit(1)
+    synthesize_cluster(
+        client=client,
+        output_base=output_base,
+        log_path=log_path,
+        primitive_type=primitive_type,
+        cluster_name=cluster_name,
+        genres=genres,
+        force=force,
+    )
+
+
+# ---------------------------------------------------------------------------
+# primitive subgroup
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def primitive() -> None:
+    """Standalone primitive elicitation (Layer 0)."""
+
+
+@primitive.command("elicit")
+@click.option("--type", "primitive_type", required=True, help="Primitive type.")
+@click.option("--primitives", default=None, help="Comma-separated primitive slugs.")
+@click.option("--force", is_flag=True, default=False, help="Re-elicit even if up to date.")
+def primitive_elicit(primitive_type: str, primitives: str | None, force: bool) -> None:
+    """Phase 3: Elicit standalone Layer 0 descriptions for primitives."""
+    from narrative_data.config import OLLAMA_BASE_URL, resolve_output_path
+    from narrative_data.ollama import OllamaClient
+    from narrative_data.primitive.commands import elicit_primitives
+
+    output_base = resolve_output_path()
+    log_path = output_base / "pipeline.jsonl"
+    client = OllamaClient(base_url=OLLAMA_BASE_URL)
+    prim_list = _parse_list(primitives) or []
+    elicit_primitives(
+        client=client,
+        output_base=output_base,
+        log_path=log_path,
+        primitive_type=primitive_type,
+        primitives=prim_list,
+        descriptions={},
+        force=force,
+    )
+
+
+# ---------------------------------------------------------------------------
+# pipeline subgroup
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def pipeline() -> None:
+    """Pipeline control plane: status, resume, and review gates."""
+
+
+@pipeline.command("status")
+@click.option(
+    "--type",
+    "primitive_type",
+    default=None,
+    help="Show status for specific primitive type.",
+)
+def pipeline_status(primitive_type: str | None) -> None:
+    """Show pipeline progress for primitive discovery and elicitation."""
+    from rich.console import Console
+
+    from narrative_data.config import GENRE_CLUSTERS, PRIMITIVE_TYPES, resolve_output_path
+    from narrative_data.genre.commands import GENRE_REGIONS
+    from narrative_data.pipeline.events import derive_state
+
+    console = Console()
+    try:
+        output_base = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    log_path = output_base / "pipeline.jsonl"
+    types = [primitive_type] if primitive_type else PRIMITIVE_TYPES
+
+    for pt in types:
+        state = derive_state(log_path, pt)
+        n_genres = len(GENRE_REGIONS)
+        n_clusters = len(GENRE_CLUSTERS)
+        p1 = len(state["phase1_completed"])
+        p2 = len(state["phase2_completed"])
+        p3 = len(state["phase3_completed"])
+        p4 = len(state["phase4_completed"])
+        gate = state["phase2_gate"]
+
+        console.print(f"\n[bold]Pipeline Status: {pt}[/bold]")
+        console.print(f"  Phase 1 (extract):     {p1}/{n_genres} genres complete")
+        console.print(f"  Phase 2 (synthesize):  {p2}/{n_clusters} clusters complete")
+        if p2 == n_clusters and gate is None:
+            console.print(
+                "  Phase 3 (elicit):      [yellow]blocked — awaiting review gate[/yellow]"
+            )
+        elif gate:
+            n_prims = len(gate["primitives"])
+            console.print(f"  Phase 3 (elicit):      {p3}/{n_prims} primitives complete")
+        else:
+            console.print("  Phase 3 (elicit):      [dim]blocked — awaiting Phase 2[/dim]")
+        console.print(f"  Phase 4 (elaborate):   {p4} pairs complete")
+
+
+@pipeline.command("approve")
+@click.option("--type", "primitive_type", required=True, help="Primitive type being approved.")
+@click.option("--phase", required=True, type=int, help="Phase number (2).")
+@click.option(
+    "--primitives", required=True, help="Comma-separated list of approved primitive slugs."
+)
+@click.option("--note", default=None, help="Optional note about the review decision.")
+def pipeline_approve(primitive_type: str, phase: int, primitives: str, note: str | None) -> None:
+    """Record a human review gate decision."""
+    from narrative_data.config import resolve_output_path
+    from narrative_data.pipeline.events import append_event
+
+    output_base = resolve_output_path()
+    log_path = output_base / "pipeline.jsonl"
+    prim_list = _parse_list(primitives) or []
+    kwargs: dict = {"decision": "approved", "primitives": prim_list}
+    if note:
+        kwargs["note"] = note
+    append_event(log_path, event="review_gate", phase=phase, type=primitive_type, **kwargs)
+    click.echo(
+        f"Recorded review gate: {primitive_type} phase {phase} "
+        f"approved ({len(prim_list)} primitives)"
+    )
