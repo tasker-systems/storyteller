@@ -1000,12 +1000,29 @@ Add `elaborate_genre()` for Phase 4a (genre × primitive) and `elicit_native()` 
 from narrative_data.genre.commands import elaborate_genre, elicit_native
 
 
+def _make_genre_mock_prompts(tmp_path):
+    """Create minimal prompt templates for genre elaborate/native testing."""
+    prompts_dir = tmp_path / "prompts"
+    (prompts_dir / "genre").mkdir(parents=True)
+    (prompts_dir / "genre" / "elaborate-archetypes.md").write_text(
+        "Elaborate {target_name}."
+    )
+    (prompts_dir / "genre" / "tropes.md").write_text(
+        "Analyze tropes for {target_name}."
+    )
+    (prompts_dir / "genre" / "narrative-shapes.md").write_text(
+        "Analyze narrative shapes for {target_name}."
+    )
+    return prompts_dir
+
+
 class TestElaborateGenre:
     def test_elaborates_genre_primitive_pair(self, tmp_output_dir):
         client = MagicMock()
         client.generate.return_value = "# The Mentor in Folk Horror\n\nElaboration..."
         output_base = tmp_output_dir
         log_path = output_base / "pipeline.jsonl"
+        prompts_dir = _make_genre_mock_prompts(output_base)
         # Create genre region and primitive files
         genre_dir = output_base / "genres" / "folk-horror"
         genre_dir.mkdir(parents=True)
@@ -1021,6 +1038,7 @@ class TestElaborateGenre:
             primitive_type="archetypes",
             genres=["folk-horror"],
             primitives=["mentor"],
+            prompts_dir=prompts_dir,
         )
 
         out_file = genre_dir / "elaborations" / "archetypes" / "mentor.raw.md"
@@ -1037,6 +1055,7 @@ class TestElicitNative:
         client.generate.return_value = "# Folk Horror Tropes\n\nTrope analysis..."
         output_base = tmp_output_dir
         log_path = output_base / "pipeline.jsonl"
+        prompts_dir = _make_genre_mock_prompts(output_base)
         genre_dir = output_base / "genres" / "folk-horror"
         genre_dir.mkdir(parents=True)
         (genre_dir / "region.raw.md").write_text("Folk horror description...")
@@ -1047,6 +1066,7 @@ class TestElicitNative:
             log_path=log_path,
             native_type="tropes",
             genres=["folk-horror"],
+            prompts_dir=prompts_dir,
         )
 
         out_file = genre_dir / "tropes.raw.md"
@@ -1109,9 +1129,10 @@ def elaborate_genre(
     primitives: list[str],
     model: str = ELICITATION_MODEL,
     force: bool = False,
+    prompts_dir: Path | None = None,
 ) -> None:
     """Phase 4a: Elaborate genre × primitive pairs."""
-    builder = PromptBuilder()
+    builder = PromptBuilder(prompts_dir=prompts_dir) if prompts_dir else PromptBuilder()
 
     for genre_slug in genres:
         region_path = output_base / "genres" / genre_slug / "region.raw.md"
@@ -1181,9 +1202,10 @@ def elicit_native(
     genres: list[str],
     model: str = ELICITATION_MODEL,
     force: bool = False,
+    prompts_dir: Path | None = None,
 ) -> None:
     """Phase 4b: Elicit genre-native tropes or narrative-shapes."""
-    builder = PromptBuilder()
+    builder = PromptBuilder(prompts_dir=prompts_dir) if prompts_dir else PromptBuilder()
 
     for genre_slug in genres:
         region_path = output_base / "genres" / genre_slug / "region.raw.md"
