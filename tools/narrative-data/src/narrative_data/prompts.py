@@ -43,6 +43,43 @@ class PromptBuilder:
         prompt += self._load_commentary_directive()
         return prompt
 
+    def build_discovery(
+        self,
+        primitive_type: str,
+        target_name: str,
+        genre_content: str,
+    ) -> str:
+        """Build a Phase 1 discovery extraction prompt."""
+        template_path = self.prompts_dir / "discovery" / f"extract-{primitive_type}.md"
+        if not template_path.exists():
+            raise FileNotFoundError(f"Discovery prompt template not found: {template_path}")
+        prompt = template_path.read_text()
+        prompt = prompt.replace("{target_name}", target_name)
+        prompt = prompt.replace("{genre_content}", genre_content)
+        prompt += "\n\n" + self._load_commentary_directive()
+        return prompt
+
+    def build_synthesis(
+        self,
+        primitive_type: str,
+        cluster_name: str,
+        extractions: dict[str, str],
+    ) -> str:
+        """Build a Phase 2 cluster synthesis prompt."""
+        template_path = self.prompts_dir / "discovery" / f"synthesize-{primitive_type}.md"
+        if not template_path.exists():
+            raise FileNotFoundError(f"Synthesis prompt template not found: {template_path}")
+        prompt = template_path.read_text()
+        prompt = prompt.replace("{primitive_type}", primitive_type)
+        prompt = prompt.replace("{cluster_name}", cluster_name)
+        prompt = prompt.replace("{genre_count}", str(len(extractions)))
+        extraction_text = ""
+        for genre_slug, content in extractions.items():
+            extraction_text += f"### {genre_slug}\n\n{content}\n\n"
+        prompt = prompt.replace("{extractions}", extraction_text)
+        prompt += "\n\n" + self._load_commentary_directive()
+        return prompt
+
     @staticmethod
     def build_stage2(raw_content: str, schema: dict) -> str:
         schema_str = json.dumps(schema, indent=2)
