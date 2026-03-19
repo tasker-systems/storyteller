@@ -9,11 +9,13 @@ from narrative_data.config import (
     ELICITATION_MODEL,
     GENRE_CATEGORIES,
     STRUCTURING_MODEL,
-    resolve_descriptor_dir,
 )
 from narrative_data.ollama import OllamaClient
 from narrative_data.pipeline.elicit import run_elicitation
+from narrative_data.pipeline.events import append_event
 from narrative_data.pipeline.invalidation import (
+    archive_existing,
+    compute_content_digest,
     compute_prompt_hash,
     is_stale,
     load_manifest,
@@ -103,20 +105,6 @@ def _order_categories(categories: list[str]) -> list[str]:
     return ordered
 
 
-def _load_descriptor_context() -> dict[str, str]:
-    """Load existing flat descriptors from training-data/descriptors/ for context."""
-    context: dict[str, str] = {}
-    try:
-        desc_dir = resolve_descriptor_dir()
-        for name in ["archetypes", "dynamics", "profiles", "goals", "genres"]:
-            path = desc_dir / f"{name}.json"
-            if path.exists():
-                context[f"existing_{name}"] = path.read_text()
-    except RuntimeError:
-        pass  # STORYTELLER_DATA_PATH not set
-    return context
-
-
 def elicit_genre(
     client: OllamaClient,
     output_base: Path,
@@ -126,11 +114,23 @@ def elicit_genre(
     model: str = ELICITATION_MODEL,
     force: bool = False,
 ) -> None:
-    """Stage 1: Elicit raw markdown for each genre region × category.
+    """Stage 1: Elicit raw markdown for genre region descriptions.
+
+    Now restricted to 'region' category only. For primitive elaboration use
+    elaborate_genre(); for genre-native types (tropes, narrative-shapes) use
+    elicit_native().
 
     Skips up-to-date cells unless force=True.
-    'region' category is always processed before dependent categories.
     """
+    non_region = [c for c in (categories or GENRE_CATEGORIES) if c != "region"]
+    if non_region:
+        raise ValueError(
+            f"Categories {non_region} are no longer supported via 'genre elicit'. "
+            "Use 'narrative-data discover' for primitive extraction, "
+            "'narrative-data primitive' for standalone elicitation, "
+            "or 'narrative-data genre elaborate' for genre × primitive elaboration."
+        )
+
     if regions is None:
         regions = GENRE_REGIONS
     if categories is None:
@@ -139,7 +139,6 @@ def elicit_genre(
     ordered_categories = _order_categories(categories)
     manifest = load_manifest(manifest_path)
     builder = PromptBuilder()
-    descriptor_context = _load_descriptor_context()
 
     for region_slug in regions:
         region_dir = output_base / "genres" / region_slug
@@ -149,16 +148,7 @@ def elicit_genre(
             manifest_key = f"{region_slug}/{category}"
             entry: dict[str, Any] | None = manifest["entries"].get(manifest_key)
 
-            # Build context for this cell.
-            # "region" needs no descriptor context — it's about dimensional positioning.
-            # Derivative categories (archetypes, tropes, etc.) get existing descriptors
-            # so the model knows what vocabulary exists and can extend/contextualize it.
             context: dict[str, str] = {}
-            if category != "region":
-                context.update(descriptor_context)
-                region_json_path = region_dir / "region.json"
-                if region_json_path.exists():
-                    context["region"] = region_json_path.read_text()
 
             # Compute prompt hash to check staleness
             try:
@@ -177,9 +167,7 @@ def elicit_genre(
                 continue
 
             if not force and not is_stale(entry, current_hash):
-                console.print(
-                    f"[dim]  {region_slug}/{category} up to date, skipping[/dim]"
-                )
+                console.print(f"[dim]  {region_slug}/{category} up to date, skipping[/dim]")
                 continue
 
             console.print(f"[cyan]  Eliciting {region_slug}/{category}…[/cyan]")
@@ -239,9 +227,7 @@ def structure_genre(
             output_path = region_dir / f"{category}.json"
 
             if not raw_path.exists():
-                console.print(
-                    f"[dim]  {region_slug}/{category} raw.md missing, skipping[/dim]"
-                )
+                console.print(f"[dim]  {region_slug}/{category} raw.md missing, skipping[/dim]")
                 continue
 
             if not force and output_path.exists():
@@ -252,9 +238,7 @@ def structure_genre(
                     )
                     continue
 
-            schema_type, is_collection = CATEGORY_SCHEMAS.get(
-                category, (GenreRegion, False)
-            )
+            schema_type, is_collection = CATEGORY_SCHEMAS.get(category, (GenreRegion, False))
             console.print(f"[cyan]  Structuring {region_slug}/{category}…[/cyan]")
             result = run_structuring(
                 client=client,
@@ -266,9 +250,7 @@ def structure_genre(
             )
 
             if result["success"]:
-                console.print(
-                    f"[green]  {region_slug}/{category} structured OK[/green]"
-                )
+                console.print(f"[green]  {region_slug}/{category} structured OK[/green]")
                 update_manifest_entry(
                     manifest_path,
                     manifest_key,
@@ -284,3 +266,164 @@ def structure_genre(
                     f"[red]  {region_slug}/{category} structuring failed — "
                     f"errors at {result.get('errors_path')}[/red]"
                 )
+
+
+def elaborate_genre(
+    client: OllamaClient,
+    output_base: Path,
+    log_path: Path,
+    primitive_type: str,
+    genres: list[str],
+    primitives: list[str],
+    model: str = ELICITATION_MODEL,
+    force: bool = False,
+    prompts_dir: Path | None = None,
+) -> None:
+    """Phase 4a: Elaborate a primitive within each genre's context.
+
+    For each (genre, primitive) pair, assembles context from the genre's
+    region description and the primitive's standalone Layer 0 description,
+    then generates a genre-specific elaboration.
+    """
+    builder = PromptBuilder(prompts_dir=prompts_dir) if prompts_dir else PromptBuilder()
+
+    for genre_slug in genres:
+        genre_dir = output_base / "genres" / genre_slug
+        region_path = genre_dir / "region.raw.md"
+        if not region_path.exists():
+            console.print(f"[dim]  Skipping {genre_slug} — no region.raw.md[/dim]")
+            continue
+
+        genre_content = region_path.read_text()
+        elab_dir = genre_dir / "elaborations" / primitive_type
+        elab_dir.mkdir(parents=True, exist_ok=True)
+
+        for prim_slug in primitives:
+            output_path = elab_dir / f"{prim_slug}.raw.md"
+            prim_path = output_base / primitive_type / prim_slug / "raw.md"
+
+            context: dict[str, str] = {"genre_description": genre_content}
+            if prim_path.exists():
+                context["primitive_description"] = prim_path.read_text()
+
+            prim_name = slug_to_name(prim_slug)
+            genre_name = slug_to_name(genre_slug)
+            target_name = f"{prim_name} in {genre_name}"
+
+            try:
+                prompt = builder.build_stage1(
+                    domain="genre",
+                    category=f"elaborate-{primitive_type}",
+                    target_name=target_name,
+                    context=context,
+                )
+            except FileNotFoundError:
+                console.print(
+                    f"[dim]  Skipping elaborate-{primitive_type} — prompt template missing[/dim]"
+                )
+                return
+
+            if not force and output_path.exists():
+                console.print(
+                    f"[dim]  {genre_slug}/{primitive_type}/{prim_slug} "
+                    f"exists, skipping (use --force to re-elaborate)[/dim]"
+                )
+                continue
+
+            append_event(
+                log_path,
+                event="elaborate_started",
+                phase=4,
+                type=primitive_type,
+                genre=genre_slug,
+                primitive=prim_slug,
+            )
+            console.print(
+                f"[cyan]  Elaborating {primitive_type}/{prim_slug} for {genre_slug}…[/cyan]"
+            )
+
+            result_text = client.generate(model=model, prompt=prompt)
+            archive_existing(output_path)
+            output_path.write_text(result_text)
+
+            digest = compute_content_digest(result_text)
+            append_event(
+                log_path,
+                event="elaborate_completed",
+                phase=4,
+                type=primitive_type,
+                genre=genre_slug,
+                primitive=prim_slug,
+                output=str(output_path.relative_to(output_base)),
+                content_digest=digest,
+            )
+
+
+def elicit_native(
+    client: OllamaClient,
+    output_base: Path,
+    log_path: Path,
+    native_type: str,
+    genres: list[str],
+    model: str = ELICITATION_MODEL,
+    force: bool = False,
+    prompts_dir: Path | None = None,
+) -> None:
+    """Phase 4b: Elicit genre-native content (tropes, narrative-shapes).
+
+    These are inherently genre-specific — they don't have standalone Layer 0
+    descriptions. Context is the genre's region description only.
+    """
+    builder = PromptBuilder(prompts_dir=prompts_dir) if prompts_dir else PromptBuilder()
+
+    for genre_slug in genres:
+        genre_dir = output_base / "genres" / genre_slug
+        region_path = genre_dir / "region.raw.md"
+        if not region_path.exists():
+            console.print(f"[dim]  Skipping {genre_slug} — no region.raw.md[/dim]")
+            continue
+
+        genre_content = region_path.read_text()
+        output_path = genre_dir / f"{native_type}.raw.md"
+        genre_name = slug_to_name(genre_slug)
+
+        context: dict[str, str] = {"genre_description": genre_content}
+
+        try:
+            prompt = builder.build_stage1(
+                domain="genre",
+                category=native_type,
+                target_name=genre_name,
+                context=context,
+            )
+        except FileNotFoundError:
+            console.print(f"[dim]  Skipping {native_type} — prompt template missing[/dim]")
+            return
+
+        if not force and output_path.exists():
+            console.print(f"[dim]  {genre_slug}/{native_type} exists, skipping (use --force)[/dim]")
+            continue
+
+        append_event(
+            log_path,
+            event="elicit_native_started",
+            phase=4,
+            type=native_type,
+            genre=genre_slug,
+        )
+        console.print(f"[cyan]  Eliciting {native_type} for {genre_slug}…[/cyan]")
+
+        result_text = client.generate(model=model, prompt=prompt)
+        archive_existing(output_path)
+        output_path.write_text(result_text)
+
+        digest = compute_content_digest(result_text)
+        append_event(
+            log_path,
+            event="elicit_native_completed",
+            phase=4,
+            type=native_type,
+            genre=genre_slug,
+            output=str(output_path.relative_to(output_base)),
+            content_digest=digest,
+        )

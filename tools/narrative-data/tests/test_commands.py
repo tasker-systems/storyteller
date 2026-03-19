@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from narrative_data.genre.commands import elaborate_genre, elicit_native
 from narrative_data.ollama import OllamaClient  # noqa: F401 (used in fixture)
 from narrative_data.utils import now_iso, slug_to_name
 
@@ -411,3 +412,117 @@ class TestCrossPollinationStub:
 
         # Should not raise
         run_cross_pollination(output_base=tmp_path)
+
+
+# ─────────────────────────────────────────────
+# genre elaborate + elicit-native tests (Phase 4)
+# ─────────────────────────────────────────────
+
+
+def _make_genre_mock_prompts(tmp_path):
+    """Create minimal prompt templates for genre elaborate/native testing."""
+    prompts_dir = tmp_path / "prompts"
+    (prompts_dir / "genre").mkdir(parents=True)
+    (prompts_dir / "genre" / "elaborate-archetypes.md").write_text("Elaborate {target_name}.")
+    (prompts_dir / "genre" / "tropes.md").write_text("Analyze tropes for {target_name}.")
+    (prompts_dir / "genre" / "narrative-shapes.md").write_text(
+        "Analyze narrative shapes for {target_name}."
+    )
+    return prompts_dir
+
+
+class TestElaborateGenre:
+    def test_elaborates_genre_primitive_pair(self, tmp_output_dir):
+        client = MagicMock()
+        client.generate.return_value = "# The Mentor in Folk Horror\n\nElaboration..."
+        output_base = tmp_output_dir
+        log_path = output_base / "pipeline.jsonl"
+        prompts_dir = _make_genre_mock_prompts(output_base)
+        genre_dir = output_base / "genres" / "folk-horror"
+        genre_dir.mkdir(parents=True)
+        (genre_dir / "region.raw.md").write_text("Folk horror description...")
+        prim_dir = output_base / "archetypes" / "mentor"
+        prim_dir.mkdir(parents=True)
+        (prim_dir / "raw.md").write_text("Standalone mentor description...")
+
+        elaborate_genre(
+            client=client,
+            output_base=output_base,
+            log_path=log_path,
+            primitive_type="archetypes",
+            genres=["folk-horror"],
+            primitives=["mentor"],
+            prompts_dir=prompts_dir,
+        )
+
+        out_file = genre_dir / "elaborations" / "archetypes" / "mentor.raw.md"
+        assert out_file.exists()
+
+        from narrative_data.pipeline.events import read_events
+
+        events = read_events(log_path)
+        assert any(e["event"] == "elaborate_completed" for e in events)
+
+
+class TestElicitNative:
+    def test_elicits_tropes_for_genre(self, tmp_output_dir):
+        client = MagicMock()
+        client.generate.return_value = "# Folk Horror Tropes\n\nTrope analysis..."
+        output_base = tmp_output_dir
+        log_path = output_base / "pipeline.jsonl"
+        prompts_dir = _make_genre_mock_prompts(output_base)
+        genre_dir = output_base / "genres" / "folk-horror"
+        genre_dir.mkdir(parents=True)
+        (genre_dir / "region.raw.md").write_text("Folk horror description...")
+
+        elicit_native(
+            client=client,
+            output_base=output_base,
+            log_path=log_path,
+            native_type="tropes",
+            genres=["folk-horror"],
+            prompts_dir=prompts_dir,
+        )
+
+        out_file = genre_dir / "tropes.raw.md"
+        assert out_file.exists()
+
+        from narrative_data.pipeline.events import read_events
+
+        events = read_events(log_path)
+        assert any(e["event"] == "elicit_native_completed" for e in events)
+
+
+class TestElicitGenreRestriction:
+    def test_rejects_non_region_categories(self, tmp_output_dir):
+        from narrative_data.genre.commands import elicit_genre
+
+        client = MagicMock()
+        output_base = tmp_output_dir
+        manifest_path = output_base / "genres" / "manifest.json"
+
+        with pytest.raises(ValueError, match="Use 'narrative-data discover'"):
+            elicit_genre(
+                client=client,
+                output_base=output_base,
+                manifest_path=manifest_path,
+                categories=["archetypes"],
+            )
+
+    def test_allows_region_category(self, tmp_output_dir):
+        from narrative_data.genre.commands import elicit_genre
+
+        client = MagicMock()
+        client.generate.return_value = "# Region\n\nContent."
+        output_base = tmp_output_dir
+        manifest_path = output_base / "genres" / "manifest.json"
+
+        # Should not raise — region is still allowed.
+        # Pass empty regions list so no actual elicitation happens.
+        elicit_genre(
+            client=client,
+            output_base=output_base,
+            manifest_path=manifest_path,
+            regions=[],
+            categories=["region"],
+        )
