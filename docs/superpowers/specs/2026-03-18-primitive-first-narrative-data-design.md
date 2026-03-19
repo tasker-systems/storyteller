@@ -305,8 +305,8 @@ Event-specific fields:
 | `elicit_completed` | `primitive`, `output`, `content_digest` |
 | `elaborate_started` | `genre`, `primitive` |
 | `elaborate_completed` | `genre`, `primitive`, `output`, `content_digest` |
-| `elicit_native_started` | `genre`, `native_type` (tropes/narrative-shapes) |
-| `elicit_native_completed` | `genre`, `native_type`, `output`, `content_digest` |
+| `elicit_native_started` | `genre`, `native_type` (tropes/narrative-shapes). Phase is always 4. |
+| `elicit_native_completed` | `genre`, `native_type`, `output`, `content_digest`. Phase is always 4. |
 
 ### CLI Commands
 
@@ -345,7 +345,7 @@ Pipeline Status: archetypes
 The pipeline enforces human checkpoints between phases:
 
 - **Phase 2 → Phase 3**: Phase 3 elicitation for a type will not start until a `review_gate` event with `decision: "approved"` exists for that type at Phase 2. The approved `primitives` list in the gate event defines what gets elicited in Phase 3.
-- **Phase 3 → Phase 4**: Phase 4 elaboration will not start until Phase 3 is complete for the type. Phase 4 selectivity (which genre × primitive pairs to elaborate) can be specified via a Phase 3 review gate or derived from Phase 2 cluster synthesis data.
+- **Phase 3 → Phase 4**: Phase 4 elaboration will not start until Phase 3 is complete for the type. No mandatory review gate between Phase 3 and Phase 4 — Phase 3 completion alone unblocks Phase 4. Phase 4 selectivity (which genre × primitive pairs to elaborate) is derived from Phase 2 cluster synthesis data (which genres flagged each primitive as relevant). A human can optionally narrow or expand the selectivity before starting Phase 4.
 
 ### Interaction with Per-Directory Manifests
 
@@ -484,10 +484,10 @@ Decision made at each review gate based on observed output quality.
 | Phase 2 | 6 | 5 | 30 | ~8 min | ~4 hrs |
 | Phase 3 | ~28 avg | 5 | ~140 | ~5 min | ~11.5 hrs |
 | Phase 4 (selective) | ~200 est | — | ~200 | ~5 min | ~16.5 hrs |
-
-Phase 4 estimate assumes ~40 relevant genre-primitive pairs per type based on cluster synthesis selectivity (roughly 8-10 genres per primitive out of 30, across ~25 primitives per type, with significant overlap).
 | Tropes/shapes | 30 each | 2 | 60 | ~5 min | ~5 hrs |
 | **Total** | | | **~580** | | **~49.5 hrs** |
+
+Phase 4 estimate assumes ~40 relevant genre-primitive pairs per type based on cluster synthesis selectivity (roughly 8-10 genres per primitive out of 30, across ~25 primitives per type, with significant overlap).
 
 Roughly a week of background compute spread across multiple sessions. Each phase produces reviewable artifacts before the next begins.
 
