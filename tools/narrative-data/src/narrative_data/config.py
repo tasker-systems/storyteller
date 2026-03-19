@@ -4,13 +4,71 @@ import os
 from pathlib import Path
 
 GENRE_CATEGORIES: list[str] = [
-    "region", "archetypes", "tropes", "narrative-shapes",
-    "dynamics", "profiles", "goals", "settings",
+    "region",
+    "archetypes",
+    "tropes",
+    "narrative-shapes",
+    "dynamics",
+    "profiles",
+    "goals",
+    "settings",
 ]
 
 SPATIAL_CATEGORIES: list[str] = [
-    "setting-type", "place-entities", "topology", "tonal-inheritance",
+    "setting-type",
+    "place-entities",
+    "topology",
+    "tonal-inheritance",
 ]
+
+PRIMITIVE_TYPES: list[str] = [
+    "archetypes",
+    "dynamics",
+    "goals",
+    "profiles",
+    "settings",
+]
+
+GENRE_NATIVE_TYPES: list[str] = [
+    "tropes",
+    "narrative-shapes",
+]
+
+MODIFIER_REGIONS: list[str] = [
+    "solarpunk",
+    "historical-fiction",
+    "literary-fiction",
+    "magical-realism",
+]
+
+GENRE_CLUSTERS: dict[str, list[str]] = {
+    "horror": ["folk-horror", "cosmic-horror", "horror-comedy"],
+    "fantasy": [
+        "high-epic-fantasy",
+        "dark-fantasy",
+        "cozy-fantasy",
+        "fairy-tale-mythic",
+        "urban-fantasy",
+        "quiet-contemplative-fantasy",
+    ],
+    "sci-fi": ["hard-sci-fi", "space-opera", "cyberpunk"],
+    "mystery-thriller": [
+        "nordic-noir",
+        "cozy-mystery",
+        "psychological-thriller",
+        "domestic-noir",
+    ],
+    "romance": ["romantasy", "historical-romance", "contemporary-romance"],
+    "realism-gothic-other": [
+        "southern-gothic",
+        "westerns",
+        "swashbuckling-adventure",
+        "survival-fiction",
+        "working-class-realism",
+        "pastoral-rural-fiction",
+        "classical-tragedy",
+    ],
+}
 
 ELICITATION_MODEL = "qwen3.5:35b"
 STRUCTURING_MODEL = "qwen2.5:7b-instruct"

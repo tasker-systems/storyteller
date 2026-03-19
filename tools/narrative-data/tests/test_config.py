@@ -6,6 +6,10 @@ import pytest
 
 from narrative_data.config import (
     GENRE_CATEGORIES,
+    GENRE_CLUSTERS,
+    GENRE_NATIVE_TYPES,
+    MODIFIER_REGIONS,
+    PRIMITIVE_TYPES,
     SPATIAL_CATEGORIES,
     resolve_data_path,
     resolve_descriptor_dir,
@@ -47,3 +51,28 @@ class TestConstants:
         assert "setting-type" in SPATIAL_CATEGORIES
         assert "place-entities" in SPATIAL_CATEGORIES
         assert "topology" in SPATIAL_CATEGORIES
+
+
+class TestNewConstants:
+    def test_genre_clusters_cover_all_standalone_regions(self):
+        from narrative_data.genre.commands import GENRE_REGIONS
+
+        all_clustered = set()
+        for genres in GENRE_CLUSTERS.values():
+            all_clustered.update(genres)
+        standalone = set(GENRE_REGIONS) - set(MODIFIER_REGIONS)
+        assert standalone == all_clustered
+
+    def test_primitive_types_are_strings(self):
+        assert all(isinstance(t, str) for t in PRIMITIVE_TYPES)
+        assert "archetypes" in PRIMITIVE_TYPES
+        assert len(PRIMITIVE_TYPES) == 5
+
+    def test_genre_native_types(self):
+        assert "tropes" in GENRE_NATIVE_TYPES
+        assert "narrative-shapes" in GENRE_NATIVE_TYPES
+        assert len(GENRE_NATIVE_TYPES) == 2
+
+    def test_modifier_regions(self):
+        assert "solarpunk" in MODIFIER_REGIONS
+        assert len(MODIFIER_REGIONS) == 4
