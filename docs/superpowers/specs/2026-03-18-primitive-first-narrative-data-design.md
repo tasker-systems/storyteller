@@ -459,15 +459,36 @@ The execution order was revised based on two insights from the data generation w
 4. ~~**Profiles (key moments)**~~ — Phase 1+2 complete. Genre-essential dramatic situations.
 
 **Next (genre-native, no Layer 0):**
-5. **Tropes** — genre-native. Genre idioms, narrative devices, audience expectations. Dependency for connector profiles.
-6. **Narrative-shapes** — genre-native. Pacing patterns, tension arcs, the rhythm of rest between peaks. Dependency for connector profiles.
+5. **Tropes** — genre-native. Genre idioms, narrative devices, audience expectations. COMPLETE.
+6. **Narrative-shapes** — genre-native. Pacing patterns, tension arcs, the rhythm of rest between peaks. IN PROGRESS.
 
-**Then (informed by tropes + shapes):**
-7. **Profiles (connectors)** — second-pass extraction. Scenes between scenes: approach beats, recovery beats, transit beats, ambient beats. Informed by tropes (what the genre's idioms expect between peaks) and narrative-shapes (where the genre breathes).
-8. **Dynamics** — interpersonal patterns. Enriched with ontological posture lens (dynamics between humans and nonhuman agents).
-9. **Goals** — character motivations. Last, informed by the full landscape.
+**Then:**
+7. **Dynamics** — interpersonal patterns. Enriched with ontological posture lens (dynamics between humans and nonhuman agents).
+8. **Goals** — character motivations. Last, informed by the full landscape.
+
+**Cut:**
+~~**Profiles (connectors)**~~ — second-pass extraction for scenes between scenes. See below for rationale.
 
 Phase 3 (standalone elicitation) was intentionally skipped for all types — Phase 1+2 are the primary value generators. The per-genre extractions are richer than distilled standalone descriptions; cluster syntheses provide organizational indexing.
+
+### The Connector Scene Problem and Its Resolution
+
+Key-moment scene profiles (item 4 above) surfaced a real gap: a story is not just its peaks. The scenes *between* peaks — approach beats, recovery beats, transit beats, ambient beats — provide the narrative breathing room that gives a story its characteristic rhythm. Without them, the narrative graph's sparse-graph problem persists: high-gravity attractor basins with no topology between them.
+
+The original plan was to address this with a dedicated connector profiles extraction pass, using tropes and narrative shapes as context. However, when narrative-shapes were generated, they revealed that **connector beat data is already embedded in the shapes themselves**. Each narrative shape includes:
+
+- **"The Rhythm of Rest"** — explicit descriptions of how the genre breathes between intensity. Folk horror: "The protagonist stares at the land. The silence is not empty; it is waiting. A scene of harvesting crops or cooking food is not just filler; it is the rhythm of the land breathing." Cozy fantasy: "Checking the Wards, Sipping Tea While Sweeping, Talking to a House Spirit. The rhythm is Slow TV — deliberate, tactile, unhurried."
+- **Beat tables with pacing function** — each beat is tagged with whether it accelerates, decelerates, provides breathing room, or stops. Load-bearing vs. ornamental distinction tells the engine which beats can be moved and which define the shape.
+- **Tension contribution per beat** — builds, sustains, releases, redirects. This maps directly to the gradient between attractor basins in the narrative graph.
+
+The connector problem is thus solved not by a separate primitive type but by a mapping between existing data:
+
+- **Key-moment profiles** = high-mass attractor basins (scenes the story bends toward)
+- **Narrative shapes** = gravitational topology (the characteristic curves between attractors, including deceleration zones and breathing room)
+- **Connector beats within shapes** = the gradient (the slope and texture of approach and descent between peaks)
+- **Tropes** = the genre's idioms for how connectors *feel* (what the audience expects in the quiet moments)
+
+The Dramaturge assembles per-turn guidance from: where are we in this narrative shape? What's the tension contribution of this position? What does this genre's rest rhythm look like? What character journey inflects this moment? This is richer than a flat list of "connector scene profiles" would be, because it embeds the connector data in its structural context — a recovery beat after a revelation carries different weight than a recovery beat after a confrontation, and the shape knows the difference.
 
 ### Batch Execution
 
