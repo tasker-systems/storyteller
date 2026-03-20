@@ -445,15 +445,29 @@ Phase 1 (extract)  →  Phase 2 (synthesize)  →  Phase 3 (Layer 0)  →  Phase
 
 Phases 1-3 are independent across primitive types. Phase 4 depends on Phase 3 for the same type.
 
-### Primitive Type Order
+### Primitive Type Order (Revised Mar 20 2026)
 
-1. **Archetypes** — most central, highest signal for pipeline validation
-2. **Dynamics** — relational patterns, directly useful alongside archetypes
-3. **Goals** — character motivation
-4. **Profiles** — scene types, dramatic structure
-5. **Settings** — spatial primitives (cross-references the 22 setting types from the design spec as sanity check)
+The execution order was revised based on two insights from the data generation work:
 
-Tropes and narrative-shapes can run anytime (depend only on genre regions, which exist).
+1. **Settings and ontological posture before dynamics**: spatial/dramatic ground and the genre's stance toward personhood should inform interpersonal dynamics, not the other way around.
+2. **Tropes and narrative-shapes before connector profiles**: key-moment scene profiles (completed) revealed a gap — the scenes *between* scenes that provide narrative breathing room. These connector profiles need tropes (genre idioms) and narrative beats (pacing patterns) as context to be properly elicited.
+
+**Completed:**
+1. ~~**Archetypes**~~ — Phase 1+2 complete (197 per-genre, 60 cluster-level)
+2. ~~**Settings**~~ — Phase 1+2 complete (211 per-genre, cluster-level)
+3. ~~**Ontological posture**~~ — Phase 1+2 complete (30 per-genre, cluster-level). New primitive added during execution — genre's stance toward personhood, otherness, self/Other boundary.
+4. ~~**Profiles (key moments)**~~ — Phase 1+2 complete. Genre-essential dramatic situations.
+
+**Next (genre-native, no Layer 0):**
+5. **Tropes** — genre-native. Genre idioms, narrative devices, audience expectations. Dependency for connector profiles.
+6. **Narrative-shapes** — genre-native. Pacing patterns, tension arcs, the rhythm of rest between peaks. Dependency for connector profiles.
+
+**Then (informed by tropes + shapes):**
+7. **Profiles (connectors)** — second-pass extraction. Scenes between scenes: approach beats, recovery beats, transit beats, ambient beats. Informed by tropes (what the genre's idioms expect between peaks) and narrative-shapes (where the genre breathes).
+8. **Dynamics** — interpersonal patterns. Enriched with ontological posture lens (dynamics between humans and nonhuman agents).
+9. **Goals** — character motivations. Last, informed by the full landscape.
+
+Phase 3 (standalone elicitation) was intentionally skipped for all types — Phase 1+2 are the primary value generators. The per-genre extractions are richer than distilled standalone descriptions; cluster syntheses provide organizational indexing.
 
 ### Batch Execution
 

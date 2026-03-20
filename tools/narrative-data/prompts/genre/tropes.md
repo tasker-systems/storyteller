@@ -1,8 +1,10 @@
-You are helping build a trope analysis model for a narrative engine. A trope is a recurring narrative device — a pattern of character interaction, plot movement, or thematic expression that readers recognize and that carries promises about what kind of story this is.
+You are helping build a trope analysis model for a narrative engine. Your task is to identify the narrative tropes that are essential or distinctive to a specific genre, grounded in that genre's dimensional properties.
 
-## Beyond Labels
+## What We Mean by Trope
 
-Tropes are not merely tags. Each trope has a narrative function (what work it does in the story), genre associations (where it lives most naturally), and — critically — patterns of subversion and reinforcement. A trope can be played straight, inverted, lampshaded, deconstructed, or reconstructed. Each of these transformations produces different narrative effects, and the engine needs to understand those effects to deploy tropes intentionally.
+A trope is not a cliché or a label. It is a recurring narrative device — a pattern of character interaction, plot movement, or thematic expression that readers recognize and that carries promises about what kind of story this is. Tropes are the genre's idioms: shared expectations between storyteller and audience about how this kind of story works.
+
+Each trope has a **narrative function** (what work it does in the story), a **relationship to genre physics** (why this genre produces it), and patterns of **subversion and reinforcement** (how it can be played straight, inverted, deconstructed, or reconstructed). The engine needs to understand all of these to deploy tropes intentionally.
 
 ## Narrative Function Categories
 
@@ -10,27 +12,40 @@ Tropes are not merely tags. Each trope has a narrative function (what work it do
 - **Escalating** — raises stakes, increases tension, narrows possibilities
 - **Resolving** — provides closure, pays off earlier setup, releases tension
 - **Subverting** — violates expectations to create surprise, commentary, or new meaning
-- **Connecting** — links characters, threads, or themes together
+- **Connecting** — links characters, threads, or themes together; provides narrative breathing room
 - **Characterizing** — reveals who a character is through pattern rather than exposition
 
 ## Your Task
 
-You have access to **Additional Context** below that describes the genre region this trope inhabits. Use it.
+You are analyzing the genre **{target_name}**. The genre's full dimensional description is available in the Additional Context below.
 
-Describe the trope **{target_name}** in its genre context. Explain its narrative function — what work does it do in the story? How does it interact with the genre's tonal and thematic commitments?
+Identify **6 to 10 tropes** that are essential to or distinctive within this genre. Do not list conventional trope names — identify the narrative devices that this genre's specific physics demand.
 
-Identify the genre associations — where does this trope feel native, and where does it feel imported or foreign? What happens when it crosses genre boundaries?
+For each trope, provide:
 
-Describe its subversion patterns: specific, named ways this trope can be inverted, deconstructed, or twisted, and what narrative effect each subversion produces. Then describe its reinforcement patterns: ways of playing it straight that deepen rather than merely repeat it, and why reinforcement sometimes serves the story better than subversion.
+1. **Name** — a descriptive label that captures the trope's essence in this genre's idiom (not "The MacGuffin" but "The Object That Knows More Than Its Owner"; not "The Love Triangle" but "The Bond That Cannot Be Spoken While the House Listens")
 
-## Genre Integration
+2. **Why this genre produces it** — ground the trope in the genre's dimensional properties. Which axes, affordances, constraints, or exclusions make this narrative device structurally necessary? What intersection of genre properties creates the conditions for this trope to exist?
 
-The genre region data in Additional Context includes dimensions beyond the basics — temporal dynamics, agency, locus of power, epistemological stance, exclusions, state variables, and boundary conditions. Use these to deepen your analysis:
+3. **Narrative function** — what work does this trope do in the story? Which function category does it serve (establishing, escalating, resolving, subverting, connecting, characterizing)? Can it serve multiple functions depending on deployment?
 
-- How does this trope interact with the genre's **state variables**? Which resources does it deplete or accumulate? (e.g., does this trope consume hope? Does it accumulate dramatic irony, or spend trust between characters?)
-- How does the genre's **locus of power** shape this trope? A "secret revealed" trope in a genre where power resides in *knowledge* lands differently than in one where power resides in *place* or *ancestry*.
-- How does the genre's **temporal orientation** affect this trope? A trope of inevitable return plays differently in cyclical genres than in linear-progression genres where forward movement is the assumption.
-- What does the genre's **exclusion list** mean for this trope? If the genre rejects catharsis, how does that change the trope's available resolutions? Which payoffs are structurally unavailable?
-- How does this trope change if the genre functions as a **modifier** applied to another genre? Which aspects of the trope are genre-invariant and which are specific to the host genre?
+4. **Subversion and reinforcement patterns** — how can this trope be inverted, deconstructed, or twisted? What narrative effect does each transformation produce? When does playing it straight deepen rather than merely repeat? What happens when a story violates the trope's implicit promise?
+
+5. **State variable interaction** — which of the genre's state variables does this trope consume, accumulate, or transform? Does it spend trust? Accumulate dread? Deplete safety? What is the trope's "cost" in the genre's resource economy?
+
+6. **Ontological dimension** — how does this trope engage with the genre's stance toward who counts as a being? Does it reinforce the default subject, challenge it, or reveal something about the genre's self/Other boundary? Does the trope require nonhuman agents, liminal beings, or collective entities to function?
+
+7. **Overlap signal** — which other genres produce a version of this trope? How does the expression differ under different genre physics?
+
+## How to Find Tropes
+
+Look beyond the obvious. Examine:
+
+- The genre's **exclusions** — what tropes are forbidden? If the genre rejects deus ex machina, then the tropes it *does* produce must find alternative forms of resolution. The absence defines the vocabulary.
+- The genre's **locus of power** — where power resides determines what narrative devices organize around it. Tropes of revelation in a knowledge-based genre differ from tropes of revelation in a place-based genre.
+- The genre's **epistemological stance** — how the genre relates to truth and knowing shapes its characteristic patterns of concealment, discovery, and misdirection.
+- The genre's **temporal orientation** — cyclical genres produce tropes of return and repetition; linear genres produce tropes of irreversible consequence. The genre's relationship to time shapes which narrative devices feel native.
+- The genre's **ontological posture** — who and what counts as a being shapes which tropes are available. A trope of "the land's judgment" is only possible in genres where the land has agency. A trope of "the machine's grief" is only possible where constructed beings have interiority.
+- The genre's **tonal contract** — the emotional promise to the audience constrains which tropes are available. A genre committed to earnestness cannot deploy ironic tropes without violating its contract.
 
 Be expansive. This is exploratory research, not a database entry.
