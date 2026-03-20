@@ -77,6 +77,18 @@ The most unexpected value came from the model's commentary and suggestions — s
 
 This is an analytical insight about how horror *works* as a narrative system — not a description of what horror contains, but an observation about the structural relationship between agency and outcome that distinguishes horror from other genre clusters. The model arrived at it not by being told what horror is, but by synthesizing patterns across three genre extractions it had produced from dimensional descriptions.
 
+### The Body as Contested Site
+
+When the pipeline was extended to analyze ontological posture — each genre's stance toward who counts as a being and how personhood is constructed — working-class realism produced a finding that resonates with critical theory and anthropological research on embodiment, arrived at through dimensional analysis alone.
+
+The model identified the body as a distinct ontological category in working-class realism, separate from the self: "A fundamental ontological fracture exists between the *Working Body* (the tool, the commodity, the source of income) and the *Resting Self* (the individual, the parent, the partner). The narrative tension often comes from the Working Body consuming the Resting Self." The commentary deepened this: "The character watches their body wear down like a machine. This creates a unique horror: the protagonist is not fighting a monster, but fighting their own biological limits as they are exploited."
+
+This is the body as nexus — the site where political, economic, and material forces inscribe themselves on living beings. It is a central concern of phenomenological anthropology, of labor theory, of disability studies, of postcolonial thought. The ethnographic record is full of it: the Napo Runa's understanding that the body shares an identity with the *allpa* (earth) from which it is sustained, that historical violence becomes "historical sorcery" buried in the land and rising again through the same flesh. The suffering body of the patient and the transformational body of the shaman meet in ritual space where healing occurs not through transcendence of material conditions but through their reorientation at the site of the body.
+
+The model did not read ethnography. It followed working-class realism's state variables (Financial Solvency as "Hit Points," Energy as "Stamina," Dignity as "Sanity/Stress Meter") and locus of power (the System as economic physics) to their logical conclusion — and the conclusion was that the body is where systemic forces do their work. Different method, different context, convergent insight. The dimensional approach surfaced what careful attention to lived experience has long known: that the body is not a private possession but a contested site, and that narrative genres which take material conditions seriously arrive at this recognition through their own internal logic.
+
+The same structural insight appeared in different register across other genres. Cyberpunk found it as personhood-as-subscription: "The character is not a person; they are a unit of production." Folk horror found it as the body-as-seed, planted for the Land's harvest. These are not the same claim — they are genre-specific articulations of a shared underlying truth that the data-driven methodology made visible by following each genre's affordances to their ontological consequences.
+
 ---
 
 ## What This Enables
