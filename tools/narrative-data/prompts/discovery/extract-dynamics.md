@@ -49,6 +49,8 @@ Look beyond the obvious. Examine:
 - The genre's **agency model** — how much characters can act determines whether dynamics are driven by choice or circumstance. High-agency genres produce dynamics of deliberate alliance and strategic opposition. Low-agency genres produce dynamics of forced proximity and involuntary entanglement.
 - The genre's **epistemological stance** — how the genre relates to knowledge shapes which role sees clearly and which is deceived, manipulated, or kept in the dark.
 
+- The genre's **ontological posture** — who and what counts as a being in this genre? If the genre grants agency to nonhuman entities (the Land, the System, the City, the Cosmos), then dynamics between humans and nonhuman agents become structurally available. A dynamic between a character and the Land they serve is not metaphor in folk horror — it is a genuine relational pattern with obligations, power asymmetry, and evolution. Consider dynamics that cross the self/Other boundary, not just dynamics between human characters.
+
 Any relational pattern that sits at a distinct intersection of genre axes — especially where power asymmetry, information asymmetry, and emotional register create productive tension — is likely a dynamic worth naming.
 
 ## Genre Description for {target_name}

@@ -49,6 +49,8 @@ Look beyond the obvious. Examine:
 - The genre's **state variables** — what resources are tracked or depleted in scenes? If the genre tracks information, scenes organize around disclosure and concealment. If it tracks safety, scenes organize around threat and shelter.
 - The genre's **aesthetic register** — how the genre renders experience determines the texture of its scenes. A genre that privileges interiority produces scenes built around internal experience. A genre that privileges action produces scenes built around physical consequence.
 
+- The genre's **ontological posture** — who and what counts as a being in this genre shapes what scenes are possible. If the genre grants agency to the environment, then scenes of negotiation with the Land, communion with the Cosmos, or confrontation with the System become structurally available. Consider scenes where nonhuman agents participate as full dramatic partners, not just backdrop. A scene where "the house remembers" is a different dramatic shape than a scene where a character remembers in a house.
+
 Any dramatic situation that sits at a distinct intersection of genre axes — especially where tension signature, information flow, and emotional register create a distinctive scene shape — is likely a profile worth naming.
 
 ## Genre Description for {target_name}
