@@ -66,7 +66,8 @@ class TestNewConstants:
     def test_primitive_types_are_strings(self):
         assert all(isinstance(t, str) for t in PRIMITIVE_TYPES)
         assert "archetypes" in PRIMITIVE_TYPES
-        assert len(PRIMITIVE_TYPES) == 5
+        assert len(PRIMITIVE_TYPES) == 6
+        assert "ontological-posture" in PRIMITIVE_TYPES
 
     def test_genre_native_types(self):
         assert "tropes" in GENRE_NATIVE_TYPES

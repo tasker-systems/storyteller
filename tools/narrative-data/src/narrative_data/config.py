@@ -25,6 +25,7 @@ PRIMITIVE_TYPES: list[str] = [
     "archetypes",
     "dynamics",
     "goals",
+    "ontological-posture",
     "profiles",
     "settings",
 ]
