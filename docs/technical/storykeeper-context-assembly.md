@@ -259,7 +259,8 @@ event_ledger              — append-only log (existing)
 
 ```
 (:Character)-[:DYNAMIC {scale, name, type, state}]->(:Entity)
-(:Scene)-[:CONNECTS {mass, approach_vector}]->(:Scene)
+(:Scene)-[:FLOWS_TOWARD {gradient, channel, approach_conditions}]->(:Scene)
+(:Scene)-[:LATERAL {channel_type, reachability}]->(:Scene)
 (:Place)-[:ADJACENT {friction, permeability, tonal_shift}]->(:Place)
 ```
 
@@ -278,6 +279,15 @@ The Storykeeper is a deterministic information boundary manager. Its contract:
 4. **Missing data degrades gracefully.** If a character has no shadow archetype, that section is omitted. If the dramaturge directive hasn't arrived, the previous turn's directive is used. If a dynamic has no scene-level state (only orbital), the orbital description is used. The packet is always assemblable.
 
 5. **The Storykeeper never interprets.** It selects and routes. The *meaning* of the data is for the Dramaturge and Narrator to synthesize. The Storykeeper's job is to ensure they receive the right data, not to tell them what it means.
+
+6. **Narrative graph traversal is directional.** The narrative graph has flow direction (see `docs/foundation/narrative_graph.md`, "The Tilted Sheet"). The Storykeeper must not traverse the narrative graph isotropically — calculating gravitational pull from all scenes in all directions. This is both computationally expensive and narratively wrong: a scene already passed should not pull the story backward.
+
+   The Storykeeper traverses three temporal directions with different purposes:
+   - **Downstream** (forward along the gradient): find high-mass attractor basins that pull the narrative forward. These inform foreshadowing, dramatic tension, and the Dramaturge's sense of what's approaching. Bounded Cypher: `MATCH (current)-[:FLOWS_TOWARD*1..3]->(downstream) WHERE downstream.mass > threshold`.
+   - **Lateral** (adjacent scenes at similar gradient position): find nearby narrative possibilities the character could steer toward. These are the channels available to the kayaker. Bounded by adjacency and channel reachability.
+   - **Upstream** (backward, into the past): accessed *only* through the event ledger and character memory, never through narrative graph traversal. The past is memory, not gravity. It surfaces in context assembly as journal entries and relational state (the accumulated effects of past events on graph edges), not as gravitational pull.
+
+   This directionality is not just a performance optimization — it is architecturally load-bearing. Without it, the Storykeeper would calculate phantom gravity from scenes the character has already passed, producing a narrative that circles rather than flows. Characters in a correctly directed graph feel the pull of what's ahead, the weight of what's behind (through memory and accumulated state), and the options at hand (through lateral channels). They do not feel pulled backward.
 
 ---
 
