@@ -1,7 +1,7 @@
 # Character Tensor Evolution: From First-Pass to Genre-Constituted Prediction
 
 **Date:** 2026-03-21
-**Status:** Design exploration — bridging Tier B data generation and Tier C ML inference
+**Status:** Deprecated as implementation path — retained for conceptual insights and potential future analytics-only work. The ML prediction pipeline described here was superseded by the Storykeeper context assembly approach in `storykeeper-context-assembly.md`, which achieves the same situated, multi-scale, genre-grounded character representation through deterministic database queries and graph traversals rather than ML inference. The conceptual contributions (multi-scale framing, genre-as-transform, archetype composition, geological layers) remain valid and are operationalized in the sibling document's data structures.
 **Context:** The narrative data corpus (~4.8MB across 30 genres: archetypes, settings, ontological posture, profiles, tropes, narrative shapes, dynamics, goals) has revealed that the character tensor's current form is insufficient for the richness of the data it must represent.
 
 ---
