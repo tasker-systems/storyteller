@@ -26,6 +26,13 @@ _ENRICHED_CONTEXT: dict[str, list[tuple[str, str]]] = {
         ("archetypes", "discovery/archetypes/{genre_slug}.raw.md"),
         ("dynamics", "discovery/dynamics/{genre_slug}.raw.md"),
     ],
+    "spatial-topology": [
+        ("settings", "discovery/settings/{genre_slug}.raw.md"),
+    ],
+    "place-entities": [
+        ("settings", "discovery/settings/{genre_slug}.raw.md"),
+        ("spatial_topology", "discovery/spatial-topology/{genre_slug}.raw.md"),
+    ],
 }
 
 

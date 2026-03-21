@@ -27,8 +27,10 @@ PRIMITIVE_TYPES: list[str] = [
     "dynamics",
     "goals",
     "ontological-posture",
+    "place-entities",
     "profiles",
     "settings",
+    "spatial-topology",
 ]
 
 GENRE_NATIVE_TYPES: list[str] = [
