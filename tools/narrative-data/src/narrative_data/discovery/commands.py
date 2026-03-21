@@ -19,6 +19,34 @@ from narrative_data.utils import now_iso, slug_to_name
 
 console = Console()
 
+# Primitive types that need additional context beyond the genre region description.
+# Maps type -> list of (label, source_path_fn) pairs.
+_ENRICHED_CONTEXT: dict[str, list[tuple[str, str]]] = {
+    "archetype-dynamics": [
+        ("archetypes", "discovery/archetypes/{genre_slug}.raw.md"),
+        ("dynamics", "discovery/dynamics/{genre_slug}.raw.md"),
+    ],
+}
+
+
+def _assemble_genre_content(output_base: Path, genre_slug: str, primitive_type: str) -> str:
+    """Assemble genre content for a discovery prompt, including additional sources if needed."""
+    region_path = output_base / "genres" / genre_slug / "region.raw.md"
+    content = region_path.read_text()
+
+    enrichments = _ENRICHED_CONTEXT.get(primitive_type, [])
+    for label, path_template in enrichments:
+        source_path = output_base / path_template.format(genre_slug=genre_slug)
+        if source_path.exists():
+            content += f"\n\n---\n\n## {label.replace('_', ' ').title()} for {genre_slug}\n\n"
+            content += source_path.read_text()
+        else:
+            console.print(
+                f"[dim]  Note: {label} data not found for {genre_slug}, proceeding without[/dim]"
+            )
+
+    return content
+
 
 def extract_primitives(
     client: OllamaClient,
@@ -45,7 +73,8 @@ def extract_primitives(
         output_path = disc_dir / f"{genre_slug}.raw.md"
         manifest_key = f"{genre_slug}"
 
-        genre_content = region_path.read_text()
+        # Assemble genre content — some types need additional context sources
+        genre_content = _assemble_genre_content(output_base, genre_slug, primitive_type)
         try:
             prompt = builder.build_discovery(
                 primitive_type, slug_to_name(genre_slug), genre_content

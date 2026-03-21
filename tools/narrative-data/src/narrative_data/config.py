@@ -22,6 +22,7 @@ SPATIAL_CATEGORIES: list[str] = [
 ]
 
 PRIMITIVE_TYPES: list[str] = [
+    "archetype-dynamics",
     "archetypes",
     "dynamics",
     "goals",
