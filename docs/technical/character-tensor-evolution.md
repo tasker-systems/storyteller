@@ -180,29 +180,74 @@ Tier B generated data (raw.md, ~4.8MB)
 
 ### Connection to Event Extraction
 
-The prediction model's output (intentional orientation) must connect to the event extraction pipeline. Currently, event extraction uses DistilBERT for entity mentions and a small LLM for semantic role labeling. The enriched prediction model should inform:
+The prediction model's output (intentional orientation) must connect to the event extraction pipeline. Event extraction currently uses a small instruct LLM (qwen2.5:3b-instruct) for structured entity-and-event identification via constrained JSON output. (DistilBERT was removed in a prior branch — it provided no value compared to the structured instruct model output.)
+
+The enriched prediction model should inform:
 - **What the character is likely to do** (intentional orientation → probable actions)
 - **How the character interprets what happened** (orientation shapes perception of events)
 - **What the character notices and ignores** (orientation as attentional filter)
 
-This suggests refining the event extraction prompting to be character-perspective-aware — not just "what happened" but "what happened *as experienced by this character given their current orientation*."
+A critical insight: the current approach of "laddering atomic events up to formal narrative events" via deterministic mechanisms is likely insufficient. Identifying when a sequence of atomic events constitutes a narratively significant event (a betrayal, a revelation, a turning point) is fundamentally a guided-subjective evaluation about thresholds — not a rules-engine problem. Smaller instruct models are better at this kind of threshold judgment than deterministic pipelines that try to enumerate what counts. The entity-and-event identification pass remains valuable for structured extraction, but it will need to be complemented by model-driven significance assessment, potentially using the intentional orientation data to contextualize what "matters" for each character.
 
 ---
 
-## Open Questions
+## Design Decisions (Mar 21 2026)
 
-1. **PCA vs. learned embeddings for dimension reduction.** PCA is interpretable but assumes linearity. An autoencoder could capture nonlinear axis relationships (e.g., the way warmth and authority interact differently under different epistemological stances) but is less interpretable. Given the system's commitment to inspectability, PCA with residual analysis may be the right first pass.
+1. **Dimension reduction: learned embeddings preferred over PCA.** PCA assumes linear relationships between axes. The data shows nonlinear interactions (warmth and authority interact differently under different epistemological stances). Learned embeddings (autoencoder) can capture these. PCA remains a useful analytical tool for understanding the space, but the production pipeline should use learned projections. Decision to be validated empirically as we go.
 
-2. **How many archetype influences per character?** The composition model allows any number, but practically, 1-3 primary archetypes with influence weights seems sufficient. More than 3 risks losing the character's distinctiveness into a blur of competing tendencies.
+2. **Archetype composition: one primary + one shadow.** Opinionated stance: a character has one primary archetype and at most one subverting-or-transforming archetype. Not because Jungian psychology holds together rigorously, but because the felt-sense of a Shadow gives the narrative engine the possibility of a conscious-or-unconscious Undertow — a counter-tendency that can be driven by the data itself. The primary archetype defines the character's intentional orientation; the shadow archetype defines the currents that pull against it. More than two risks losing distinctiveness into incoherence.
 
-3. **Intentional orientation dimensionality.** What does the output vector look like? It needs enough dimensions to capture behavioral tendency, emotional state, relational stance, and communicative mode — but not so many that the narrator can't translate it into prose. The current system's intent statements (~200-400 tokens) are the right output *form*; the model needs to produce the right *input* to generate them.
+3. **Intentional orientation dimensionality: to be determined empirically.** The output vector needs enough dimensions for behavioral tendency, emotional state, relational stance, and communicative mode — but not so many that the narrator can't translate it. We'll figure this out as we build, which is the right approach for a research-stage system.
 
-4. **Genre transform as static or dynamic.** The description above treats genre as a fixed transform applied at character composition time. But some genre dimensions are state variables (emotional_contract can shift at midpoints in romance; narration_reliability degrades with sanity in cosmic horror). Should the genre transform be re-applied as state variables change?
+4. **Genre transform: dynamic, not static.** The genre transform must be re-evaluated as state variables change. Sanity degradation in cosmic horror doesn't just change the character's state — it changes *what the genre is doing* to them. The genre is a live physics engine that responds to state evolution, not a fixed initial condition. This connects to the event extraction question: a narratively significant event may be one that shifts the genre transform itself (a threshold crossing that changes the genre's relationship to the character).
 
-5. **Training data volume.** How many synthetic character instances are needed? The combinatorial space is bounded by (30 genres × ~8 archetypes per genre × variance sampling × scene context variation). Rough estimate: 10K-50K training pairs might be sufficient for a model of moderate complexity, but this needs empirical validation.
+5. **Training data volume: ~10K-50K pairs estimated, to be validated empirically.** The combinatorial space is bounded by the data we've generated. Empirical validation will determine the actual requirement.
 
-6. **ONNX deployment.** The current inference pipeline uses ort (ONNX Runtime) for the character predictor. The new model's structured input (genre embedding + tensor composition + graph state + temporal position) needs to be ONNX-exportable, which constrains architecture choices (transformers export well; custom graph layers may not).
+6. **Inference deployment: ONNX as first target, burn/candle as fallback.** The current inference pipeline uses ort (ONNX Runtime). The new model's structured input may exceed ONNX's comfortable expressiveness. burn and candle are available as Rust-backed alternatives if we need more deeply customized architecture (custom graph layers, dynamic genre transforms). The door is open.
 
 ---
 
-*This document bridges the Tier B narrative data generation (docs/foundation/data_driven_narrative_elicitation.md) and the Tier C engineering work. It assumes completion of the data generation pipeline and the axis inventory analysis (storyteller-data/narrative-data/analysis/2026-03-19-axis-inventory-and-type-design.md). The architectural decisions here will shape the storyteller-ml crate and the context assembly pipeline in storyteller-engine.*
+## The Turn Loop: Where Everything Converges
+
+All of this work — genre modeling, archetype data, relational graphs, narrative topologies, character tensors, event extraction, ML prediction — is only valuable insofar as it is represented and available within the turn-over-turn gameplay loop. The turn loop is the architectural chokepoint where the system either delivers on its promises or fails.
+
+### The Storykeeper as Deterministic Information Boundary
+
+The Storykeeper is a meta-function for information boundary management. It is not an agent with subjective judgment (though it could be, and tools exist for that path). It operates deterministically because:
+- **Performance**: a blocking LLM call in the information-gathering phase adds latency that compounds with every other agent's needs
+- **Narrative coherence**: the boundaries between what agents know must be consistent and inspectable, not probabilistic
+
+The Storykeeper needs to be able to:
+
+1. **Query the event ledger** — run bounded recursive-CTE-DAG queries over the append-only event log. "What has happened that is relevant to this character in this scene?" is a graph traversal with depth limits, not a full-corpus search. The event ledger's structure (entity references, event types, temporal ordering) supports this.
+
+2. **Traverse the correct graphs with correct weights** — the relational graph carries multi-scale dynamics (orbital, arc, scene) with friction and gravity weights per edge. The narrative graph carries scene connectivity with gravitational mass. The setting topology carries spatial adjacency with permeability. The Storykeeper must traverse the *right* graph with the *right* weights for the query at hand. "What is this character's relational state?" traverses the relational graph. "What scenes are gravitationally near?" traverses the narrative graph. "Can this character physically reach that location?" traverses the setting topology.
+
+3. **Select the correctly persisted character tensor** — with the expanded bounds described in this document (genre-transformed archetype composition + multi-scale relational state + goal alignment). The tensor must be retrievable as a structured object, not reconstructed from scattered fields.
+
+4. **Present to the correct aspects of context assembly** — different agents need different slices. The Narrator needs the rendered scene context and character intent. The Dramaturge needs narrative beat position and genre physics. Character Agents need their filtered tensor and the relational edges they can see. The World Agent needs environmental state and ontological posture data. The Storykeeper *selects and routes* — it doesn't interpret.
+
+### Asynchronous Agent Integration
+
+More than one agent operates outside the turn-based play loop:
+- The **Dramaturge** runs asynchronously, layering per-turn dramatic directives into a channel that context assembly reads from. Its analysis of narrative beat position, pacing function, and genre-appropriate tension contribution should be *available* for context assembly but without a blocking expectation. If the Dramaturge hasn't finished analyzing the current turn's position when context assembly runs, the previous turn's directive is used.
+- The **ML prediction pipeline** (character tensor → intentional orientation) runs on a dedicated thread pool. Predictions for the current scene's characters should be *available* when context assembly runs but without blocking on stragglers.
+- **Graph maintenance** (updating relational edges, narrative positions, entity states after each committed turn) runs after the turn is committed but before the next turn's context assembly. This is the "committing previous" phase of the turn cycle.
+
+The principle: **deterministic routing with async enrichment**. The Storykeeper's queries are deterministic and bounded. The enrichment from async agents (Dramaturge directives, ML predictions, graph updates) flows into the context assembly as it becomes available. Missing enrichment degrades gracefully — the system always has *something* to work with, even if the latest analysis hasn't landed yet.
+
+### PostgreSQL + Apache AGE as the Unified Substrate
+
+All of this data lives in PostgreSQL with Apache AGE for graph queries:
+- **Event ledger**: append-only table with recursive CTE support for DAG traversal
+- **Character tensors**: structured JSONB with genre-transform metadata, retrievable as single objects
+- **Relational graph**: AGE graph with multi-scale edge properties (orbital, arc, scene layers)
+- **Narrative graph**: AGE graph with gravitational mass and scene connectivity
+- **Setting topology**: AGE graph with spatial adjacency and permeability
+- **Flavor text**: TEXT columns with FK relationships to axis/variable records, pg_vector deferred for authoring-time semantic search
+
+The Storykeeper's queries are SQL (event ledger, character tensors) and Cypher (graph traversals). Both are deterministic, bounded, and inspectable.
+
+---
+
+*This document bridges the Tier B narrative data generation (docs/foundation/data_driven_narrative_elicitation.md) and the Tier C engineering work. It assumes completion of the data generation pipeline and the axis inventory analysis (storyteller-data/narrative-data/analysis/2026-03-19-axis-inventory-and-type-design.md). The architectural decisions here will shape the storyteller-ml crate, the storyteller-storykeeper crate, and the context assembly pipeline in storyteller-engine.*
