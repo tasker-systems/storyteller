@@ -352,7 +352,15 @@ The graph update step applies deltas derived from the extracted events. These de
 
 The classification of actions into types that interact with state variables is where the event extraction system and the genre's dynamics data connect. The dynamics data describes what kinds of actions produce what kinds of relational shifts. The event extraction identifies what kind of action this was. The delta computation maps one to the other.
 
-This mapping doesn't require an ML model or a complex rules engine. It requires a lookup: "in this genre, what state variables does this action type affect, and by how much?" The generated dynamics and goals data, once structured into JSON, provides this lookup table.
+**Critical nuance: events don't carry their own significance.** "The Warden handed the Outsider a cup of tea" is the same entity-action-entity regardless of whether it's genuine hospitality or preparation for sacrifice. The event-to-delta mapping cannot be purely mechanical — it requires contextual interpretation. A shove can be playful or malicious, and the relational deltas differ completely.
+
+Two paths:
+
+1. **Enhanced event extraction (preferred):** The instruct model doing entity-action-entity extraction already has scene context in its prompt. Extend its structured output to include a significance annotation: *"this action functions as [hospitality/obligation/deception/threat] in the current relational context"* and *"suggested state variable effects: integration_level +3, trust +0.05, moral_position -0.02."* This keeps interpretation in a single pass rather than adding another model call. The generated dynamics data provides the vocabulary of action-significance types and their typical state variable interactions per genre.
+
+2. **Dramaturge post-processing (fallback):** If the event extraction model's contextual judgment proves insufficient, the Dramaturge — which already has the full context packet — could annotate events as a secondary function alongside its dramatic directive. This adds latency but brings the deepest contextual understanding to the interpretation. The Dramaturge would not re-extract events but would attach significance and delta recommendations to the extracted events.
+
+The preferred path grounds the "why this event shifts the relational weighting by X amount" in the same model call that identifies the event, keeping the pipeline lean. The Dramaturge's dramatic directive can then reference the annotated events — "the tea was offered as preparation; the Outsider's acceptance deepens the Descent into Belonging" — rather than re-interpreting raw events from scratch.
 
 ### Authoring in the Gravity Model
 
