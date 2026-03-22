@@ -53,7 +53,7 @@ tools/narrative-data/prompts/structure/genre-dimensions.md
 # Tests
 tools/narrative-data/tests/test_schemas_shared.py
 tools/narrative-data/tests/test_schemas_genre_dimensions.py
-tools/narrative-data/tests/test_schemas_discovery.py
+tools/narrative-data/tests/test_schemas_types.py
 tools/narrative-data/tests/test_structure_commands.py
 tools/narrative-data/tests/test_prompts_structure.py
 
@@ -84,7 +84,7 @@ tools/narrative-data/tests/test_prompts.py                  — add build_struct
 - Modify: `tools/narrative-data/src/narrative_data/genre/commands.py` (update `.raw.md` references)
 - Modify: `tools/narrative-data/src/narrative_data/discovery/commands.py` (update `.raw.md` references)
 - Modify: `tools/narrative-data/src/narrative_data/spatial/commands.py` (update `.raw.md` references)
-- Modify: `tools/narrative-data/src/narrative_data/primitive/commands.py` (update `.raw.md` references)
+- Modify: `tools/narrative-data/src/narrative_data/pipeline/elicit.py` (update `.raw.md` references)
 
 - [ ] **Step 1: Check how many `.raw.md` files exist and audit references**
 
@@ -201,15 +201,15 @@ uv run pytest -x -q
 
 Expected: All remaining tests pass. Some tests removed with `test_schemas.py`; count will drop from ~120 to ~90.
 
-- [ ] **Step 5: Extract GenreDimensions JSON schema from analysis**
+- [ ] **Step 5: Extract JSON schema scaffolding from analysis**
 
-Read Section 7.1 of `storyteller-data/narrative-data/analysis/2026-03-21-comprehensive-terrain-analysis.md` and extract the GenreDimensions JSON schema to:
+Read Section 7 of `storyteller-data/narrative-data/analysis/2026-03-21-comprehensive-terrain-analysis.md` and extract the GenreDimensions JSON schema (7.1) to:
 
 ```
 tools/narrative-data/json-schemas/genre-dimensions.schema.json
 ```
 
-This is the reference scaffold for building the Pydantic model in Task 3.
+This is the primary scaffolding target — GenreDimensions is the most complex schema and the foundation type. For the remaining 11 types, the implementer should work directly from the analysis document's Section 7.2–7.11. The scaffolding is deliberately limited to GenreDimensions to avoid busywork — the analysis sections are structured clearly enough to serve as direct references for simpler types.
 
 - [ ] **Step 6: Commit**
 
@@ -524,7 +524,7 @@ git add -A && git commit -m "feat: add GenreDimensions schema — 34 dimensions 
 - Create: `tools/narrative-data/src/narrative_data/schemas/settings.py`
 - Create: `tools/narrative-data/src/narrative_data/schemas/scene_profiles.py`
 - Create: `tools/narrative-data/src/narrative_data/schemas/ontological_posture.py`
-- Create: `tools/narrative-data/tests/test_schemas_discovery.py`
+- Create: `tools/narrative-data/tests/test_schemas_types.py`
 
 Each schema file contains both a per-genre model and a cluster model. Reference analysis Section 7 for complete field sets.
 
@@ -576,7 +576,7 @@ git add -A && git commit -m "feat: add 6 discovery type schemas with per-genre a
 - Create: `tools/narrative-data/src/narrative_data/schemas/place_entities.py`
 - Create: `tools/narrative-data/src/narrative_data/schemas/tropes.py`
 - Create: `tools/narrative-data/src/narrative_data/schemas/narrative_shapes.py`
-- Append: `tools/narrative-data/tests/test_schemas_discovery.py` (add test classes for these types)
+- Append: `tools/narrative-data/tests/test_schemas_types.py` (add test classes for these types)
 
 - [ ] **Step 1: Write failing tests**
 
@@ -762,7 +762,19 @@ git add -A && git commit -m "feat: add build_structure() to PromptBuilder with g
 - Modify: `tools/narrative-data/src/narrative_data/pipeline/structure.py`
 - Modify: `tools/narrative-data/tests/test_pipeline.py`
 
-- [ ] **Step 1: Update run_structuring() signature and implementation**
+- [ ] **Step 1: Write a test for replace-on-retry behavior**
+
+Before changing the implementation, add a test that verifies error context is *replaced* not *accumulated*:
+
+```python
+def test_retry_replaces_error_section_not_appends(mock_client, tmp_path, ...):
+    """Errors are replaced on retry to protect the 7b model's context window."""
+    # Set up mock to fail twice with different errors, then succeed
+    # After retries, verify the prompt passed to the final call contains
+    # only the LAST error message, not all accumulated errors
+```
+
+- [ ] **Step 2: Update run_structuring() signature and implementation**
 
 The function needs to accept a `PromptBuilder` and `structure_type` instead of using the static `build_stage2`. Update the retry logic to replace error sections rather than append.
 
@@ -780,7 +792,32 @@ def run_structuring(
 ) -> dict[str, Any]:
 ```
 
-- [ ] **Step 2: Update test_pipeline.py**
+The retry loop should build a fresh prompt each time, replacing the error section:
+
+```python
+ERROR_MARKER = "\n\n--- VALIDATION ERRORS ---\n"
+for attempt in range(max_retries):
+    # Build base prompt (without errors) each time
+    base_prompt = prompt_builder.build_structure(structure_type, raw_content, target_schema)
+    if errors:
+        # Replace, don't accumulate — only the most recent error
+        current_prompt = base_prompt + ERROR_MARKER + errors[-1] + "\nPlease fix."
+    else:
+        current_prompt = base_prompt
+    ...
+```
+
+**Note on `is_collection`:** GenreDimensions uses `is_collection=False` (single object per genre file). All discovery types use `is_collection=True` (array of entities per file). Genre-native types (tropes, narrative-shapes) also use `is_collection=True`. The TYPE_REGISTRY in Task 9 will specify this per type.
+
+- [ ] **Step 3: Verify no other code references build_stage2**
+
+```bash
+grep -r "build_stage2" tools/narrative-data/src/ tools/narrative-data/tests/ --include="*.py"
+```
+
+Remove any remaining references.
+
+- [ ] **Step 4: Update test_pipeline.py**
 
 Remove old `GenreRegion` import. Update any tests that call `run_structuring` to pass the new `prompt_builder` and `structure_type` parameters. Use a mock prompt builder or create minimal structure prompt templates in the test fixture.
 
@@ -823,12 +860,37 @@ uv run pytest tests/test_structure_commands.py -v
 - [ ] **Step 3: Implement structure_commands.py**
 
 Key components:
-- `TYPE_REGISTRY`: maps type slugs to (per-genre schema, cluster schema, data directory pattern) tuples
+- `TYPE_REGISTRY`: maps CLI type slugs to `(per_genre_schema, cluster_schema, data_dir, is_collection, prompt_slug)` tuples. This is the central lookup table:
+
+```python
+TYPE_REGISTRY = {
+    "genre-dimensions": TypeConfig(
+        per_genre=GenreDimensions, cluster=None,
+        data_dir="genres", file_pattern="region",
+        is_collection=False, prompt_slug="genre-dimensions",
+    ),
+    "archetypes": TypeConfig(
+        per_genre=Archetype, cluster=ClusterArchetype,
+        data_dir="discovery/archetypes",
+        is_collection=True, prompt_slug="archetypes",
+    ),
+    # ... etc for all 12 types
+    # NOTE: "profiles" is the CLI/file slug, maps to SceneProfile schema
+    "profiles": TypeConfig(
+        per_genre=SceneProfile, cluster=ClusterSceneProfile,
+        data_dir="discovery/profiles",
+        is_collection=True, prompt_slug="profiles",
+    ),
+}
+```
+
 - `structure_type()`: iterates genres, resolves `.md` → `.json` paths, calls `run_structuring()`, logs events
 - `structure_clusters()`: iterates clusters, resolves `cluster-{name}.md` → `cluster-{name}.json`, calls `run_structuring()`
 - Both functions support `--force` and `--plan` modes
 - Console output with rich (cyan for processing, green for success, dim for skipped, red for failed)
 - Summary at end: succeeded/failed/skipped counts
+
+**Naming note:** The CLI uses `profiles` as the type slug (matching existing data paths and config). The Pydantic schema module is `scene_profiles.py`. The prompt template is `prompts/structure/profiles.md`. This is consistent with the spec's Section 3.2 naming note.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1067,12 +1129,22 @@ ls -la prompts/structure/
 
 Expected: 21 files (1 genre-dimensions + 10 per-genre + 8 cluster + 2 genre-native).
 
-- [ ] **Step 5: Update memory with project status**
+- [ ] **Step 5: Update `narrative-data status` to show structuring progress**
+
+The spec (Section 8) requires `narrative-data status` to show structuring progress. Update the `status` command in `cli.py` to count `.json` sibling files alongside `.md` files per type, showing how many have been structured. This is a small addition to the existing `status` command, not a new command.
+
+- [ ] **Step 6: Update memory with project status**
 
 Update `memory/project_tier_b_narrative_data.md` with Stage 2 structuring status.
 
-- [ ] **Step 6: Final commit**
+- [ ] **Step 7: Final commit**
 
 ```bash
 git add -A && git commit -m "chore: Stage 2 JSON structuring pipeline complete — ready for extraction runs"
 ```
+
+---
+
+## Future: Rust Type Generation via typify
+
+Once Stage 2 is complete and all JSON is validated, the Pydantic schemas can produce JSON Schema via `model_json_schema()`, which the [`typify`](https://crates.io/crates/typify) crate can consume to generate Rust types. This creates a `Pydantic model → JSON Schema → typify → Rust types` chain ensuring cohesion across the Python data pipeline and the Rust engine. This is out of scope for this plan but should be the next integration step after structuring is validated.
