@@ -53,26 +53,52 @@ class OllamaClient:
         temperature: float = 0.1,
         max_retries: int = 3,
     ) -> dict[str, Any]:
-        """Stage 2: Generate structured JSON. Returns parsed dict."""
+        """Stage 2: Generate structured JSON. Returns parsed dict.
+
+        Uses /api/chat for thinking models (qwen3.5) since /api/generate
+        returns empty responses with format constraints on these models.
+        Falls back to /api/generate for non-thinking models.
+        """
         assert max_retries >= 1, "max_retries must be >= 1"
+        use_chat = _is_thinking_model(model)
         for attempt in range(max_retries):
             try:
-                response = httpx.post(
-                    f"{self.base_url}/api/generate",
-                    json={
-                        "model": model,
-                        "prompt": prompt,
-                        "stream": False,
-                        "format": schema,
-                        "options": {"temperature": temperature},
-                    },
-                    timeout=timeout,
-                )
-                response.raise_for_status()
-                text = response.json()["response"]
+                if use_chat:
+                    response = httpx.post(
+                        f"{self.base_url}/api/chat",
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": False,
+                            "format": schema,
+                            "options": {"temperature": temperature},
+                        },
+                        timeout=timeout,
+                    )
+                    response.raise_for_status()
+                    text = response.json()["message"]["content"]
+                else:
+                    response = httpx.post(
+                        f"{self.base_url}/api/generate",
+                        json={
+                            "model": model,
+                            "prompt": prompt,
+                            "stream": False,
+                            "format": schema,
+                            "options": {"temperature": temperature},
+                        },
+                        timeout=timeout,
+                    )
+                    response.raise_for_status()
+                    text = response.json()["response"]
                 return json.loads(text)
             except httpx.ReadTimeout:
                 if attempt < max_retries - 1:
                     continue
                 raise
         raise RuntimeError("unreachable")
+
+
+def _is_thinking_model(model: str) -> bool:
+    """Check if a model uses thinking/reasoning (requires chat endpoint for structured output)."""
+    return model.startswith("qwen3.5")
