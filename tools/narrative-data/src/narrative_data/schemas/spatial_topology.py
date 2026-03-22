@@ -23,9 +23,7 @@ class TopologyFriction(BaseModel):
 class TopologyDirectionality(BaseModel):
     """How movement flows between two connected settings."""
 
-    type: Literal[
-        "asymmetric", "one_way", "bidirectional_unequal", "circular", "progressive"
-    ]
+    type: Literal["asymmetric", "one_way", "bidirectional_unequal", "circular", "progressive"]
     forward_cost: str | None = None
     return_cost: str | None = None
     description: str | None = None

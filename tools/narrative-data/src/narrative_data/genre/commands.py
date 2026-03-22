@@ -71,6 +71,7 @@ GENRE_REGIONS: list[str] = [
     "magical-realism",
 ]
 
+
 def _order_categories(categories: list[str]) -> list[str]:
     """Return categories with 'region' first, preserving relative order of the rest."""
     ordered = []
@@ -188,7 +189,8 @@ def structure_genre(
     have been removed as part of the Stage 2 architecture migration.
     """
     console.print(
-        "[yellow]  structure_genre() is deprecated — use 'narrative-data structure' instead[/yellow]"
+        "[yellow]  structure_genre() is deprecated"
+        " — use 'narrative-data structure' instead[/yellow]"
     )
 
 

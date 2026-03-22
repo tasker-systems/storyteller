@@ -1,4 +1,5 @@
 """Tests for the structure CLI subcommand."""
+
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -32,8 +33,9 @@ class TestStructureCLI:
 
     def test_no_flags_exits_with_error(self):
         runner = CliRunner()
-        with patch("narrative_data.config.resolve_output_path"), patch(
-            "narrative_data.ollama.OllamaClient"
+        with (
+            patch("narrative_data.config.resolve_output_path"),
+            patch("narrative_data.ollama.OllamaClient"),
         ):
             result = runner.invoke(cli, ["structure", "run", "archetypes"])
         assert result.exit_code != 0 or "Specify" in result.output

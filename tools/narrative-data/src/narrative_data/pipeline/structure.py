@@ -10,7 +10,6 @@ from narrative_data.config import STRUCTURING_MODEL
 from narrative_data.ollama import OllamaClient
 from narrative_data.prompts import PromptBuilder
 
-
 ERROR_MARKER = "\n\n--- VALIDATION ERRORS ---\n"
 
 
@@ -44,7 +43,8 @@ def run_structuring(
 
     for _attempt in range(max_retries):
         if last_error:
-            current_prompt = base_prompt + ERROR_MARKER + last_error + "\nPlease fix and output valid JSON."
+            fix_suffix = "\nPlease fix and output valid JSON."
+            current_prompt = base_prompt + ERROR_MARKER + last_error + fix_suffix
         else:
             current_prompt = base_prompt
 

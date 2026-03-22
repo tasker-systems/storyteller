@@ -66,9 +66,7 @@ class EntityProperties(BaseModel):
     has_agency: bool = False
     is_third_character: bool = False
     evolution_pattern: str | None = None
-    topological_role: (
-        Literal["hub", "endpoint", "connector", "branch", "buffer"] | None
-    ) = None
+    topological_role: Literal["hub", "endpoint", "connector", "branch", "buffer"] | None = None
     role_can_shift: bool = False
 
 

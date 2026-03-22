@@ -51,6 +51,7 @@ SETTING_SLUGS: list[str] = [
 # Dependency order is encoded here: setting-type → place-entities → topology → tonal-inheritance
 _SPATIAL_ORDER = ["setting-type", "place-entities", "topology", "tonal-inheritance"]
 
+
 def _order_spatial_categories(categories: list[str]) -> list[str]:
     """Return categories in dependency order (setting-type first, tonal-inheritance last)."""
     ordered = []
@@ -143,9 +144,7 @@ def elicit_spatial(
                 continue
 
             if not force and not is_stale(entry, current_hash):
-                console.print(
-                    f"[dim]  {setting_slug}/{category} up to date, skipping[/dim]"
-                )
+                console.print(f"[dim]  {setting_slug}/{category} up to date, skipping[/dim]")
                 continue
 
             console.print(f"[cyan]  Eliciting {setting_slug}/{category}…[/cyan]")
@@ -189,5 +188,6 @@ def structure_spatial(
     have been removed as part of the Stage 2 architecture migration.
     """
     console.print(
-        "[yellow]  structure_spatial() is deprecated — use 'narrative-data structure' instead[/yellow]"
+        "[yellow]  structure_spatial() is deprecated"
+        " — use 'narrative-data structure' instead[/yellow]"
     )

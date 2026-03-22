@@ -58,11 +58,17 @@ class TestManifest:
     def test_update_manifest_entry(self, tmp_path: Path):
         path = tmp_path / "manifest.json"
         save_manifest(path, {"entries": {}})
-        update_manifest_entry(path, "folk-horror", {
-            "entity_id": "abc", "prompt_hash": "h1",
-            "content_digest": "d1", "stage": "elicited",
-            "generated_at": "2026-03-17T00:00:00Z",
-        })
+        update_manifest_entry(
+            path,
+            "folk-horror",
+            {
+                "entity_id": "abc",
+                "prompt_hash": "h1",
+                "content_digest": "d1",
+                "stage": "elicited",
+                "generated_at": "2026-03-17T00:00:00Z",
+            },
+        )
         manifest = load_manifest(path)
         assert "folk-horror" in manifest["entries"]
 
@@ -70,11 +76,13 @@ class TestManifest:
 class TestArchiveExisting:
     def test_no_archive_when_file_missing(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import archive_existing
+
         result = archive_existing(tmp_path / "nonexistent.md")
         assert result is None
 
     def test_archives_to_v1(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import archive_existing
+
         original = tmp_path / "region.md"
         original.write_text("v1 content")
         archived = archive_existing(original)
@@ -85,6 +93,7 @@ class TestArchiveExisting:
 
     def test_archives_to_v2_when_v1_exists(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import archive_existing
+
         (tmp_path / "region.raw.v1.md").write_text("old v1")
         original = tmp_path / "region.md"
         original.write_text("v2 content")
@@ -95,6 +104,7 @@ class TestArchiveExisting:
 
     def test_sequential_archives(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import archive_existing
+
         # Simulate three passes
         for i in range(1, 4):
             original = tmp_path / "region.md"
@@ -109,11 +119,15 @@ class TestArchiveExisting:
 class TestRunLog:
     def test_write_run_log(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import write_run_log
-        log_path = write_run_log(tmp_path, {
-            "model": "qwen3.5:35b",
-            "cells_processed": 5,
-            "domain": "genre",
-        })
+
+        log_path = write_run_log(
+            tmp_path,
+            {
+                "model": "qwen3.5:35b",
+                "cells_processed": 5,
+                "domain": "genre",
+            },
+        )
         assert log_path.exists()
         assert log_path.parent.name == "runs"
 

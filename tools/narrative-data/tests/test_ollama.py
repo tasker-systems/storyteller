@@ -46,6 +46,7 @@ class TestOllamaClient:
         from unittest.mock import MagicMock
 
         import httpx as httpx_mod
+
         success_response = MagicMock()
         success_response.json.return_value = {"response": "ok"}
         success_response.raise_for_status = MagicMock()

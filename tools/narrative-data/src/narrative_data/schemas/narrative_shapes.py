@@ -21,9 +21,7 @@ TensionFamilyLiteral = Literal[
     "inverted",
 ]
 FlexibilityLiteral = Literal["load_bearing", "ornamental"]
-TensionEffectLiteral = Literal[
-    "builds", "sustains", "redirects", "releases", "transforms", "peaks"
-]
+TensionEffectLiteral = Literal["builds", "sustains", "redirects", "releases", "transforms", "peaks"]
 PacingEffectLiteral = Literal["accelerates", "decelerates", "erratic"]
 RestBeatTypeLiteral = Literal["ambient", "recovery", "transit", "approach"]
 TensionBehaviorLiteral = Literal["releases", "compounds", "redirects", "maintains"]
@@ -63,9 +61,7 @@ class Beat(BaseModel):
     def state_thresholds_in_unit_interval(cls, v: dict[str, float]) -> dict[str, float]:
         for key, threshold in v.items():
             if not 0.0 <= threshold <= 1.0:
-                raise ValueError(
-                    f"state_thresholds['{key}'] must be 0.0-1.0, got {threshold}"
-                )
+                raise ValueError(f"state_thresholds['{key}'] must be 0.0-1.0, got {threshold}")
         return v
 
 

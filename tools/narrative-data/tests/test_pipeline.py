@@ -77,8 +77,8 @@ class TestRunStructuring:
         # Call 2: missing required field 'name' → triggers ValidationError
         # Call 3: valid data → success
         mock_client.generate_structured.side_effect = [
-            [{"name": "item1"}],           # missing 'value' → invalid
-            [{"value": 42}],               # missing 'name' → invalid
+            [{"name": "item1"}],  # missing 'value' → invalid
+            [{"value": 42}],  # missing 'name' → invalid
             [{"name": "item3", "value": 3}],  # valid
         ]
 

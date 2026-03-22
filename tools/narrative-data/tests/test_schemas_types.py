@@ -1123,8 +1123,7 @@ class TestTrope:
             name="The Reluctant Witness",
             genre_slug="folk-horror",
             genre_derivation=(
-                "Community pressure + forbidden knowledge"
-                " = character who sees but cannot speak"
+                "Community pressure + forbidden knowledge = character who sees but cannot speak"
             ),
             narrative_function=["establishing", "escalating"],
         )
