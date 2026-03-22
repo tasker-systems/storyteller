@@ -11,6 +11,9 @@ from narrative_data.ollama import OllamaClient
 from narrative_data.prompts import PromptBuilder
 
 
+ERROR_MARKER = "\n\n--- VALIDATION ERRORS ---\n"
+
+
 def run_structuring(
     client: OllamaClient,
     raw_path: Path,
@@ -23,7 +26,8 @@ def run_structuring(
 ) -> dict[str, Any]:
     """Run stage 2 structuring: read raw.md, call small model, validate and write .json.
 
-    Retries on validation failure, appending error context to the prompt each time.
+    Retries on validation failure, replacing (not appending) the error section each time
+    to protect the 7b model's context window.
     On exhausting retries, writes a .errors.json file and returns success=False.
     """
     raw_content = raw_path.read_text()
@@ -33,22 +37,27 @@ def run_structuring(
     else:
         target_schema = schema_type.model_json_schema()
 
-    prompt = PromptBuilder().build_structure(structure_type, raw_content, target_schema)
+    base_prompt = PromptBuilder().build_structure(structure_type, raw_content, target_schema)
     errors: list[str] = []
     raw_output: Any = None
+    last_error: str | None = None
 
     for _attempt in range(max_retries):
+        if last_error:
+            current_prompt = base_prompt + ERROR_MARKER + last_error + "\nPlease fix and output valid JSON."
+        else:
+            current_prompt = base_prompt
+
         raw_output = client.generate_structured(
-            model=model, prompt=prompt, schema=target_schema
+            model=model, prompt=current_prompt, schema=target_schema
         )
 
         try:
             validated = _validate_and_save(raw_output, schema_type, output_path, is_collection)
             return {"success": True, "output_path": str(output_path), "validated": validated}
         except ValidationError as e:
-            error_msg = str(e)
-            errors.append(error_msg)
-            prompt += f"\n\nThe previous output had validation errors:\n{error_msg}\nPlease fix."
+            last_error = str(e)
+            errors.append(last_error)
 
     errors_path = output_path.with_suffix(".errors.json")
     errors_path.write_text(
