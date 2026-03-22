@@ -60,24 +60,28 @@ Reusable building blocks referenced across all type schemas:
 
 **No `NarrativeEntity` base class.** Each type schema stands on its own. The data varies too much across types for a useful inheritance hierarchy. Common patterns (genre_slug, canonical_name, flavor_text) appear where needed without being forced into shared inheritance.
 
-### 3.2 The 11 Type Schemas
+### 3.2 The 12 Type Schemas
 
 Each type that has cluster synthesis data gets two schema variants: a per-genre schema (full detail for runtime) and a cluster schema (canonical names + genre variant lists for authorial/navigational use).
 
-| Type | Per-Genre | Cluster | Key Fields |
+**Note on naming:** The existing pipeline uses `profiles` as the type slug for scene profiles (in `config.py`, discovery prompts, and file paths). This spec uses `scene-profiles` for clarity in prose, but the implementation slug remains `profiles` to maintain consistency with existing data paths and manifests. The Pydantic schema module is `scene_profiles.py` for readability; the CLI and file paths use `profiles`.
+
+**Note on key fields:** The Key Fields column highlights the most distinctive fields per type. The full Pydantic models will match the complete analysis schemas (Section 7 of the comprehensive terrain analysis), including fields not listed here (e.g., `currencies`, `network_position`, `constraints` on Dynamic; `agency`, `state_shift` on SpatialTopology; `overlap_signal` on NarrativeShape).
+
+| Type | Per-Genre | Cluster | Key Fields (highlights — see analysis for complete set) |
 |------|-----------|---------|------------|
-| GenreDimensions | ✓ | — | 34 dimensions grouped by category, weighted tags, state variables, narrative contracts, boundaries |
+| GenreDimensions | ✓ | — | 34 dimensions grouped by category, weighted tags, state variables, narrative contracts, boundaries, constraint_layer_type, modifies |
 | Archetype | ✓ | ✓ | personality_profile (7 axes), extended_axes, distinguishing_tension, structural_necessity, overlap_signals, universality |
-| Dynamic | ✓ | ✓ | scale (orbital/arc/scene), edge_type, directionality, role_slots, valence, evolution_pattern, state_variable_interactions |
+| Dynamic | ✓ | ✓ | scale, edge_type, directionality, currencies, network_position, role_slots, valence, evolution_pattern, scale_manifestations, state_variable_interactions |
 | Goal | ✓ | ✓ | scale (existential/arc/scene/cross_scale), cross_scale_tension, state_variable_interactions, archetype_refs |
 | ArchetypeDynamic | ✓ | ✓ | archetype_a/b, edge_properties, characteristic_scene, shadow_pairing, scale_properties |
 | SceneProfile | ✓ | ✓ | dimensional_properties (tension, pacing, cast, resolution, info flow), uniqueness |
 | OntologicalPosture | ✓ | ✓ | modes_of_being, self_other_boundary, ethical_orientation |
 | Settings | ✓ | ✓ | atmospheric_palette, sensory_vocabulary, communicability dimensions |
-| SpatialTopology | ✓ | ✓ | friction (type + level), directionality, tonal_inheritance, traversal_cost |
+| SpatialTopology | ✓ | ✓ | source_setting, target_setting, friction (type + level), directionality, agency, tonal_inheritance, traversal_cost, state_shift |
 | PlaceEntity | ✓ | ✓ | communicability (4 channels: atmospheric, sensory, spatial, temporal), entity_properties, state_variable_expression |
-| Trope | ✓ | — | narrative_function, variants (straight/inverted/deconstructed/violation), state_variable_interactions |
-| NarrativeShape | ✓ | — | tension_profile (family + description), beats (position/flexibility/tension_effect/state_thresholds), rest_beats, composability |
+| Trope | ✓ | — | narrative_function, variants (straight/inverted/deconstructed/violation), state_variable_interactions, overlap_signal |
+| NarrativeShape | ✓ | — | tension_profile (family + description), beats (position/flexibility/tension_effect/state_thresholds), rest_beats, composability, overlap_signal |
 
 Genre-native types (Trope, NarrativeShape) have per-genre schemas only — no cluster synthesis exists for these.
 
@@ -100,18 +104,23 @@ The JSON schema files are scaffolding only — they make the Pydantic authoring 
 Source .md file
     ↓
 PromptBuilder.build_structure(type, raw_content, schema)
-    → loads prompts/structure/{type}.md
+    → loads prompts/structure/{type}.md (type-specific template)
     → injects raw content + JSON schema
+    → replaces the generic build_stage2() static method
     ↓
 OllamaClient.generate_structured(model="qwen2.5:7b-instruct")
     → constrained JSON output
     ↓
 Pydantic model_validate()
-    → on failure: append errors to prompt, retry (max 3)
+    → on failure: replace error section in prompt, retry (max 3)
     → on exhaust: write .errors.json
     ↓
 Write sibling .json file + update manifest
 ```
+
+**Note on `build_structure` vs `build_stage2`:** The existing `build_stage2()` is a static method with a hardcoded generic prompt. `build_structure()` is an instance method that loads type-specific templates from `prompts/structure/{type}.md` via `self.prompts_dir`, following the same pattern as `build_discovery()` and `build_synthesis()`. It replaces `build_stage2()` — the generic approach is insufficient for the quality extraction needed here. `build_stage2()` can be removed once `build_structure()` is in place.
+
+**Note on retry strategy:** On validation failure, the error context *replaces* the previous error section rather than appending. This prevents error accumulation from pushing useful content out of the 7b model's context window.
 
 ### 4.2 Execution Phases
 
@@ -120,6 +129,7 @@ Phases respect data dependencies — foundation before dependents.
 **Phase 0 — Preparation:**
 - Rename `*.raw.md` → `*.md` across the corpus (~453 files)
 - Remove stale `region.json` files (old schema, no useful signal)
+- Remove existing Pydantic schemas (`schemas/shared.py`, `genre.py`, `spatial.py`, `intersections.py`) — these predate the inflection session and are incompatible with the new architecture
 - Extract JSON schemas from analysis document into `json-schemas/`
 
 **Phase 1 — Genre Dimensions (foundation):**
@@ -144,7 +154,7 @@ Phases respect data dependencies — foundation before dependents.
 - Spatial Topology: 30 + 6 = 36 files
 - Place Entities: 30 + 6 = 36 files
 
-**Total: ~420 structuring calls across all phases.**
+**Total: 414 structuring calls across all phases** (30 + 204 + 108 + 72).
 
 ### 4.3 Prompt Architecture
 
@@ -163,13 +173,15 @@ Runtime injects the raw markdown content and target JSON schema into the templat
 | `OllamaClient.generate_structured()` | **Keep** | Constrained JSON generation |
 | `pipeline/invalidation.py` | **Keep** | Manifest tracking, hash-based staleness |
 | `pipeline/events.py` | **Keep** | JSONL event logging for observability |
-| `PromptBuilder` | **Extend** | Add `build_structure()` method |
-| `cli.py` | **Extend** | Add `structure` subcommand |
+| `PromptBuilder` | **Extend** | Add `build_structure()` instance method, replacing `build_stage2()` |
+| `cli.py` | **Extend** | Add `structure` top-level subcommand |
 | `schemas/*.py` | **Replace** | New schemas matching analysis proposals |
 
 ---
 
 ## 5. CLI Interface
+
+The `structure` command is a new top-level subcommand, not nested under `genre` or `spatial`. This reflects its cross-cutting nature — it operates on all 12 types regardless of which pipeline phase produced them. The existing `genre structure` and `spatial structure` commands from the old pipeline are deprecated and should be removed; they used the old Pydantic schemas and are incompatible with the new architecture.
 
 ```bash
 # Structure a single genre's dimensions
@@ -190,8 +202,8 @@ narrative-data structure archetypes --all --clusters
 # Force re-extraction (ignore manifest cache)
 narrative-data structure genre-dimensions --all --force
 
-# Dry run — show what would be structured
-narrative-data structure --plan
+# Dry run — show what would be structured for a specific type
+narrative-data structure archetypes --plan
 ```
 
 ---
@@ -266,12 +278,13 @@ prompts/structure/
 **Source:**
 ```
 src/narrative_data/
-  prompts.py                   — extend: add build_structure() method
-  cli.py                       — extend: add structure subcommand
-  pipeline/structure.py        — minor updates for new schema type registry
-  structure/__init__.py        — orchestration: type registry, batch runner
-  structure/commands.py        — structure_genre, structure_discovery, structure_type
+  prompts.py                   — extend: add build_structure() instance method, remove build_stage2()
+  cli.py                       — extend: add structure top-level subcommand, deprecate genre/spatial structure
+  pipeline/structure.py        — keep: run_structuring() core loop (called by commands)
+  pipeline/structure_commands.py — new: structure_genre, structure_discovery, structure_type orchestration
 ```
+
+**Note on module organization:** The orchestration commands live in `pipeline/structure_commands.py` (not a separate `structure/` package) to avoid a namespace collision with the existing `pipeline/structure.py`. The commands module imports `run_structuring()` from `pipeline/structure.py` and adds the type registry, path resolution, and batch iteration logic.
 
 **Temporary scaffolding:**
 ```
@@ -327,7 +340,7 @@ narrative-data/
 - **Schema tests:** Validate that each Pydantic model can round-trip (construct → dump → validate). Test field validators (0.0–1.0 range enforcement, enum membership).
 - **Prompt builder tests:** Verify `build_structure()` loads correct template, injects content and schema, handles missing templates.
 - **Structuring tests:** Mock OllamaClient, verify `run_structuring` retry behavior, `.errors.json` writing, manifest updates.
-- **Integration test:** Structure a single known raw file (e.g., folk-horror archetypes) and validate the output against the schema. This catches prompt/schema mismatches that unit tests miss.
+- **Integration test:** Structure a single known raw file (e.g., folk-horror archetypes) and validate the output against the schema. This catches prompt/schema mismatches that unit tests miss. Requires a running Ollama instance — feature-gate behind `test-llm` following the existing test tier pattern.
 
 ---
 
