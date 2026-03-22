@@ -610,3 +610,83 @@ def pipeline_approve(primitive_type: str, phase: int, primitives: str, note: str
         f"Recorded review gate: {primitive_type} phase {phase} "
         f"approved ({len(prim_list)} primitives)"
     )
+
+
+# ---------------------------------------------------------------------------
+# structure subgroup (Stage 2 structuring)
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def structure() -> None:
+    """Stage 2: Structure raw markdown into validated JSON."""
+
+
+@structure.command("run")
+@click.argument("type_slug")
+@click.option("--genre", default=None, help="Single genre slug to structure.")
+@click.option("--all", "all_genres", is_flag=True, default=False, help="Structure all genres.")
+@click.option("--clusters", is_flag=True, default=False, help="Structure cluster synthesis files.")
+@click.option("--force", is_flag=True, default=False, help="Re-structure even if cached.")
+@click.option(
+    "--plan", "plan_only", is_flag=True, default=False, help="Show plan without executing."
+)
+def structure_run(
+    type_slug: str,
+    genre: str | None,
+    all_genres: bool,
+    clusters: bool,
+    force: bool,
+    plan_only: bool,
+) -> None:
+    """Structure raw markdown into validated JSON for a given type.
+
+    TYPE_SLUG is one of: genre-dimensions, archetypes, dynamics, goals, profiles,
+    settings, ontological-posture, archetype-dynamics, spatial-topology, place-entities,
+    tropes, narrative-shapes
+    """
+    from narrative_data.config import OLLAMA_BASE_URL, resolve_output_path
+    from narrative_data.ollama import OllamaClient
+    from narrative_data.pipeline.structure_commands import (
+        TYPE_REGISTRY,
+    )
+    from narrative_data.pipeline.structure_commands import (
+        structure_clusters as do_structure_clusters,
+    )
+    from narrative_data.pipeline.structure_commands import (
+        structure_type as do_structure_type,
+    )
+
+    if type_slug not in TYPE_REGISTRY:
+        click.echo(
+            f"Unknown type: {type_slug}. Valid types: {', '.join(TYPE_REGISTRY.keys())}",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    output_base = resolve_output_path()
+    client = OllamaClient(base_url=OLLAMA_BASE_URL)
+
+    if all_genres or genre:
+        genres = [genre] if genre else None  # None = all
+        do_structure_type(
+            client=client,
+            output_base=output_base,
+            type_slug=type_slug,
+            genres=genres,
+            force=force,
+            plan_only=plan_only,
+        )
+
+    if clusters:
+        do_structure_clusters(
+            client=client,
+            output_base=output_base,
+            type_slug=type_slug,
+            force=force,
+            plan_only=plan_only,
+        )
+
+    if not all_genres and not genre and not clusters:
+        click.echo("Specify --all, --genre <slug>, or --clusters", err=True)
+        raise SystemExit(1)
