@@ -4,5 +4,5 @@
 set -euo pipefail
 
 echo "=== Stage 2 Phase 1: Genre Dimensions ==="
-narrative-data structure run genre-dimensions --all
+uv run narrative-data structure run genre-dimensions --all
 echo "=== Phase 1 Complete ==="
