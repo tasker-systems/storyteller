@@ -44,7 +44,7 @@ class TestRunElicitation:
             model="qwen3.5:35b",
         )
 
-        raw_path = output_dir / "region.raw.md"
+        raw_path = output_dir / "region.md"
         assert raw_path.exists()
         assert "Folk Horror" in raw_path.read_text()
         assert result["prompt_hash"] is not None
@@ -53,7 +53,7 @@ class TestRunElicitation:
 
 class TestRunStructuring:
     def test_structures_and_validates(self, mock_ollama, tmp_path: Path):
-        raw_path = tmp_path / "region.raw.md"
+        raw_path = tmp_path / "region.md"
         raw_path.write_text("# Folk Horror\n\nRural dread content.")
 
         structured_output = {
@@ -95,7 +95,7 @@ class TestRunStructuring:
         assert data["name"] == "Folk Horror"
 
     def test_validation_failure_writes_errors(self, mock_ollama, tmp_path: Path):
-        raw_path = tmp_path / "test.raw.md"
+        raw_path = tmp_path / "test.md"
         raw_path.write_text("Some content")
         mock_ollama.generate_structured.return_value = {"invalid": True}
 

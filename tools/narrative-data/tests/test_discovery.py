@@ -28,7 +28,7 @@ class TestExtractPrimitives:
         prompts_dir = _make_mock_prompts(output_base)
         genre_dir = output_base / "genres" / "folk-horror"
         genre_dir.mkdir(parents=True)
-        (genre_dir / "region.raw.md").write_text("Folk horror region description...")
+        (genre_dir / "region.md").write_text("Folk horror region description...")
 
         extract_primitives(
             client=client,
@@ -39,7 +39,7 @@ class TestExtractPrimitives:
             prompts_dir=prompts_dir,
         )
 
-        out_file = output_base / "discovery" / "archetypes" / "folk-horror.raw.md"
+        out_file = output_base / "discovery" / "archetypes" / "folk-horror.md"
         assert out_file.exists()
         assert "Outsider" in out_file.read_text()
 
@@ -79,8 +79,8 @@ class TestSynthesizeCluster:
         prompts_dir = _make_mock_prompts(output_base)
         disc_dir = output_base / "discovery" / "archetypes"
         disc_dir.mkdir(parents=True)
-        (disc_dir / "folk-horror.raw.md").write_text("Folk horror archetypes...")
-        (disc_dir / "cosmic-horror.raw.md").write_text("Cosmic horror archetypes...")
+        (disc_dir / "folk-horror.md").write_text("Folk horror archetypes...")
+        (disc_dir / "cosmic-horror.md").write_text("Cosmic horror archetypes...")
 
         synthesize_cluster(
             client=client,
@@ -92,7 +92,7 @@ class TestSynthesizeCluster:
             prompts_dir=prompts_dir,
         )
 
-        out_file = disc_dir / "cluster-horror.raw.md"
+        out_file = disc_dir / "cluster-horror.md"
         assert out_file.exists()
 
         events = read_events(log_path)

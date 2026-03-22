@@ -215,7 +215,7 @@ def structure_spatial(
 
         for category in ordered_categories:
             manifest_key = f"{setting_slug}/{category}"
-            raw_path = setting_dir / f"{category}.raw.md"
+            raw_path = setting_dir / f"{category}.md"
             output_path = setting_dir / f"{category}.json"
 
             if not raw_path.exists():

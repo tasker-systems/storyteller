@@ -69,7 +69,7 @@ class TestElicitGenre:
 
         region_dir = genre_output_dir / "folk-horror"
         region_dir.mkdir()
-        raw_path = region_dir / "region.raw.md"
+        raw_path = region_dir / "region.md"
         raw_path.write_text("existing content")
 
         # Pre-populate manifest with a matching entry.
@@ -170,7 +170,7 @@ class TestElicitGenre:
 
         assert mock_ollama.generate.call_count >= 1
         region_dir = genre_output_dir.parent / "genres" / "folk-horror"
-        assert (region_dir / "region.raw.md").exists()
+        assert (region_dir / "region.md").exists()
 
 
 class TestStructureGenre:
@@ -181,7 +181,7 @@ class TestStructureGenre:
 
         region_dir = genre_output_dir / "folk-horror"
         region_dir.mkdir()
-        (region_dir / "region.raw.md").write_text("content")
+        (region_dir / "region.md").write_text("content")
         (region_dir / "region.json").write_text('{"structured": true}')
 
         manifest = {
@@ -216,7 +216,7 @@ class TestStructureGenre:
 
         region_dir = genre_output_dir / "folk-horror"
         region_dir.mkdir()
-        (region_dir / "region.raw.md").write_text("# Folk Horror\n\nContent.")
+        (region_dir / "region.md").write_text("# Folk Horror\n\nContent.")
         (region_dir / "region.json").write_text('{"old": true}')
 
         manifest = {
@@ -286,7 +286,7 @@ class TestElicitSpatial:
 
         setting_dir = spatial_output_dir / "family-home"
         setting_dir.mkdir()
-        (setting_dir / "setting-type.raw.md").write_text("existing")
+        (setting_dir / "setting-type.md").write_text("existing")
 
         manifest = {
             "entries": {
@@ -346,7 +346,7 @@ class TestElicitSpatial:
 
         assert mock_ollama.generate.call_count >= 1
         setting_dir = spatial_output_dir.parent / "spatial" / "family-home"
-        assert (setting_dir / "setting-type.raw.md").exists()
+        assert (setting_dir / "setting-type.md").exists()
 
 
 class TestBuildSpatialContext:
@@ -440,7 +440,7 @@ class TestElaborateGenre:
         prompts_dir = _make_genre_mock_prompts(output_base)
         genre_dir = output_base / "genres" / "folk-horror"
         genre_dir.mkdir(parents=True)
-        (genre_dir / "region.raw.md").write_text("Folk horror description...")
+        (genre_dir / "region.md").write_text("Folk horror description...")
         prim_dir = output_base / "archetypes" / "mentor"
         prim_dir.mkdir(parents=True)
         (prim_dir / "raw.md").write_text("Standalone mentor description...")
@@ -455,7 +455,7 @@ class TestElaborateGenre:
             prompts_dir=prompts_dir,
         )
 
-        out_file = genre_dir / "elaborations" / "archetypes" / "mentor.raw.md"
+        out_file = genre_dir / "elaborations" / "archetypes" / "mentor.md"
         assert out_file.exists()
 
         from narrative_data.pipeline.events import read_events
@@ -473,7 +473,7 @@ class TestElicitNative:
         prompts_dir = _make_genre_mock_prompts(output_base)
         genre_dir = output_base / "genres" / "folk-horror"
         genre_dir.mkdir(parents=True)
-        (genre_dir / "region.raw.md").write_text("Folk horror description...")
+        (genre_dir / "region.md").write_text("Folk horror description...")
 
         elicit_native(
             client=client,
@@ -484,7 +484,7 @@ class TestElicitNative:
             prompts_dir=prompts_dir,
         )
 
-        out_file = genre_dir / "tropes.raw.md"
+        out_file = genre_dir / "tropes.md"
         assert out_file.exists()
 
         from narrative_data.pipeline.events import read_events

@@ -70,12 +70,12 @@ class TestManifest:
 class TestArchiveExisting:
     def test_no_archive_when_file_missing(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import archive_existing
-        result = archive_existing(tmp_path / "nonexistent.raw.md")
+        result = archive_existing(tmp_path / "nonexistent.md")
         assert result is None
 
     def test_archives_to_v1(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import archive_existing
-        original = tmp_path / "region.raw.md"
+        original = tmp_path / "region.md"
         original.write_text("v1 content")
         archived = archive_existing(original)
         assert archived == tmp_path / "region.raw.v1.md"
@@ -86,7 +86,7 @@ class TestArchiveExisting:
     def test_archives_to_v2_when_v1_exists(self, tmp_path: Path):
         from narrative_data.pipeline.invalidation import archive_existing
         (tmp_path / "region.raw.v1.md").write_text("old v1")
-        original = tmp_path / "region.raw.md"
+        original = tmp_path / "region.md"
         original.write_text("v2 content")
         archived = archive_existing(original)
         assert archived == tmp_path / "region.raw.v2.md"
@@ -97,7 +97,7 @@ class TestArchiveExisting:
         from narrative_data.pipeline.invalidation import archive_existing
         # Simulate three passes
         for i in range(1, 4):
-            original = tmp_path / "region.raw.md"
+            original = tmp_path / "region.md"
             original.write_text(f"pass {i} content")
             archived = archive_existing(original)
             assert archived == tmp_path / f"region.raw.v{i}.md"

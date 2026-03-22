@@ -37,7 +37,7 @@ def run_elicitation(
     prompt_hash = compute_prompt_hash(prompt)
     raw_content = client.generate(model=model, prompt=prompt)
     output_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = output_dir / f"{category}.raw.md"
+    raw_path = output_dir / f"{category}.md"
     archived = archive_existing(raw_path)
     raw_path.write_text(raw_content)
     content_digest = compute_content_digest(raw_content)

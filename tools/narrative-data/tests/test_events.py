@@ -34,7 +34,7 @@ class TestAppendEvent:
             phase=1,
             type="archetypes",
             genre="folk-horror",
-            output="discovery/archetypes/folk-horror.raw.md",
+            output="discovery/archetypes/folk-horror.md",
             content_digest="sha256:abc",
         )
         lines = log_path.read_text().strip().split("\n")
@@ -209,7 +209,7 @@ class TestFormatStatus:
                 phase=1,
                 type="archetypes",
                 genre=genre,
-                output=f"x/{genre}.raw.md",
+                output=f"x/{genre}.md",
                 content_digest="sha256:a",
             )
         status = format_status(log_path, "archetypes")
@@ -225,7 +225,7 @@ class TestFormatStatus:
                 phase=2,
                 type="archetypes",
                 cluster=cluster,
-                output=f"x/cluster-{cluster}.raw.md",
+                output=f"x/cluster-{cluster}.md",
                 content_digest="sha256:a",
                 primitives_found=8,
             )

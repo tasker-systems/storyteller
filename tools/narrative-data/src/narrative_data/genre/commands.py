@@ -223,7 +223,7 @@ def structure_genre(
 
         for category in ordered_categories:
             manifest_key = f"{region_slug}/{category}"
-            raw_path = region_dir / f"{category}.raw.md"
+            raw_path = region_dir / f"{category}.md"
             output_path = region_dir / f"{category}.json"
 
             if not raw_path.exists():
@@ -289,9 +289,9 @@ def elaborate_genre(
 
     for genre_slug in genres:
         genre_dir = output_base / "genres" / genre_slug
-        region_path = genre_dir / "region.raw.md"
+        region_path = genre_dir / "region.md"
         if not region_path.exists():
-            console.print(f"[dim]  Skipping {genre_slug} — no region.raw.md[/dim]")
+            console.print(f"[dim]  Skipping {genre_slug} — no region.md[/dim]")
             continue
 
         genre_content = region_path.read_text()
@@ -299,7 +299,7 @@ def elaborate_genre(
         elab_dir.mkdir(parents=True, exist_ok=True)
 
         for prim_slug in primitives:
-            output_path = elab_dir / f"{prim_slug}.raw.md"
+            output_path = elab_dir / f"{prim_slug}.md"
             prim_path = output_base / primitive_type / prim_slug / "raw.md"
 
             context: dict[str, str] = {"genre_description": genre_content}
@@ -378,13 +378,13 @@ def elicit_native(
 
     for genre_slug in genres:
         genre_dir = output_base / "genres" / genre_slug
-        region_path = genre_dir / "region.raw.md"
+        region_path = genre_dir / "region.md"
         if not region_path.exists():
-            console.print(f"[dim]  Skipping {genre_slug} — no region.raw.md[/dim]")
+            console.print(f"[dim]  Skipping {genre_slug} — no region.md[/dim]")
             continue
 
         genre_content = region_path.read_text()
-        output_path = genre_dir / f"{native_type}.raw.md"
+        output_path = genre_dir / f"{native_type}.md"
         genre_name = slug_to_name(genre_slug)
 
         context: dict[str, str] = {"genre_description": genre_content}

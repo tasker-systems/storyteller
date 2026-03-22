@@ -54,21 +54,24 @@ def is_stale(
 
 
 def archive_existing(path: Path) -> Path | None:
-    """Archive an existing file by renaming to .v{N} before overwriting.
+    """Archive an existing file by renaming to .raw.v{N}.md before overwriting.
 
     Returns the archive path, or None if no file existed to archive.
     Finds the next available version number (v1, v2, ...).
+    Archive files always use the .raw.v{N}.md convention regardless of
+    whether the source file contained .raw. in its name.
     """
     if not path.exists():
         return None
     # Find next version number
-    stem = path.stem  # e.g., "region.raw"
-    suffix = path.suffix  # e.g., ".md"
+    # Archive naming is always <stem>.raw.v{N}.md — version archives keep the
+    # .raw. infix to distinguish them from the canonical .md artifacts.
+    stem = path.stem  # e.g., "region" (after rename from region.raw.md)
     parent = path.parent
     version = 1
-    while (parent / f"{stem}.v{version}{suffix}").exists():
+    while (parent / f"{stem}.raw.v{version}.md").exists():
         version += 1
-    archive_path = parent / f"{stem}.v{version}{suffix}"
+    archive_path = parent / f"{stem}.raw.v{version}.md"
     path.rename(archive_path)
     return archive_path
 

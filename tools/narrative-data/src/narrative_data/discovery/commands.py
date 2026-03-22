@@ -23,22 +23,22 @@ console = Console()
 # Maps type -> list of (label, source_path_fn) pairs.
 _ENRICHED_CONTEXT: dict[str, list[tuple[str, str]]] = {
     "archetype-dynamics": [
-        ("archetypes", "discovery/archetypes/{genre_slug}.raw.md"),
-        ("dynamics", "discovery/dynamics/{genre_slug}.raw.md"),
+        ("archetypes", "discovery/archetypes/{genre_slug}.md"),
+        ("dynamics", "discovery/dynamics/{genre_slug}.md"),
     ],
     "spatial-topology": [
-        ("settings", "discovery/settings/{genre_slug}.raw.md"),
+        ("settings", "discovery/settings/{genre_slug}.md"),
     ],
     "place-entities": [
-        ("settings", "discovery/settings/{genre_slug}.raw.md"),
-        ("spatial_topology", "discovery/spatial-topology/{genre_slug}.raw.md"),
+        ("settings", "discovery/settings/{genre_slug}.md"),
+        ("spatial_topology", "discovery/spatial-topology/{genre_slug}.md"),
     ],
 }
 
 
 def _assemble_genre_content(output_base: Path, genre_slug: str, primitive_type: str) -> str:
     """Assemble genre content for a discovery prompt, including additional sources if needed."""
-    region_path = output_base / "genres" / genre_slug / "region.raw.md"
+    region_path = output_base / "genres" / genre_slug / "region.md"
     content = region_path.read_text()
 
     enrichments = _ENRICHED_CONTEXT.get(primitive_type, [])
@@ -72,12 +72,12 @@ def extract_primitives(
     manifest_path = disc_dir / "manifest.json"
 
     for genre_slug in genres:
-        region_path = output_base / "genres" / genre_slug / "region.raw.md"
+        region_path = output_base / "genres" / genre_slug / "region.md"
         if not region_path.exists():
-            console.print(f"[dim]  Skipping {genre_slug} — no region.raw.md[/dim]")
+            console.print(f"[dim]  Skipping {genre_slug} — no region.md[/dim]")
             continue
 
-        output_path = disc_dir / f"{genre_slug}.raw.md"
+        output_path = disc_dir / f"{genre_slug}.md"
         manifest_key = f"{genre_slug}"
 
         # Assemble genre content — some types need additional context sources
@@ -143,11 +143,11 @@ def synthesize_cluster(
     """Phase 2: Synthesize per-genre extractions into a deduplicated cluster list."""
     builder = PromptBuilder(prompts_dir=prompts_dir) if prompts_dir else PromptBuilder()
     disc_dir = output_base / "discovery" / primitive_type
-    output_path = disc_dir / f"cluster-{cluster_name}.raw.md"
+    output_path = disc_dir / f"cluster-{cluster_name}.md"
 
     extractions: dict[str, str] = {}
     for genre_slug in genres:
-        ext_path = disc_dir / f"{genre_slug}.raw.md"
+        ext_path = disc_dir / f"{genre_slug}.md"
         if ext_path.exists():
             extractions[genre_slug] = ext_path.read_text()
         else:
