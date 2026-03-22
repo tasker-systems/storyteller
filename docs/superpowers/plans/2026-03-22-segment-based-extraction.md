@@ -53,9 +53,11 @@ tools/narrative-data/tests/fixtures/sample-narrative-shapes.md
 
 ### Files to Modify
 ```
+tools/narrative-data/src/narrative_data/pipeline/structure.py          — add run_segment_extraction() for segment-level calls
 tools/narrative-data/src/narrative_data/pipeline/structure_commands.py  — rewire to slice → extract → aggregate
 tools/narrative-data/src/narrative_data/prompts.py                     — add build_segment_structure()
 tools/narrative-data/tests/test_structure_commands.py                  — update for segment-based flow
+tools/narrative-data/tests/test_pipeline.py                            — add run_segment_extraction tests
 ```
 
 ---
@@ -264,7 +266,7 @@ git add -A && git commit -m "feat: add slicer with genre region segmentation"
 - [ ] **Step 1: Create fixtures**
 
 Three new fixture files:
-- `sample-archetypes.md` — 3 archetypes with H4 headings, bold labels, plus `### _commentary` at end. ~60 lines.
+- `sample-archetypes.md` — 3 archetypes with H4 headings, bold labels, plus `### _commentary` at end. ~60 lines. **Also serves as the tropes fixture** since tropes share the identical H4 heading structure.
 - `sample-cluster-archetypes.md` — 3 cluster archetypes with H3 headings. ~50 lines.
 - `sample-narrative-shapes.md` — 2 narrative shapes with H2 headings and H3 subsections (including beats table). ~60 lines.
 
@@ -335,7 +337,23 @@ def slice_file(
         raise ValueError(f"Unknown doc_type: {doc_type}")
 ```
 
-- [ ] **Step 6: Run full slicer test suite, ruff, commit**
+- [ ] **Step 6: Add parameterized test for slice_file dispatch**
+
+```python
+import pytest
+from narrative_data.pipeline.slicer import slice_file
+
+@pytest.mark.parametrize("doc_type", ["genre-region", "discovery", "cluster", "narrative-shapes", "tropes"])
+def test_slice_file_dispatch(doc_type, tmp_path):
+    # Each doc_type needs an appropriate fixture — use the right sample file
+    ...
+
+def test_slice_file_unknown_type_raises(tmp_path):
+    with pytest.raises(ValueError, match="Unknown doc_type"):
+        slice_file(tmp_path / "dummy.md", tmp_path / "out", "nonexistent")
+```
+
+- [ ] **Step 7: Run full slicer test suite, ruff, commit**
 
 ```bash
 uv run pytest tests/test_slicer.py -v && uv run ruff check . && uv run ruff format --check .
@@ -609,8 +627,8 @@ def aggregate_discovery(segment_dir: Path, schema: type[BaseModel]) -> list:
     """Assemble entity array from segment JSONs."""
     entities = []
     for seg_json in sorted(segment_dir.glob("segment-*.json")):
-        if seg_json.name == "segments-manifest.json":
-            continue
+        # Note: segments-manifest.json is named "segments-" not "segment-"
+        # so the glob naturally excludes it
         data = json.loads(seg_json.read_text())
         entities.append(schema.model_validate(data))
     return entities
@@ -625,7 +643,70 @@ git add -A && git commit -m "feat: add segment aggregator with genre dimensions 
 
 ---
 
-### Task 6: Wire orchestration to use segments
+### Task 6: Add run_segment_extraction() to structure.py
+
+**Files:**
+- Modify: `tools/narrative-data/src/narrative_data/pipeline/structure.py`
+- Modify: `tools/narrative-data/tests/test_pipeline.py`
+
+The existing `run_structuring()` reads a full source file and builds prompts via `build_structure()`. Segments need a different path: the content is already sliced, the schema is a sub-schema, and prompts come from `build_segment_structure()`.
+
+- [ ] **Step 1: Write failing tests for run_segment_extraction**
+
+```python
+class TestRunSegmentExtraction:
+    def test_extracts_segment_to_json(self, mock_client, tmp_path):
+        """Given a segment .md, produces a sibling .json."""
+        ...
+
+    def test_uses_build_segment_structure(self, mock_client, tmp_path):
+        """Uses segment prompt path, not monolithic prompt."""
+        ...
+
+    def test_replace_on_retry(self, mock_client, tmp_path):
+        """Same replace-not-append behavior as run_structuring."""
+        ...
+```
+
+- [ ] **Step 2: Implement run_segment_extraction()**
+
+```python
+def run_segment_extraction(
+    client: OllamaClient,
+    segment_path: Path,
+    output_path: Path,
+    schema: dict,
+    segment_prompt_slug: str,
+    model: str = STRUCTURING_MODEL,
+    max_retries: int = 3,
+) -> dict[str, Any]:
+    """Extract structured JSON from a single segment.
+
+    Unlike run_structuring(), this:
+    - Takes a pre-computed schema dict (not a Pydantic type)
+    - Uses build_segment_structure() for prompts
+    - Does NOT validate against Pydantic (aggregator does that)
+    - Reads segment content, stripping YAML frontmatter
+    """
+    raw_content = _strip_frontmatter(segment_path.read_text())
+    base_prompt = PromptBuilder().build_segment_structure(
+        segment_prompt_slug, raw_content, schema
+    )
+    # ... same retry loop as run_structuring but writes raw JSON
+```
+
+Key difference: segment extraction writes the raw JSON output without Pydantic validation — validation happens at aggregation time when all segments are assembled. This avoids needing to import every sub-model into structure.py.
+
+- [ ] **Step 3: Run tests, ruff, commit**
+
+```bash
+uv run pytest tests/test_pipeline.py -v && uv run ruff check . && uv run ruff format --check .
+git add -A && git commit -m "feat: add run_segment_extraction for segment-level LLM calls"
+```
+
+---
+
+### Task 7: Wire orchestration to use segments
 
 **Files:**
 - Modify: `tools/narrative-data/src/narrative_data/pipeline/structure_commands.py`
@@ -633,9 +714,9 @@ git add -A && git commit -m "feat: add segment aggregator with genre dimensions 
 
 This is the integration task — connecting slicer → extraction → aggregation in the existing orchestration commands.
 
-- [ ] **Step 1: Add segment configuration to TypeConfig**
+- [ ] **Step 1: Add segment configuration to TypeConfig and SEGMENT_MAP**
 
-Extend `TypeConfig` with fields the segment pipeline needs:
+Extend `TypeConfig`:
 
 ```python
 @dataclass
@@ -646,24 +727,114 @@ class TypeConfig:
     file_pattern: str | None = None
     is_collection: bool = True
     prompt_slug: str = field(default="")
-    doc_type: str = "discovery"  # NEW: slicer dispatch key
-    segment_schemas: dict | None = None  # NEW: for genre-region segment→schema mapping
+    doc_type: str = "discovery"  # slicer dispatch key
 ```
 
-The `doc_type` maps to the slicer dispatch: `"genre-region"`, `"discovery"`, `"cluster"`, `"tropes"`, `"narrative-shapes"`.
+All 12 types use the segment pipeline. The `doc_type` field determines which slicer is used:
+- `genre-dimensions`: `doc_type="genre-region"`
+- `tropes`: `doc_type="tropes"`
+- `narrative-shapes`: `doc_type="narrative-shapes"`
+- All 9 discovery types: `doc_type="discovery"` (default)
 
-For genre-dimensions, `segment_schemas` maps segment names to their sub-schemas and prompt slugs. For discovery/cluster/genre-native types, the per-entity schema and a single prompt slug suffice.
+For genre-region, define a separate `GENRE_REGION_SEGMENT_MAP` that maps segment names to sub-schemas and prompt slugs:
+
+```python
+from narrative_data.schemas.genre_dimensions import (
+    AestheticDimensions, TonalDimensions, TemporalDimensions,
+    ThematicDimensions, AgencyDimensions, WorldAffordances,
+    EpistemologicalDimensions, NarrativeContract,
+)
+
+@dataclass
+class SegmentConfig:
+    schema_source: dict  # pre-computed JSON schema dict
+    prompt_slug: str     # under prompts/structure/segments/
+
+GENRE_REGION_SEGMENT_MAP: dict[str, SegmentConfig] = {
+    "meta": SegmentConfig(
+        schema_source={"type": "object", "properties": {
+            "genre_slug": {"type": "string"},
+            "genre_name": {"type": "string"},
+            "classification": {"type": "string", "enum": ["standalone_region", "constraint_layer", "hybrid_modifier"]},
+            "constraint_layer_type": {"type": "string"},
+            "modifies": {"type": "array", "items": {"type": "string"}},
+            "flavor_text": {"type": "string"},
+        }, "required": ["genre_slug", "genre_name", "classification"]},
+        prompt_slug="genre-region-meta",
+    ),
+    "aesthetic": SegmentConfig(
+        schema_source=AestheticDimensions.model_json_schema(),
+        prompt_slug="genre-region-aesthetic",
+    ),
+    "tonal": SegmentConfig(
+        schema_source=TonalDimensions.model_json_schema(),
+        prompt_slug="genre-region-tonal",
+    ),
+    "temporal": SegmentConfig(
+        schema_source=TemporalDimensions.model_json_schema(),
+        prompt_slug="genre-region-temporal",
+    ),
+    "thematic": SegmentConfig(
+        schema_source=ThematicDimensions.model_json_schema(),
+        prompt_slug="genre-region-thematic",
+    ),
+    "agency": SegmentConfig(
+        schema_source=AgencyDimensions.model_json_schema(),
+        prompt_slug="genre-region-agency",
+    ),
+    "epistemological": SegmentConfig(
+        schema_source=EpistemologicalDimensions.model_json_schema(),
+        prompt_slug="genre-region-epistemological",
+    ),
+    "world-affordances": SegmentConfig(
+        schema_source=WorldAffordances.model_json_schema(),
+        prompt_slug="genre-region-world-affordances",
+    ),
+    "locus-of-power": SegmentConfig(
+        schema_source={"type": "array", "items": {"type": "string", "enum": ["place", "person", "system", "relationship", "cosmos"]}, "maxItems": 3},
+        prompt_slug="genre-region-locus-of-power",
+    ),
+    "narrative-structure": SegmentConfig(
+        schema_source={"type": "array", "items": {"type": "string", "enum": ["quest", "mystery", "tragedy", "comedy", "romance", "horror"]}, "maxItems": 3},
+        prompt_slug="genre-region-narrative-structure",
+    ),
+    "narrative-contracts": SegmentConfig(
+        schema_source={"type": "array", "items": NarrativeContract.model_json_schema()},
+        prompt_slug="genre-region-narrative-contracts",
+    ),
+    "state-variables": SegmentConfig(
+        schema_source={"type": "array", "items": StateVariableTemplate.model_json_schema()},
+        prompt_slug="genre-region-state-variables",
+    ),
+    "boundaries": SegmentConfig(
+        schema_source={"type": "array", "items": GenreBoundary.model_json_schema()},
+        prompt_slug="genre-region-boundaries",
+    ),
+}
+```
+
+Update the `genre-dimensions` entry in `TYPE_REGISTRY` to use `doc_type="genre-region"`. Update `tropes` to `doc_type="tropes"` and `narrative-shapes` to `doc_type="narrative-shapes"`.
 
 - [ ] **Step 2: Update structure_type() to use segment pipeline**
 
-The flow becomes:
-1. Resolve source path (unchanged)
-2. Slice: `slice_file(source_path, segment_dir, config.doc_type)`
-3. Extract each segment: `run_structuring()` per segment with the segment's sub-schema
-4. Aggregate: `aggregate_genre_dimensions()` or `aggregate_discovery()`
-5. Write final `.json`
+All types now go through the segment pipeline. The flow for each genre:
 
-Rich console output shows per-segment progress:
+1. Resolve source path (unchanged)
+2. Resolve segment directory: `source_path.parent / source_path.stem` (e.g., `genres/folk-horror/region/`)
+3. Slice: `slice_file(source_path, segment_dir, config.doc_type, force=force)`
+4. For each segment produced:
+   - Determine schema + prompt slug:
+     - **genre-region**: look up in `GENRE_REGION_SEGMENT_MAP[segment.name]`
+     - **discovery/cluster/tropes/shapes**: use `config.per_genre.model_json_schema()` + generic prompt slug (`"discovery-entity"`, `"trope-entity"`, etc.)
+   - Call `run_segment_extraction(client, segment.path, segment_json_path, schema, prompt_slug, model=model)`
+   - Print per-segment progress
+5. Aggregate:
+   - **genre-region**: `aggregate_genre_dimensions(segment_dir)`
+   - **all others**: `aggregate_discovery(segment_dir, config.per_genre)`
+6. Write final `.json` from aggregated result
+7. Print summary
+
+Rich console output:
 ```
 [cyan]Structuring genre-dimensions for folk-horror...[/cyan]
   [dim]Slicing region.md → 13 segments[/dim]
@@ -674,17 +845,20 @@ Rich console output shows per-segment progress:
 [green]✓ folk-horror[/green]
 ```
 
+**`force` propagation:** `force=True` means re-slice AND re-extract AND re-aggregate. Without force, each stage checks its own staleness (slicer via manifest hash, extraction via segment JSON existence).
+
 - [ ] **Step 3: Update structure_clusters() similarly**
 
-Same pattern but uses `slice_cluster()` and `aggregate_discovery()` with the cluster schema.
+Same pattern but uses `doc_type="cluster"`, `slice_cluster()`, and `aggregate_discovery()` with the cluster schema. Prompt slug: `"discovery-entity-cluster"`.
 
 - [ ] **Step 4: Update tests**
 
-Update `test_structure_commands.py` to account for the segment-based flow. Key changes:
-- Mock `slice_file` to produce predictable segment files
-- Mock `run_structuring` to produce segment JSONs
-- Verify aggregation is called
-- Test the full slice → extract → aggregate pipeline with mocks
+Update `test_structure_commands.py` to account for the segment-based flow:
+- Mock `slice_file` to produce predictable segment SegmentInfo lists
+- Mock `run_segment_extraction` to write segment JSONs
+- Verify aggregation produces the final `.json`
+- Test force propagation
+- Test per-segment progress output
 
 - [ ] **Step 5: Run full test suite, ruff, commit**
 
@@ -695,7 +869,7 @@ git add -A && git commit -m "feat: wire segment pipeline into structure orchestr
 
 ---
 
-### Task 7: Smoke test — folk-horror genre dimensions
+### Task 8: Smoke test — folk-horror genre dimensions
 
 **Files:** No new files — this is a validation run.
 
@@ -750,7 +924,7 @@ git add -A && git commit -m "test: validate segment-based extraction on folk-hor
 
 ---
 
-### Task 8: Final verification
+### Task 9: Final verification
 
 - [ ] **Step 1: Run full test suite**
 
