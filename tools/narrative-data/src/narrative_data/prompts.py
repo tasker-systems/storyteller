@@ -94,3 +94,18 @@ class PromptBuilder:
         prompt = prompt.replace("{raw_content}", raw_content)
         prompt = prompt.replace("{schema}", json.dumps(schema, indent=2))
         return prompt
+
+    def build_segment_structure(
+        self,
+        segment_type: str,
+        raw_content: str,
+        schema: dict,
+    ) -> str:
+        """Build a segment-level structuring prompt."""
+        template_path = self.prompts_dir / "structure" / "segments" / f"{segment_type}.md"
+        if not template_path.exists():
+            raise FileNotFoundError(f"Segment prompt template not found: {template_path}")
+        prompt = template_path.read_text()
+        prompt = prompt.replace("{raw_content}", raw_content)
+        prompt = prompt.replace("{schema}", json.dumps(schema, indent=2))
+        return prompt

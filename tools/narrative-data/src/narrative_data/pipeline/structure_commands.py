@@ -323,8 +323,7 @@ def structure_clusters(
 
         model_label = f" ({model})" if model else ""
         console.print(
-            f"[cyan]Structuring {type_slug} for cluster"
-            f" '{cluster_name}'{model_label}...[/cyan]"
+            f"[cyan]Structuring {type_slug} for cluster '{cluster_name}'{model_label}...[/cyan]"
         )
         kwargs: dict = {
             "client": client,

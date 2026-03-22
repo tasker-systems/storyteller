@@ -1,4 +1,4 @@
-"""Tests for PromptBuilder.build_structure()."""
+"""Tests for PromptBuilder.build_structure() and build_segment_structure()."""
 
 from pathlib import Path
 
@@ -50,3 +50,51 @@ class TestBuildStructure:
             schema={"type": "array"},
         )
         assert "Cluster content" in result
+
+
+class TestBuildSegmentStructure:
+    def test_loads_from_segments_subdirectory(self, tmp_path):
+        seg_dir = tmp_path / "structure" / "segments"
+        seg_dir.mkdir(parents=True)
+        (seg_dir / "genre-region-aesthetic.md").write_text(
+            "Extract:\n{raw_content}\nSchema:\n{schema}"
+        )
+        builder = PromptBuilder(prompts_dir=tmp_path)
+        result = builder.build_segment_structure(
+            "genre-region-aesthetic", "content here", {"type": "object"}
+        )
+        assert "content here" in result
+        assert '"type": "object"' in result
+
+    def test_missing_template_raises(self, tmp_path):
+        builder = PromptBuilder(prompts_dir=tmp_path)
+        with pytest.raises(FileNotFoundError):
+            builder.build_segment_structure("nonexistent", "content", {})
+
+    def test_all_segment_prompts_load(self):
+        """Verify all 17 segment prompt templates load without error."""
+        builder = PromptBuilder()
+        segment_types = [
+            "genre-region-meta",
+            "genre-region-aesthetic",
+            "genre-region-tonal",
+            "genre-region-temporal",
+            "genre-region-thematic",
+            "genre-region-agency",
+            "genre-region-epistemological",
+            "genre-region-world-affordances",
+            "genre-region-locus-of-power",
+            "genre-region-narrative-structure",
+            "genre-region-narrative-contracts",
+            "genre-region-state-variables",
+            "genre-region-boundaries",
+            "discovery-entity",
+            "discovery-entity-cluster",
+            "trope-entity",
+            "narrative-shape-entity",
+        ]
+        for seg_type in segment_types:
+            result = builder.build_segment_structure(seg_type, "test content", {"type": "object"})
+            assert "{raw_content}" not in result
+            assert "{schema}" not in result
+            assert "test content" in result
