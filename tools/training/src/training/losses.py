@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Multi-head loss with per-region loss functions.
 
 Each head's output is sliced from the flat 42-element label vector and

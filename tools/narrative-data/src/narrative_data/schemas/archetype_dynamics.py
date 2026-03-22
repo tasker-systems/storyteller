@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Archetype dynamics schemas — per-genre and cluster models for archetype pair relationships.
 
 Archetype dynamics describe the structured relational forces between specific archetype

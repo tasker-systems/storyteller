@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Scene profile schemas — per-genre and cluster models for scene type profiles.
 
 Scene profiles describe the dimensional properties of recurring scene types within a

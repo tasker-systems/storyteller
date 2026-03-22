@@ -142,4 +142,6 @@ Creative works and training data live in the private [`storyteller-data`](https:
 
 ## License
 
-See [LICENSE](LICENSE).
+Storyteller is dual-licensed under the [GNU Affero General Public License v3.0](LICENSE) and a commercial license. See [LICENSING.md](LICENSING.md) for full details.
+
+Contributions are accepted under the [Contributor License Agreement](CLA.md).

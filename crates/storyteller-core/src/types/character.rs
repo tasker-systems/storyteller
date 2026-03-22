@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Character tensor and sheet types — everything needed to instantiate a character agent.
 //!
 //! See: `docs/technical/tensor-schema-spec.md`, `docs/workshop/character-bramblehoof.md`,

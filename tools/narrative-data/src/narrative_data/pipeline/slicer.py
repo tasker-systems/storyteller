@@ -1,7 +1,11 @@
-"""Deterministic markdown slicer for genre region files.
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
 
-Splits a genre region .md file into focused segments based on heading levels
-and bold dimension group markers. No LLM involved — pure structural parsing.
+"""Deterministic markdown slicer for genre region and other structured files.
+
+Splits markdown files into focused segments based on heading levels and bold
+dimension group markers. No LLM involved — pure structural parsing.
 """
 
 import hashlib
@@ -517,3 +521,260 @@ def _emit_narrative_contracts(
             line_end=section_end,
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# Heading-based slug generation
+# ---------------------------------------------------------------------------
+
+_HEADING_PREFIX = re.compile(r"^#{1,6}\s+\d+\.\s*")
+
+
+def _heading_to_slug(heading_line: str) -> str:
+    """Convert a numbered heading line to a kebab-case slug.
+
+    Strips the leading hashes and number prefix, then lowercases and
+    replaces spaces with hyphens.
+
+    Examples:
+        "#### 1. The Unwilling Vessel" → "the-unwilling-vessel"
+        "## 2. The Spiral of Diminishing Certainty" → "the-spiral-of-diminishing-certainty"
+    """
+    text = heading_line.strip()
+    # Remove heading markers and number prefix
+    text = _HEADING_PREFIX.sub("", text)
+    text = text.strip()
+    # Lowercase
+    text = text.lower()
+    # Replace spaces with hyphens; strip non-alphanumeric except hyphens
+    text = re.sub(r"\s+", "-", text)
+    text = re.sub(r"[^a-z0-9\-]", "", text)
+    # Collapse multiple hyphens
+    text = re.sub(r"-{2,}", "-", text)
+    return text.strip("-")
+
+
+# ---------------------------------------------------------------------------
+# Generic heading-level slicer (used by discovery, cluster, genre-native)
+# ---------------------------------------------------------------------------
+
+_HEADING_PATTERNS: dict[int, re.Pattern[str]] = {
+    level: re.compile(r"^" + "#" * level + r"\s+\d+\.\s+") for level in range(1, 7)
+}
+
+
+def _slice_on_heading_level(
+    source_path: Path,
+    output_dir: Path,
+    heading_level: int,
+    force: bool = False,
+    source_rel: str | None = None,
+) -> list[SegmentInfo]:
+    """Internal: split a file on numbered headings at the given level (1–6).
+
+    Commentary / suggestions sections (### _commentary, ### _suggestions, etc.)
+    are dropped before splitting.
+
+    Args:
+        source_path: Path to the source .md file.
+        output_dir: Directory to write segment files into.
+        heading_level: Number of # characters to match (1 = H1, 2 = H2, …).
+        force: Re-slice even if manifest is fresh.
+        source_rel: Relative path to use in frontmatter.
+
+    Returns:
+        List of SegmentInfo for each entity segment produced.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = output_dir / "segments-manifest.json"
+    current_hash = _file_hash(source_path)
+
+    if source_rel is None:
+        source_rel = source_path.name
+
+    # Staleness check
+    if not force and manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        if manifest.get("source_hash") == current_hash:
+            return _reconstruct_from_manifest(manifest, output_dir, source_path)
+
+    raw_lines = source_path.read_text().splitlines()
+    heading_pattern = _HEADING_PATTERNS[heading_level]
+
+    # Find end-of-content (drop commentary/suggestions)
+    content_end = len(raw_lines)
+    for i, line in enumerate(raw_lines):
+        if _TAIL_MARKERS.match(line.strip()):
+            end = i
+            while end > 0 and raw_lines[end - 1].strip() in ("", "---", "***"):
+                end -= 1
+            content_end = end
+            break
+
+    # Find all numbered heading positions within content
+    heading_positions: list[tuple[int, str]] = []
+    for i, line in enumerate(raw_lines[:content_end]):
+        stripped = line.strip()
+        if heading_pattern.match(stripped):
+            heading_positions.append((i, stripped))
+
+    segments: list[SegmentInfo] = []
+
+    for pos_idx, (line_idx, heading_text) in enumerate(heading_positions):
+        slug = _heading_to_slug(heading_text)
+
+        # End of this entity: start of next heading or content_end
+        if pos_idx + 1 < len(heading_positions):
+            raw_end = heading_positions[pos_idx + 1][0]
+        else:
+            raw_end = content_end
+
+        # Trim trailing blank lines and horizontal rules
+        end_idx = raw_end
+        while end_idx > line_idx + 1 and raw_lines[end_idx - 1].strip() in (
+            "",
+            "---",
+            "***",
+        ):
+            end_idx -= 1
+
+        block_lines = raw_lines[line_idx:end_idx]
+        seg_path = _write_segment(
+            output_dir,
+            slug,
+            block_lines,
+            source_rel,
+            line_idx + 1,
+            end_idx,
+        )
+        segments.append(
+            SegmentInfo(
+                name=slug,
+                path=seg_path,
+                source_path=source_path,
+                line_start=line_idx + 1,
+                line_end=end_idx,
+            )
+        )
+
+    # Write manifest
+    manifest: dict = {
+        "source_hash": current_hash,
+        "source_path": source_rel,
+        "segments": {s.name: s.path.name for s in segments},
+        "line_ranges": {s.name: [s.line_start, s.line_end] for s in segments},
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+    return segments
+
+
+# ---------------------------------------------------------------------------
+# Public API: per-document-type slicers
+# ---------------------------------------------------------------------------
+
+
+def slice_discovery(
+    source_path: Path,
+    output_dir: Path,
+    force: bool = False,
+) -> list[SegmentInfo]:
+    """Split a discovery per-genre file on H4 numbered entity headers.
+
+    Discovery files contain per-entity sections like ``#### 1. The Unwilling
+    Vessel``.  Commentary (``### _commentary``) and suggestions sections are
+    dropped automatically.
+
+    Args:
+        source_path: Path to the discovery .md file (e.g.
+            ``discovery/archetypes/folk-horror.md``).
+        output_dir: Directory to write segment files into.
+        force: If True, re-slice even if the manifest is fresh.
+
+    Returns:
+        List of SegmentInfo for each entity segment produced.
+    """
+    return _slice_on_heading_level(source_path, output_dir, heading_level=4, force=force)
+
+
+def slice_cluster(
+    source_path: Path,
+    output_dir: Path,
+    force: bool = False,
+) -> list[SegmentInfo]:
+    """Split a cluster synthesis file on H3 numbered entity headers.
+
+    Cluster files contain entries like ``### 1. The Epistemic Seeker`` that
+    aggregate genre variants.
+
+    Args:
+        source_path: Path to the cluster .md file (e.g.
+            ``discovery/archetypes/cluster-horror.md``).
+        output_dir: Directory to write segment files into.
+        force: If True, re-slice even if the manifest is fresh.
+
+    Returns:
+        List of SegmentInfo for each cluster entity segment produced.
+    """
+    return _slice_on_heading_level(source_path, output_dir, heading_level=3, force=force)
+
+
+def slice_genre_native(
+    source_path: Path,
+    output_dir: Path,
+    heading_level: int,
+    force: bool = False,
+) -> list[SegmentInfo]:
+    """Split a genre-native file on the specified heading level.
+
+    Use ``heading_level=2`` for narrative-shape files (``## 1. Shape Name``)
+    and ``heading_level=4`` for tropes files which share the H4 discovery
+    structure.
+
+    Args:
+        source_path: Path to the genre-native .md file.
+        output_dir: Directory to write segment files into.
+        heading_level: Heading depth to split on (2 for narrative shapes,
+            4 for tropes).
+        force: If True, re-slice even if the manifest is fresh.
+
+    Returns:
+        List of SegmentInfo for each entity segment produced.
+    """
+    return _slice_on_heading_level(
+        source_path, output_dir, heading_level=heading_level, force=force
+    )
+
+
+def slice_file(
+    source_path: Path,
+    output_dir: Path,
+    doc_type: str,
+    force: bool = False,
+) -> list[SegmentInfo]:
+    """Dispatch to the appropriate slicer based on document type.
+
+    Args:
+        source_path: Path to the source .md file.
+        output_dir: Directory to write segment files into.
+        doc_type: One of ``"genre-region"``, ``"discovery"``, ``"cluster"``,
+            ``"narrative-shapes"``, ``"tropes"``.
+        force: If True, re-slice even if the manifest is fresh.
+
+    Returns:
+        List of SegmentInfo for each segment produced.
+
+    Raises:
+        ValueError: If ``doc_type`` is not a known type.
+    """
+    if doc_type == "genre-region":
+        return slice_genre_region(source_path, output_dir, force=force)
+    if doc_type == "discovery":
+        return slice_discovery(source_path, output_dir, force=force)
+    if doc_type == "cluster":
+        return slice_cluster(source_path, output_dir, force=force)
+    if doc_type == "narrative-shapes":
+        return slice_genre_native(source_path, output_dir, heading_level=2, force=force)
+    if doc_type == "tropes":
+        return slice_genre_native(source_path, output_dir, heading_level=4, force=force)
+    raise ValueError(f"Unknown doc_type: {doc_type!r}")

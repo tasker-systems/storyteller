@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Heuristic label generation — produces ground-truth predictions from scenario skeletons.
 //!
 //! This is the core algorithmic challenge: generating plausible training labels

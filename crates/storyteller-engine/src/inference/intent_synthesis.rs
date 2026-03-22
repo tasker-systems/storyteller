@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Intent synthesis — dramaturgical bridging layer between ML predictions and narrator.
 //!
 //! The intent synthesizer receives character data, ML behavior predictions, scene history,

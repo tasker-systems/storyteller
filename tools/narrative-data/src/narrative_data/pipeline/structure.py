@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Stage 2: Structuring via small instruct model → validated .json."""
 
 import json
@@ -67,6 +71,68 @@ def run_structuring(
         )
     )
     return {"success": False, "errors_path": str(errors_path), "errors": errors}
+
+
+def run_segment_extraction(
+    client: OllamaClient,
+    segment_path: Path,
+    output_path: Path,
+    schema: dict,
+    segment_prompt_slug: str,
+    model: str = STRUCTURING_MODEL,
+    max_retries: int = 3,
+) -> dict[str, Any]:
+    """Extract structured JSON from a single segment.
+
+    Unlike run_structuring(), this:
+    - Takes a pre-computed schema dict (not a Pydantic type)
+    - Uses build_segment_structure() for prompts (not build_structure())
+    - Does NOT validate against Pydantic (aggregator does that later)
+    - Strips YAML frontmatter from segment content before sending to LLM
+    """
+    raw_content = _strip_frontmatter(segment_path.read_text())
+
+    base_prompt = PromptBuilder().build_segment_structure(segment_prompt_slug, raw_content, schema)
+    errors: list[str] = []
+    raw_output: Any = None
+    last_error: str | None = None
+
+    for _attempt in range(max_retries):
+        if last_error:
+            fix_suffix = "\nPlease fix and output valid JSON."
+            current_prompt = base_prompt + ERROR_MARKER + last_error + fix_suffix
+        else:
+            current_prompt = base_prompt
+
+        raw_output = client.generate_structured(model=model, prompt=current_prompt, schema=schema)
+
+        # Basic JSON validity check (not Pydantic validation — aggregator does that)
+        if isinstance(raw_output, (dict, list)):
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(raw_output, indent=2))
+            return {"success": True, "output_path": str(output_path)}
+
+        last_error = f"Expected dict or list, got {type(raw_output).__name__}"
+        errors.append(last_error)
+
+    errors_path = output_path.with_suffix(".errors.json")
+    errors_path.write_text(
+        json.dumps(
+            {"errors": errors, "raw_output": raw_output, "prompt_slug": segment_prompt_slug},
+            indent=2,
+        )
+    )
+    return {"success": False, "errors_path": str(errors_path), "errors": errors}
+
+
+def _strip_frontmatter(content: str) -> str:
+    """Strip YAML frontmatter (---...---) from segment content."""
+    if not content.startswith("---\n"):
+        return content
+    end = content.find("\n---\n", 4)
+    if end == -1:
+        return content
+    return content[end + 5 :]  # skip past the closing ---\n
 
 
 def _validate_and_save(

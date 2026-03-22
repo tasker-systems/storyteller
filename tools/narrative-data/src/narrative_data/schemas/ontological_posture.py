@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Ontological posture schemas — per-genre and cluster models for genre worldview.
 
 Ontological posture describes how a genre frames the nature of being, selfhood, and

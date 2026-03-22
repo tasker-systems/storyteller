@@ -2,9 +2,9 @@
 name = "storyteller"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Multi-agent storytelling engine — narrative gravity, character tensors, and collaborative world-building"
 readme = "../../README.md"
-license = "MIT"
 repository = "https://github.com/tasker-systems/storyteller"
 keywords = ["storytelling", "narrative", "agents", "bevy", "ecs"]
 categories = ["game-engines", "simulation"]

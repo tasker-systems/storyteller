@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Append-only directive store for async agent outputs.
 //!
 //! Writers: future dramaturge (Tier C.1), world agent (Tier C.2).

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Bevy ECS components — the data attached to entities in the world.
 //!
 //! Components map directly to concepts in the entity model and tensor

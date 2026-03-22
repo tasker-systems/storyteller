@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """B.3 Cross-domain synthesis orchestration.
 
 Depends on B.1 (genre) and B.2 (spatial) both reaching initial completion.

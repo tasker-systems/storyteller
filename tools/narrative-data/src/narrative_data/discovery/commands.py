@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Discovery pipeline: Phase 1 extraction and Phase 2 cluster synthesis."""
 
 from pathlib import Path

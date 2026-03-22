@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Template expansion — fill templates with vocabulary, compute entity spans.
 //!
 //! Given a set of templates and a target count per event kind, this module

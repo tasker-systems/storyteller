@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Archetype schemas — per-genre and cluster models for character archetypes.
 
 Archetypes are the load-bearing character roles in a genre. Each archetype has a

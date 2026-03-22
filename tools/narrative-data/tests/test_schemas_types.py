@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Tests for the 6 discovery type schemas: archetypes, dynamics, goals, settings,
 scene_profiles, and ontological_posture."""
 

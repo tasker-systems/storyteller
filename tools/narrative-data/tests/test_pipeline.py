@@ -1,5 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Tests for the two-stage pipeline (Ollama calls mocked)."""
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -8,7 +13,12 @@ from pydantic import BaseModel
 
 from narrative_data.ollama import OllamaClient
 from narrative_data.pipeline.elicit import run_elicitation
-from narrative_data.pipeline.structure import ERROR_MARKER, run_structuring
+from narrative_data.pipeline.structure import (
+    ERROR_MARKER,
+    _strip_frontmatter,
+    run_segment_extraction,
+    run_structuring,
+)
 from narrative_data.prompts import PromptBuilder
 
 
@@ -168,3 +178,96 @@ class TestRunStructuring:
         errors_path = Path(result["errors_path"])
         assert errors_path.exists()
         assert len(result["errors"]) == 3  # one error recorded per attempt
+
+
+class TestStripFrontmatter:
+    def test_strips_yaml_frontmatter(self):
+        content = (
+            "---\nsource: test.md\nsegment: aesthetic\nlines: 1-5\n---\n\n"
+            "**Aesthetic dimensions**\nContent here."
+        )
+        result = _strip_frontmatter(content)
+        assert result.startswith("\n**Aesthetic dimensions**")
+        assert "source:" not in result
+
+    def test_no_frontmatter_unchanged(self):
+        content = "**Aesthetic dimensions**\nContent here."
+        assert _strip_frontmatter(content) == content
+
+    def test_incomplete_frontmatter_unchanged(self):
+        content = "---\nincomplete frontmatter\nno closing marker"
+        assert _strip_frontmatter(content) == content
+
+
+class TestRunSegmentExtraction:
+    def test_extracts_segment_to_json(self, tmp_path):
+        """Given a segment .md and a mock client, produces a .json file."""
+        segment_path = tmp_path / "segment-aesthetic.md"
+        segment_path.write_text(
+            "---\nsource: test.md\nsegment: aesthetic\nlines: 1-5\n---\n\n**Aesthetic**\nContent."
+        )
+
+        output_path = tmp_path / "segment-aesthetic.json"
+
+        mock_client = MagicMock()
+        mock_client.generate_structured.return_value = {"sensory_density": {"value": 0.7}}
+
+        with patch("narrative_data.pipeline.structure.PromptBuilder") as MockPB:
+            MockPB.return_value.build_segment_structure.return_value = "test prompt"
+            result = run_segment_extraction(
+                client=mock_client,
+                segment_path=segment_path,
+                output_path=output_path,
+                schema={"type": "object"},
+                segment_prompt_slug="genre-region-aesthetic",
+            )
+
+        assert result["success"] is True
+        assert output_path.exists()
+        data = json.loads(output_path.read_text())
+        assert data["sensory_density"]["value"] == 0.7
+
+    def test_uses_segment_prompt_builder(self, tmp_path):
+        """Verifies build_segment_structure is called, not build_structure."""
+        segment_path = tmp_path / "segment-tonal.md"
+        segment_path.write_text("---\nsource: test.md\nsegment: tonal\nlines: 1-5\n---\n\nContent.")
+        output_path = tmp_path / "segment-tonal.json"
+
+        mock_client = MagicMock()
+        mock_client.generate_structured.return_value = {"result": True}
+
+        with patch("narrative_data.pipeline.structure.PromptBuilder") as MockPB:
+            mock_pb_instance = MockPB.return_value
+            mock_pb_instance.build_segment_structure.return_value = "segment prompt"
+            run_segment_extraction(
+                client=mock_client,
+                segment_path=segment_path,
+                output_path=output_path,
+                schema={"type": "object"},
+                segment_prompt_slug="genre-region-tonal",
+            )
+            mock_pb_instance.build_segment_structure.assert_called_once()
+            # Verify it was NOT build_structure
+            mock_pb_instance.build_structure.assert_not_called()
+
+    def test_replace_on_retry(self, tmp_path):
+        """Same replace-not-append behavior as run_structuring."""
+        segment_path = tmp_path / "segment-test.md"
+        segment_path.write_text("Content.")
+        output_path = tmp_path / "segment-test.json"
+
+        mock_client = MagicMock()
+        # First call returns non-dict/list (trigger retry), second succeeds
+        mock_client.generate_structured.side_effect = ["bad string", {"result": True}]
+
+        with patch("narrative_data.pipeline.structure.PromptBuilder") as MockPB:
+            MockPB.return_value.build_segment_structure.return_value = "prompt"
+            result = run_segment_extraction(
+                client=mock_client,
+                segment_path=segment_path,
+                output_path=output_path,
+                schema={"type": "object"},
+                segment_prompt_slug="test-slug",
+            )
+
+        assert result["success"] is True

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """ONNX export and validation for event classification and NER models.
 
 Primary path uses Optimum's export infrastructure. Falls back to manual

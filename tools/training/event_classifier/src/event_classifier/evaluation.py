@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Evaluation framework for event classification and NER ONNX models.
 
 Loads deployed ONNX models, runs inference on labeled JSONL test data,

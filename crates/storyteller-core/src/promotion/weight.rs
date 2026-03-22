@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Relational weight computation — how much relational significance an entity has accumulated.
 //!
 //! Weight is computed from the events an entity participates in. Each relational

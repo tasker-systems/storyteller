@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Likeness pass — scores and selects lexicon fragments for active goals.
 //!
 //! Three steps: dimensional match, tensor affinity scoring, diversity sampling.

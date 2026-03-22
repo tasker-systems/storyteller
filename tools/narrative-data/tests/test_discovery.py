@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 from unittest.mock import MagicMock
 
 from narrative_data.discovery.commands import extract_primitives, synthesize_cluster

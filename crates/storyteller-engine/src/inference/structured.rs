@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Ollama-backed structured LLM provider for JSON extraction.
 //!
 //! See: `docs/plans/2026-03-09-event-classification-and-action-arbitration-design.md`

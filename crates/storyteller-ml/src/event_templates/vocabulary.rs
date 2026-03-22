@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Vocabulary lists for event classification training data generation.
 //!
 //! Organized by semantic category. Word lists are genre-appropriate for

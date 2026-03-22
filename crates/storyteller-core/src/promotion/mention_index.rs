@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Mention index — in-memory index of unresolved entity mentions for retroactive promotion.
 //!
 //! When an entity accumulates enough relational weight to be promoted (gaining an

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Place entity schemas — per-genre and cluster models for universal place archetypes.
 
 Place entities are the five universal place archetypes (home, archive, threshold, authority,

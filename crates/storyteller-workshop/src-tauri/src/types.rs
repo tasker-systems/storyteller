@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Types for the Tauri ↔ Svelte boundary.
 //!
 //! Every struct here derives `ts_rs::TS` and generates a TypeScript interface

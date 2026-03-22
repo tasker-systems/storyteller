@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Entity types — the unified representation for all story elements.
 //!
 //! See: `docs/technical/entity-model.md`, `docs/ticket-specs/event-system-foundations/entity-reference-model.md`

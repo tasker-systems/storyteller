@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Primitive elicitation: Phase 3 Layer 0 standalone descriptions."""
 
 from pathlib import Path
