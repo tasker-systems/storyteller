@@ -21,18 +21,7 @@ from narrative_data.pipeline.invalidation import (
     load_manifest,
     update_manifest_entry,
 )
-from narrative_data.pipeline.structure import run_structuring
 from narrative_data.prompts import PromptBuilder
-from narrative_data.schemas.genre import (
-    GenreArchetype,
-    GenreDynamic,
-    GenreGoal,
-    GenreProfile,
-    GenreRegion,
-    GenreSetting,
-    NarrativeShape,
-    Trope,
-)
 from narrative_data.utils import now_iso, slug_to_name
 
 console = Console()
@@ -81,18 +70,6 @@ GENRE_REGIONS: list[str] = [
     "literary-fiction",
     "magical-realism",
 ]
-
-CATEGORY_SCHEMAS: dict[str, tuple[type, bool]] = {
-    "region": (GenreRegion, False),
-    "archetypes": (GenreArchetype, True),
-    "tropes": (Trope, True),
-    "narrative-shapes": (NarrativeShape, True),
-    "dynamics": (GenreDynamic, True),
-    "profiles": (GenreProfile, True),
-    "goals": (GenreGoal, True),
-    "settings": (GenreSetting, True),
-}
-
 
 def _order_categories(categories: list[str]) -> list[str]:
     """Return categories with 'region' first, preserving relative order of the rest."""
@@ -205,67 +182,14 @@ def structure_genre(
     model: str = STRUCTURING_MODEL,
     force: bool = False,
 ) -> None:
-    """Stage 2: Structure raw markdown into validated JSON for each genre cell.
+    """Stage 2 structuring — replaced by the new 'structure' CLI command (Task 10).
 
-    Skips cells where structured .json already exists unless force=True.
-    Assigns UUIDv7 via uuid_utils.
+    This function is a no-op placeholder. The old schema types (GenreRegion, etc.)
+    have been removed as part of the Stage 2 architecture migration.
     """
-    if regions is None:
-        regions = GENRE_REGIONS
-    if categories is None:
-        categories = GENRE_CATEGORIES
-
-    ordered_categories = _order_categories(categories)
-
-    for region_slug in regions:
-        region_dir = output_base / "genres" / region_slug
-        region_name = slug_to_name(region_slug)
-
-        for category in ordered_categories:
-            manifest_key = f"{region_slug}/{category}"
-            raw_path = region_dir / f"{category}.md"
-            output_path = region_dir / f"{category}.json"
-
-            if not raw_path.exists():
-                console.print(f"[dim]  {region_slug}/{category} raw.md missing, skipping[/dim]")
-                continue
-
-            if not force and output_path.exists():
-                entry = load_manifest(manifest_path)["entries"].get(manifest_key, {})
-                if entry.get("structured_at"):
-                    console.print(
-                        f"[dim]  {region_slug}/{category} already structured, skipping[/dim]"
-                    )
-                    continue
-
-            schema_type, is_collection = CATEGORY_SCHEMAS.get(category, (GenreRegion, False))
-            console.print(f"[cyan]  Structuring {region_slug}/{category}…[/cyan]")
-            result = run_structuring(
-                client=client,
-                raw_path=raw_path,
-                output_path=output_path,
-                schema_type=schema_type,
-                model=model,
-                is_collection=is_collection,
-            )
-
-            if result["success"]:
-                console.print(f"[green]  {region_slug}/{category} structured OK[/green]")
-                update_manifest_entry(
-                    manifest_path,
-                    manifest_key,
-                    {
-                        **load_manifest(manifest_path)["entries"].get(manifest_key, {}),
-                        "structured_at": now_iso(),
-                        "output_path": result["output_path"],
-                        "region_name": region_name,
-                    },
-                )
-            else:
-                console.print(
-                    f"[red]  {region_slug}/{category} structuring failed — "
-                    f"errors at {result.get('errors_path')}[/red]"
-                )
+    console.print(
+        "[yellow]  structure_genre() is deprecated — use 'narrative-data structure' instead[/yellow]"
+    )
 
 
 def elaborate_genre(

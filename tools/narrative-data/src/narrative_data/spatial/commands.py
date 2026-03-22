@@ -18,14 +18,7 @@ from narrative_data.pipeline.invalidation import (
     load_manifest,
     update_manifest_entry,
 )
-from narrative_data.pipeline.structure import run_structuring
 from narrative_data.prompts import PromptBuilder
-from narrative_data.schemas.spatial import (
-    PlaceEntity,
-    SettingType,
-    TonalInheritanceRule,
-    TopologyEdge,
-)
 from narrative_data.utils import now_iso, slug_to_name
 
 console = Console()
@@ -57,14 +50,6 @@ SETTING_SLUGS: list[str] = [
 
 # Dependency order is encoded here: setting-type → place-entities → topology → tonal-inheritance
 _SPATIAL_ORDER = ["setting-type", "place-entities", "topology", "tonal-inheritance"]
-
-CATEGORY_SCHEMAS: dict[str, tuple[type, bool]] = {
-    "setting-type": (SettingType, False),
-    "place-entities": (PlaceEntity, True),
-    "topology": (TopologyEdge, True),
-    "tonal-inheritance": (TonalInheritanceRule, True),
-}
-
 
 def _order_spatial_categories(categories: list[str]) -> list[str]:
     """Return categories in dependency order (setting-type first, tonal-inheritance last)."""
@@ -198,69 +183,11 @@ def structure_spatial(
     model: str = STRUCTURING_MODEL,
     force: bool = False,
 ) -> None:
-    """Stage 2: Structure raw markdown into validated JSON for each spatial cell.
+    """Stage 2 structuring — replaced by the new 'structure' CLI command (Task 10).
 
-    Skips cells where structured .json already exists unless force=True.
+    This function is a no-op placeholder. The old schema types (SettingType, etc.)
+    have been removed as part of the Stage 2 architecture migration.
     """
-    if settings is None:
-        settings = SETTING_SLUGS
-    if categories is None:
-        categories = SPATIAL_CATEGORIES
-
-    ordered_categories = _order_spatial_categories(categories)
-
-    for setting_slug in settings:
-        setting_dir = output_base / "spatial" / setting_slug
-        setting_name = slug_to_name(setting_slug)
-
-        for category in ordered_categories:
-            manifest_key = f"{setting_slug}/{category}"
-            raw_path = setting_dir / f"{category}.md"
-            output_path = setting_dir / f"{category}.json"
-
-            if not raw_path.exists():
-                console.print(
-                    f"[dim]  {setting_slug}/{category} raw.md missing, skipping[/dim]"
-                )
-                continue
-
-            if not force and output_path.exists():
-                entry = load_manifest(manifest_path)["entries"].get(manifest_key, {})
-                if entry.get("structured_at"):
-                    console.print(
-                        f"[dim]  {setting_slug}/{category} already structured, skipping[/dim]"
-                    )
-                    continue
-
-            schema_type, is_collection = CATEGORY_SCHEMAS.get(
-                category, (SettingType, False)
-            )
-            console.print(f"[cyan]  Structuring {setting_slug}/{category}…[/cyan]")
-            result = run_structuring(
-                client=client,
-                raw_path=raw_path,
-                output_path=output_path,
-                schema_type=schema_type,
-                model=model,
-                is_collection=is_collection,
-            )
-
-            if result["success"]:
-                console.print(
-                    f"[green]  {setting_slug}/{category} structured OK[/green]"
-                )
-                update_manifest_entry(
-                    manifest_path,
-                    manifest_key,
-                    {
-                        **load_manifest(manifest_path)["entries"].get(manifest_key, {}),
-                        "structured_at": now_iso(),
-                        "output_path": result["output_path"],
-                        "setting_name": setting_name,
-                    },
-                )
-            else:
-                console.print(
-                    f"[red]  {setting_slug}/{category} structuring failed — "
-                    f"errors at {result.get('errors_path')}[/red]"
-                )
+    console.print(
+        "[yellow]  structure_spatial() is deprecated — use 'narrative-data structure' instead[/yellow]"
+    )

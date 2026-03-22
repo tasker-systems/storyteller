@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenreDimensions",
+  "type": "object",
+  "required": ["genre_slug", "genre_name", "classification", "aesthetic", "tonal", "temporal", "thematic", "agency", "locus_of_power", "narrative_structure", "world_affordances", "epistemological", "narrative_contracts"],
+  "properties": {
+    "genre_slug": { "type": "string" },
+    "genre_name": { "type": "string" },
+    "classification": { "enum": ["standalone_region", "constraint_layer", "hybrid_modifier"] },
+    "constraint_layer_type": {
+      "enum": ["world_affordance", "tonal_emotional", "agency_outcome", "setting_locus"],
+      "description": "What layer of the narrative stack this genre modifies (only for constraint layers)"
+    },
+    "aesthetic": {
+      "type": "object",
+      "properties": {
+        "sensory_density": { "$ref": "#/$defs/continuous_axis" },
+        "groundedness": { "$ref": "#/$defs/continuous_axis" },
+        "aesthetic_register": { "$ref": "#/$defs/continuous_axis" },
+        "prose_register": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "tonal": {
+      "type": "object",
+      "properties": {
+        "emotional_contract": { "$ref": "#/$defs/continuous_axis" },
+        "cynicism_earnestness": { "$ref": "#/$defs/continuous_axis" },
+        "surface_irony": { "$ref": "#/$defs/continuous_axis" },
+        "structural_irony": { "$ref": "#/$defs/continuous_axis" },
+        "intimacy_distance": { "$ref": "#/$defs/continuous_axis" }
+      }
+    },
+    "temporal": {
+      "type": "object",
+      "properties": {
+        "time_structure": { "$ref": "#/$defs/continuous_axis" },
+        "pacing": { "$ref": "#/$defs/continuous_axis" },
+        "temporal_grounding": { "$ref": "#/$defs/continuous_axis" },
+        "narrative_span": { "$ref": "#/$defs/continuous_axis" }
+      }
+    },
+    "thematic": {
+      "type": "object",
+      "description": "Weighted tag sets, not single enums",
+      "properties": {
+        "power_treatment": { "$ref": "#/$defs/weighted_tags" },
+        "identity_treatment": { "$ref": "#/$defs/weighted_tags" },
+        "knowledge_treatment": { "$ref": "#/$defs/weighted_tags" },
+        "connection_treatment": { "$ref": "#/$defs/weighted_tags" }
+      }
+    },
+    "agency": {
+      "type": "object",
+      "properties": {
+        "agency_level": { "$ref": "#/$defs/continuous_axis" },
+        "agency_type": { "enum": ["imposition", "acceptance", "negotiation", "sacrifice", "survival"] },
+        "triumph_mode": { "$ref": "#/$defs/continuous_axis" },
+        "competence_relevance": { "$ref": "#/$defs/continuous_axis" }
+      }
+    },
+    "locus_of_power": {
+      "type": "array",
+      "items": { "enum": ["place", "person", "system", "relationship", "cosmos"] },
+      "maxItems": 3,
+      "description": "Ranked list, first = primary"
+    },
+    "narrative_structure": {
+      "type": "array",
+      "items": { "enum": ["quest", "mystery", "tragedy", "comedy", "romance", "horror"] },
+      "maxItems": 3
+    },
+    "world_affordances": {
+      "type": "object",
+      "properties": {
+        "magic": { "type": "array", "items": { "type": "string" } },
+        "technology": { "type": "string" },
+        "violence": { "type": "string" },
+        "death": { "type": "string" },
+        "supernatural": { "type": "string" }
+      }
+    },
+    "epistemological": {
+      "type": "object",
+      "properties": {
+        "knowability": { "$ref": "#/$defs/continuous_axis" },
+        "knowledge_reward": { "$ref": "#/$defs/continuous_axis" },
+        "narration_reliability": { "$ref": "#/$defs/continuous_axis" }
+      }
+    },
+    "narrative_contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "invariant": { "type": "string" },
+          "enforced": { "type": "boolean" }
+        }
+      },
+      "description": "Hard guarantees the genre makes: Must_Resolve_Relationship, Knowledge_Rewarded, Safety_Restored, etc."
+    },
+    "active_state_variables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/state_variable_template" }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "trigger": { "type": "string" },
+          "drift_target": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "modifies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Genre slugs this constraint layer can modify"
+    },
+    "flavor_text": {
+      "type": "object",
+      "properties": {
+        "commentary": { "type": "string" },
+        "suggestions": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "continuous_axis": {
+      "type": "object",
+      "properties": {
+        "value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "low_label": { "type": "string" },
+        "high_label": { "type": "string" },
+        "can_be_state_variable": { "type": "boolean", "default": false },
+        "flavor_text": { "type": "string" }
+      },
+      "required": ["value"]
+    },
+    "weighted_tags": {
+      "type": "object",
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 },
+      "description": "Map of tag → weight, e.g. {\"Stewardship\": 0.7, \"Corruption\": 0.3}"
+    },
+    "state_variable_template": {
+      "type": "object",
+      "properties": {
+        "canonical_id": { "type": "string" },
+        "genre_label": { "type": "string" },
+        "behavior": { "enum": ["depleting", "accumulating", "fluctuating", "progression", "countdown"] },
+        "initial_value": { "type": "number" },
+        "threshold": { "type": "number" },
+        "threshold_effect": { "type": "string" },
+        "activation_condition": { "type": "string" }
+      },
+      "required": ["canonical_id", "genre_label", "behavior"]
+    }
+  }
+}
