@@ -272,3 +272,13 @@ Design documentation in `docs/`:
 **Private content**: Creative works and training data live in the separate `storyteller-data` repository, accessed via `STORYTELLER_DATA_PATH` (see `.env.example`).
 
 See [`docs/README.md`](docs/README.md) for a full guide with reading order.
+
+## Knowledge Vault
+
+A cross-project knowledge graph lives at `~/projects/knowledge/`. When working on
+storyteller foundation, technical, or game-design topics, check the vault for:
+- Concept notes that trace ideas across storyteller, writing, and academic work
+- Recent session notes for context from prior conversations
+- Source indexes that link storyteller docs to related work in other repos
+
+Access via Obsidian CLI: `obsidian search query="<term>"`
