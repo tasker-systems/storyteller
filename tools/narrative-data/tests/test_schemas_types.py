@@ -680,3 +680,706 @@ class TestOntologicalPosture:
 
         m = ModeOfBeing(name="Individual", description="Autonomous selfhood")
         assert m.can_have_communicability is False
+
+
+# ---------------------------------------------------------------------------
+# Archetype Dynamics
+# ---------------------------------------------------------------------------
+
+
+class TestArchetypeDynamic:
+    def test_minimal_valid_construction(self):
+        from narrative_data.schemas.archetype_dynamics import ArchetypeDynamic, EdgeProperties
+
+        ad = ArchetypeDynamic(
+            pairing_name="Mentor-Student",
+            genre_slug="epic-fantasy",
+            archetype_a="The Mentor",
+            archetype_b="The Hero",
+            edge_properties=EdgeProperties(
+                edge_type="guidance",
+                directionality="unidirectional",
+            ),
+        )
+        assert ad.pairing_name == "Mentor-Student"
+        assert ad.genre_slug == "epic-fantasy"
+        assert ad.edge_properties.currencies == []
+        assert ad.edge_properties.constraints == []
+        assert ad.characteristic_scene is None
+        assert ad.shadow_pairing is None
+        assert ad.scale_properties is None
+        assert ad.uniqueness is None
+        assert ad.genre_variants == []
+        assert ad.flavor_text is None
+
+    def test_round_trip(self):
+        from narrative_data.schemas.archetype_dynamics import (
+            ArchetypeDynamic,
+            CharacteristicScene,
+            EdgeProperties,
+            ShadowPairing,
+        )
+        from narrative_data.schemas.dynamics import ScaleManifestations
+
+        ad = ArchetypeDynamic(
+            pairing_name="Hunter-Prey",
+            genre_slug="thriller",
+            archetype_a="The Pursuer",
+            archetype_b="The Hunted",
+            edge_properties=EdgeProperties(
+                edge_type="antagonism",
+                directionality="asymmetric",
+                currencies=["leverage", "information"],
+                network_position="hub",
+                constraints=["protagonist must survive act 1"],
+                weight="high",
+            ),
+            characteristic_scene=CharacteristicScene(
+                title="The First Glimpse",
+                opening="Hunter detects prey's trail",
+                tension_source="Information asymmetry",
+                withheld_by_a="Full capability",
+                withheld_by_b="Final destination",
+                resolution_constraint="No resolution — only escalation",
+                scene_register="visceral",
+            ),
+            shadow_pairing=ShadowPairing(
+                description="Prey becomes hunter",
+                inversion_type="power_inversion",
+                drift_target_genre="revenge-thriller",
+            ),
+            scale_properties=ScaleManifestations(
+                orbital="Determines final confrontation",
+                arc="Each act narrows the gap",
+                scene="Cat-and-mouse exchanges",
+            ),
+            uniqueness="genre_defining",
+            flavor_text="Every thriller needs a chase.",
+        )
+        data = ad.model_dump()
+        restored = ArchetypeDynamic.model_validate(data)
+        assert restored == ad
+
+    def test_missing_required_field_raises(self):
+        with pytest.raises((ValidationError, TypeError)):
+            from narrative_data.schemas.archetype_dynamics import ArchetypeDynamic, EdgeProperties
+
+            ArchetypeDynamic(
+                # missing pairing_name
+                genre_slug="thriller",
+                archetype_a="The Pursuer",
+                archetype_b="The Hunted",
+                edge_properties=EdgeProperties(
+                    edge_type="antagonism",
+                    directionality="asymmetric",
+                ),
+            )
+
+    def test_cluster_archetype_dynamic_construction(self):
+        from narrative_data.schemas.archetype_dynamics import ClusterArchetypeDynamic
+        from narrative_data.schemas.shared import GenreVariant
+
+        cad = ClusterArchetypeDynamic(
+            canonical_name="Adversarial Pairing",
+            cluster_name="Conflict Cluster",
+            core_identity="Two forces that define each other through opposition",
+            genre_variants=[
+                GenreVariant(genre_slug="thriller", variant_name="Hunter-Prey"),
+                GenreVariant(genre_slug="epic-fantasy", variant_name="Champion-Shadow"),
+            ],
+            uniqueness="cluster_specific",
+        )
+        assert cad.canonical_name == "Adversarial Pairing"
+        assert len(cad.genre_variants) == 2
+
+    def test_uniqueness_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.archetype_dynamics import ClusterArchetypeDynamic
+
+            ClusterArchetypeDynamic(
+                canonical_name="Test",
+                cluster_name="Test Cluster",
+                core_identity="Test",
+                genre_variants=[],
+                uniqueness="not_a_real_uniqueness",  # invalid
+            )
+
+    def test_shadow_pairing_inversion_type_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.archetype_dynamics import ShadowPairing
+
+            ShadowPairing(
+                description="Some inversion",
+                inversion_type="not_a_real_inversion",  # invalid
+            )
+
+
+# ---------------------------------------------------------------------------
+# Spatial Topology
+# ---------------------------------------------------------------------------
+
+
+class TestSpatialTopology:
+    def test_minimal_valid_construction(self):
+        from narrative_data.schemas.spatial_topology import (
+            SpatialTopologyEdge,
+            TonalInheritance,
+            TopologyDirectionality,
+            TopologyFriction,
+        )
+
+        edge = SpatialTopologyEdge(
+            genre_slug="folk-horror",
+            source_setting="The Village",
+            target_setting="The Forest",
+            friction=TopologyFriction(
+                type="ontological",
+                level="high",
+            ),
+            directionality=TopologyDirectionality(
+                type="asymmetric",
+            ),
+            tonal_inheritance=TonalInheritance(
+                direction="inward",
+            ),
+        )
+        assert edge.genre_slug == "folk-horror"
+        assert edge.source_setting == "The Village"
+        assert edge.traversal_cost == []
+        assert edge.state_shift is None
+        assert edge.agency is None
+        assert edge.flavor_text is None
+
+    def test_round_trip(self):
+        from narrative_data.schemas.spatial_topology import (
+            SpatialTopologyEdge,
+            TonalInheritance,
+            TopologyDirectionality,
+            TopologyFriction,
+            TraversalCost,
+        )
+
+        edge = SpatialTopologyEdge(
+            genre_slug="thriller",
+            source_setting="Safe House",
+            target_setting="Hostile Territory",
+            friction=TopologyFriction(
+                type="social",
+                level="medium",
+                description="Foreign environment with local informants",
+            ),
+            directionality=TopologyDirectionality(
+                type="bidirectional_unequal",
+                forward_cost="Significant risk",
+                return_cost="Possible compromise",
+                description="Easier to enter than exit cleanly",
+            ),
+            agency="low",
+            tonal_inheritance=TonalInheritance(
+                direction="outward",
+                resistance="Safe house tonal bubble holds for first act",
+                contamination_threshold="After second incursion",
+                description="Hostile territory bleeds back",
+            ),
+            traversal_cost=[
+                TraversalCost(variable_id="safety", delta=0.3, description="Exposure risk"),
+                TraversalCost(variable_id="cover", delta=0.5),
+            ],
+            state_shift="Safety→Vulnerability",
+            flavor_text="You can go in, but coming back clean is another matter.",
+        )
+        data = edge.model_dump()
+        restored = SpatialTopologyEdge.model_validate(data)
+        assert restored == edge
+
+    def test_missing_required_field_raises(self):
+        with pytest.raises((ValidationError, TypeError)):
+            from narrative_data.schemas.spatial_topology import (
+                SpatialTopologyEdge,
+                TonalInheritance,
+                TopologyDirectionality,
+                TopologyFriction,
+            )
+
+            SpatialTopologyEdge(
+                # missing genre_slug
+                source_setting="Village",
+                target_setting="Forest",
+                friction=TopologyFriction(type="ontological", level="high"),
+                directionality=TopologyDirectionality(type="one_way"),
+                tonal_inheritance=TonalInheritance(direction="inward"),
+            )
+
+    def test_cluster_spatial_topology_construction(self):
+        from narrative_data.schemas.shared import GenreVariant
+        from narrative_data.schemas.spatial_topology import ClusterSpatialTopology
+
+        cst = ClusterSpatialTopology(
+            canonical_name="Threshold Crossing",
+            cluster_name="Boundary Cluster",
+            core_identity="The moment between safety and danger",
+            genre_variants=[
+                GenreVariant(genre_slug="folk-horror", variant_name="Village-to-Forest Edge"),
+                GenreVariant(genre_slug="thriller", variant_name="Safe-House Egress"),
+            ],
+        )
+        assert cst.canonical_name == "Threshold Crossing"
+        assert len(cst.genre_variants) == 2
+
+    def test_traversal_cost_delta_out_of_range_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.spatial_topology import TraversalCost
+
+            TraversalCost(variable_id="safety", delta=1.5)  # invalid
+
+    def test_traversal_cost_delta_below_zero_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.spatial_topology import TraversalCost
+
+            TraversalCost(variable_id="safety", delta=-0.1)  # invalid
+
+    def test_friction_type_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.spatial_topology import TopologyFriction
+
+            TopologyFriction(type="not_a_friction_type", level="high")
+
+    def test_agency_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.spatial_topology import (
+                SpatialTopologyEdge,
+                TonalInheritance,
+                TopologyDirectionality,
+                TopologyFriction,
+            )
+
+            SpatialTopologyEdge(
+                genre_slug="thriller",
+                source_setting="A",
+                target_setting="B",
+                friction=TopologyFriction(type="social", level="low"),
+                directionality=TopologyDirectionality(type="one_way"),
+                agency="not_a_valid_agency",  # invalid
+                tonal_inheritance=TonalInheritance(direction="mutual"),
+            )
+
+
+# ---------------------------------------------------------------------------
+# Place Entities
+# ---------------------------------------------------------------------------
+
+
+class TestPlaceEntity:
+    def _make_communicability(self):
+        from narrative_data.schemas.place_entities import (
+            AtmosphericChannel,
+            PlaceCommunicability,
+            SensoryChannel,
+            SpatialChannel,
+            TemporalChannel,
+        )
+
+        return PlaceCommunicability(
+            atmospheric=AtmosphericChannel(mood="dread", intensity=0.8),
+            sensory=SensoryChannel(dominant="olfactory"),
+            spatial=SpatialChannel(enclosure="enclosed_intimate", orientation="labyrinthine"),
+            temporal=TemporalChannel(time_model="cyclical"),
+        )
+
+    def test_minimal_valid_construction(self):
+        from narrative_data.schemas.place_entities import EntityProperties, PlaceEntity
+
+        pe = PlaceEntity(
+            canonical_name="home",
+            genre_slug="folk-horror",
+            variant_name="The Ancestral Farmhouse",
+            communicability=self._make_communicability(),
+            entity_properties=EntityProperties(),
+        )
+        assert pe.canonical_name == "home"
+        assert pe.genre_slug == "folk-horror"
+        assert pe.state_variable_expression == []
+        assert pe.flavor_text is None
+
+    def test_round_trip(self):
+        from narrative_data.schemas.place_entities import (
+            AtmosphericChannel,
+            EntityProperties,
+            PlaceCommunicability,
+            PlaceEntity,
+            SensoryChannel,
+            SpatialChannel,
+            StateVariableExpression,
+            TemporalChannel,
+        )
+
+        pe = PlaceEntity(
+            canonical_name="threshold",
+            genre_slug="folk-horror",
+            variant_name="The Village Boundary Stone",
+            communicability=PlaceCommunicability(
+                atmospheric=AtmosphericChannel(
+                    mood="liminal dread",
+                    intensity=0.9,
+                    shift_pattern="Intensifies at night",
+                ),
+                sensory=SensoryChannel(
+                    dominant="auditory",
+                    secondary=["tactile", "olfactory"],
+                    description="The sound of the boundary",
+                ),
+                spatial=SpatialChannel(
+                    enclosure="vast_exposed",
+                    orientation="horizontal",
+                    constraint="Cannot be approached directly",
+                ),
+                temporal=TemporalChannel(
+                    time_model="cyclical",
+                    pace_relation="Seasonal crossing rites",
+                ),
+            ),
+            entity_properties=EntityProperties(
+                has_agency=True,
+                is_third_character=True,
+                evolution_pattern="Sanctuary → Trap",
+                topological_role="connector",
+                role_can_shift=True,
+            ),
+            state_variable_expression=[
+                StateVariableExpression(
+                    variable_id="community_pressure",
+                    physical_manifestation="Stones seem closer together",
+                )
+            ],
+            flavor_text="The boundary that decides who belongs.",
+        )
+        data = pe.model_dump()
+        restored = PlaceEntity.model_validate(data)
+        assert restored == pe
+
+    def test_missing_required_field_raises(self):
+        with pytest.raises((ValidationError, TypeError)):
+            from narrative_data.schemas.place_entities import EntityProperties, PlaceEntity
+
+            PlaceEntity(
+                # missing canonical_name
+                genre_slug="folk-horror",
+                variant_name="The Farmhouse",
+                communicability=self._make_communicability(),
+                entity_properties=EntityProperties(),
+            )
+
+    def test_cluster_place_entity_construction(self):
+        from narrative_data.schemas.place_entities import ClusterPlaceEntity
+        from narrative_data.schemas.shared import GenreVariant
+
+        cpe = ClusterPlaceEntity(
+            canonical_name="threshold",
+            cluster_name="Liminal Place Cluster",
+            core_identity="The place where ordinary rules no longer apply",
+            genre_variants=[
+                GenreVariant(genre_slug="folk-horror", variant_name="The Boundary Stone"),
+                GenreVariant(genre_slug="epic-fantasy", variant_name="The Worldgate"),
+            ],
+        )
+        assert cpe.canonical_name == "threshold"
+        assert len(cpe.genre_variants) == 2
+
+    def test_atmospheric_intensity_out_of_range_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.place_entities import AtmosphericChannel
+
+            AtmosphericChannel(mood="dread", intensity=1.5)  # invalid
+
+    def test_atmospheric_intensity_below_zero_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.place_entities import AtmosphericChannel
+
+            AtmosphericChannel(mood="dread", intensity=-0.1)  # invalid
+
+    def test_sensory_dominant_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.place_entities import SensoryChannel
+
+            SensoryChannel(dominant="not_a_sense")  # invalid
+
+    def test_topological_role_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.place_entities import EntityProperties
+
+            EntityProperties(topological_role="not_a_role")  # invalid
+
+
+# ---------------------------------------------------------------------------
+# Tropes
+# ---------------------------------------------------------------------------
+
+
+class TestTrope:
+    def test_minimal_valid_construction(self):
+        from narrative_data.schemas.tropes import Trope
+
+        t = Trope(
+            name="The Reluctant Witness",
+            genre_slug="folk-horror",
+            genre_derivation=(
+                "Community pressure + forbidden knowledge"
+                " = character who sees but cannot speak"
+            ),
+            narrative_function=["establishing", "escalating"],
+        )
+        assert t.name == "The Reluctant Witness"
+        assert t.genre_slug == "folk-horror"
+        assert t.variants is None
+        assert t.state_variable_interactions == []
+        assert t.ontological_dimension is None
+        assert t.overlap_signal == []
+        assert t.flavor_text is None
+
+    def test_round_trip(self):
+        from narrative_data.schemas.shared import OverlapSignal, StateVariableInteraction
+        from narrative_data.schemas.tropes import Trope, TropeVariants
+
+        t = Trope(
+            name="The Keeper of Secrets",
+            genre_slug="gothic",
+            genre_derivation="Enclosed space + generational guilt + information asymmetry",
+            narrative_function=["characterizing", "connecting", "subverting"],
+            variants=TropeVariants(
+                straight="The faithful retainer who holds the family shame",
+                inverted="The secret-keeper who reveals too early",
+                deconstructed="The keeper who never knew what they were keeping",
+                violation="The keeper who sells the secret",
+            ),
+            state_variable_interactions=[
+                StateVariableInteraction(
+                    variable_id="revelation_pressure",
+                    operation="accumulates",
+                    description="Each scene adds weight",
+                )
+            ],
+            ontological_dimension="permeable_negotiable",
+            overlap_signal=[
+                OverlapSignal(
+                    adjacent_genre="thriller",
+                    similar_entity="The Informant",
+                    differentiator="Gothic trope is generational, thriller's is transactional",
+                )
+            ],
+            flavor_text="What is kept shapes the keeper.",
+        )
+        data = t.model_dump()
+        restored = Trope.model_validate(data)
+        assert restored == t
+
+    def test_missing_required_field_raises(self):
+        with pytest.raises((ValidationError, TypeError)):
+            from narrative_data.schemas.tropes import Trope
+
+            Trope(
+                # missing name
+                genre_slug="folk-horror",
+                genre_derivation="Some derivation",
+                narrative_function=["establishing"],
+            )
+
+    def test_narrative_function_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.tropes import Trope
+
+            Trope(
+                name="Test Trope",
+                genre_slug="folk-horror",
+                genre_derivation="Some derivation",
+                narrative_function=["not_a_function"],  # invalid
+            )
+
+    def test_narrative_function_multiple_values(self):
+        from narrative_data.schemas.tropes import Trope
+
+        t = Trope(
+            name="Multi-function Trope",
+            genre_slug="thriller",
+            genre_derivation="Many roles",
+            narrative_function=["establishing", "connecting", "escalating", "resolving"],
+        )
+        assert len(t.narrative_function) == 4
+
+
+# ---------------------------------------------------------------------------
+# Narrative Shapes
+# ---------------------------------------------------------------------------
+
+
+class TestNarrativeShape:
+    def _make_minimal_beat(self):
+        from narrative_data.schemas.narrative_shapes import Beat
+
+        return Beat(
+            name="Inciting Incident",
+            position=0.1,
+            flexibility="load_bearing",
+            tension_effect="builds",
+        )
+
+    def test_minimal_valid_construction(self):
+        from narrative_data.schemas.narrative_shapes import NarrativeShape, TensionProfile
+
+        ns = NarrativeShape(
+            name="The Pressure Cooker",
+            genre_slug="thriller",
+            tension_profile=TensionProfile(family="pressure"),
+            beats=[self._make_minimal_beat()],
+        )
+        assert ns.name == "The Pressure Cooker"
+        assert ns.genre_slug == "thriller"
+        assert ns.rest_beats == []
+        assert ns.composability is None
+        assert ns.overlap_signal is None
+        assert ns.flavor_text is None
+
+    def test_round_trip(self):
+        from narrative_data.schemas.narrative_shapes import (
+            Beat,
+            Composability,
+            NarrativeShape,
+            RestBeat,
+            ShapeOverlapSignal,
+            TensionProfile,
+        )
+
+        ns = NarrativeShape(
+            name="The Countdown",
+            genre_slug="thriller",
+            tension_profile=TensionProfile(
+                family="countdown",
+                description="Ticking clock drives everything",
+                distinctive_feature="Explicit deadline creates irresistible forward momentum",
+            ),
+            beats=[
+                Beat(
+                    name="The Clock Starts",
+                    dramatic_function="Stakes established",
+                    position=0.05,
+                    flexibility="load_bearing",
+                    tension_effect="builds",
+                    pacing_effect="accelerates",
+                    state_thresholds={"urgency": 0.3, "danger": 0.2},
+                    genre_constraints=["Deadline must be externally imposed"],
+                    flavor_text="The moment everything starts running.",
+                ),
+                Beat(
+                    name="False Hope",
+                    position=0.6,
+                    flexibility="ornamental",
+                    tension_effect="redirects",
+                    pacing_effect="decelerates",
+                ),
+                Beat(
+                    name="Final Convergence",
+                    position=0.9,
+                    flexibility="load_bearing",
+                    tension_effect="peaks",
+                    pacing_effect="erratic",
+                ),
+            ],
+            rest_beats=[
+                RestBeat(
+                    type="recovery",
+                    tension_behavior="releases",
+                    description="Brief breathing room before the final act",
+                    genre_constraints=["Must not exceed 10% of arc length"],
+                )
+            ],
+            composability=Composability(
+                can_layer_with=["oscillating", "spiral"],
+                layer_type="parallel_tracks",
+            ),
+            overlap_signal=ShapeOverlapSignal(
+                incompatible_physics="Cannot coexist with residual shapes",
+                neighboring_shapes=["pressure", "spiral"],
+            ),
+            flavor_text="Time is the villain.",
+        )
+        data = ns.model_dump()
+        restored = NarrativeShape.model_validate(data)
+        assert restored == ns
+
+    def test_missing_required_field_raises(self):
+        with pytest.raises((ValidationError, TypeError)):
+            from narrative_data.schemas.narrative_shapes import NarrativeShape, TensionProfile
+
+            NarrativeShape(
+                # missing name
+                genre_slug="thriller",
+                tension_profile=TensionProfile(family="countdown"),
+                beats=[],
+            )
+
+    def test_beat_position_out_of_range_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.narrative_shapes import Beat
+
+            Beat(
+                name="Bad Beat",
+                position=1.5,  # invalid
+                flexibility="load_bearing",
+                tension_effect="builds",
+            )
+
+    def test_beat_position_below_zero_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.narrative_shapes import Beat
+
+            Beat(
+                name="Bad Beat",
+                position=-0.1,  # invalid
+                flexibility="load_bearing",
+                tension_effect="builds",
+            )
+
+    def test_state_thresholds_out_of_range_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.narrative_shapes import Beat
+
+            Beat(
+                name="Bad Threshold Beat",
+                position=0.5,
+                flexibility="load_bearing",
+                tension_effect="builds",
+                state_thresholds={"urgency": 2.0},  # invalid
+            )
+
+    def test_tension_family_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.narrative_shapes import TensionProfile
+
+            TensionProfile(family="not_a_family")  # invalid
+
+    def test_beat_flexibility_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.narrative_shapes import Beat
+
+            Beat(
+                name="Test",
+                position=0.5,
+                flexibility="not_a_flexibility",  # invalid
+                tension_effect="builds",
+            )
+
+    def test_beat_tension_effect_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.narrative_shapes import Beat
+
+            Beat(
+                name="Test",
+                position=0.5,
+                flexibility="load_bearing",
+                tension_effect="not_an_effect",  # invalid
+            )
+
+    def test_rest_beat_type_enum_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            from narrative_data.schemas.narrative_shapes import RestBeat
+
+            RestBeat(type="not_a_type", tension_behavior="releases")  # invalid
