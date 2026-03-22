@@ -80,19 +80,17 @@ class PromptBuilder:
         prompt += "\n\n" + self._load_commentary_directive()
         return prompt
 
-    @staticmethod
-    def build_stage2(raw_content: str, schema: dict) -> str:
-        schema_str = json.dumps(schema, indent=2)
-        return f"""Given the following content:
----
-{raw_content}
----
-
-Produce JSON matching this schema:
-{schema_str}
-
-Rules:
-- Preserve all substantive information from the source
-- Map evaluative notes to the commentary and suggestions fields
-- Do not invent information not present in the source
-- If a field cannot be populated from the source, use null"""
+    def build_structure(
+        self,
+        structure_type: str,
+        raw_content: str,
+        schema: dict,
+    ) -> str:
+        """Build a type-specific structuring prompt for the 7b model."""
+        template_path = self.prompts_dir / "structure" / f"{structure_type}.md"
+        if not template_path.exists():
+            raise FileNotFoundError(f"Structure prompt template not found: {template_path}")
+        prompt = template_path.read_text()
+        prompt = prompt.replace("{raw_content}", raw_content)
+        prompt = prompt.replace("{schema}", json.dumps(schema, indent=2))
+        return prompt

@@ -16,6 +16,7 @@ def run_structuring(
     raw_path: Path,
     output_path: Path,
     schema_type: type[BaseModel],
+    structure_type: str,
     model: str = STRUCTURING_MODEL,
     is_collection: bool = True,
     max_retries: int = 3,
@@ -32,7 +33,7 @@ def run_structuring(
     else:
         target_schema = schema_type.model_json_schema()
 
-    prompt = PromptBuilder.build_stage2(raw_content, target_schema)
+    prompt = PromptBuilder().build_structure(structure_type, raw_content, target_schema)
     errors: list[str] = []
     raw_output: Any = None
 

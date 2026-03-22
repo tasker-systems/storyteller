@@ -53,14 +53,6 @@ class TestPromptBuilder:
         )
         assert "Cosmic Horror" in prompt
 
-    def test_build_stage2_prompt(self, prompt_dir: Path):  # noqa: ARG002
-        raw_content = "# Folk Horror\n\nA genre of rural dread."
-        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-        prompt = PromptBuilder.build_stage2(raw_content, schema)
-        assert "Folk Horror" in prompt
-        assert '"type": "object"' in prompt
-        assert "Produce JSON matching this schema" in prompt
-
 
 class TestBuildDiscovery:
     def test_injects_genre_content(self, tmp_path):
