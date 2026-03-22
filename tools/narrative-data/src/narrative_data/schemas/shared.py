@@ -79,3 +79,11 @@ class GenreBoundary(BaseModel):
     trigger: str
     drift_target: str
     description: str
+
+
+class GenreVariant(BaseModel):
+    """A genre-specific variant of a canonical entity."""
+
+    genre_slug: str
+    variant_name: str
+    key_differences: str | None = None
