@@ -56,7 +56,7 @@ Split `region.md` by dimension group. The source has bold dimension group header
 
 | Segment | Source Pattern | Maps To |
 |---|---|---|
-| `segment-meta.md` | H1 title + classification info | genre_slug, genre_name, classification, constraint_layer_type, modifies |
+| `segment-meta.md` | H1 title + classification info + any genre-level summary prose | genre_slug, genre_name, classification, constraint_layer_type, modifies, flavor_text |
 | `segment-aesthetic.md` | `**Aesthetic dimensions**` block | `AestheticDimensions` |
 | `segment-tonal.md` | `**Tonal dimensions**` block | `TonalDimensions` |
 | `segment-temporal.md` | `**Temporal dimensions**` block | `TemporalDimensions` |
@@ -64,8 +64,9 @@ Split `region.md` by dimension group. The source has bold dimension group header
 | `segment-agency.md` | `**Agency dimensions**` block | `AgencyDimensions` |
 | `segment-epistemological.md` | Epistemological section | `EpistemologicalDimensions` |
 | `segment-world-affordances.md` | World affordances / magic / technology section | `WorldAffordances` |
-| `segment-locus-of-power.md` | `**Locus of power**` section | `list[str]` (ranked, max 3) |
-| `segment-narrative-structure.md` | Narrative structure section | `list[str]` (ranked, max 3) |
+| `segment-locus-of-power.md` | `**Locus of power**` section | Literal-constrained `list[str]` (values from: place, person, system, relationship, cosmos; max 3) |
+| `segment-narrative-structure.md` | Narrative structure section | Literal-constrained `list[str]` (values from: quest, mystery, tragedy, comedy, romance, horror; max 3) |
+| `segment-narrative-contracts.md` | Genre contracts / hard invariants section | `list[NarrativeContract]` |
 | `segment-state-variables.md` | `## 3. State Variables` H2 section | `list[StateVariableTemplate]` |
 | `segment-boundaries.md` | `## 4. Genre Topology` or boundaries section | `list[GenreBoundary]` |
 
@@ -166,8 +167,9 @@ Each segment gets its own extraction call with a **sub-schema** matching its tar
 | `segment-agency.md` | `AgencyDimensions.model_json_schema()` | single object |
 | `segment-epistemological.md` | `EpistemologicalDimensions.model_json_schema()` | single object |
 | `segment-world-affordances.md` | `WorldAffordances.model_json_schema()` | single object |
-| `segment-locus-of-power.md` | `{"type": "array", "items": {"type": "string"}}` | array |
-| `segment-narrative-structure.md` | same pattern | array |
+| `segment-locus-of-power.md` | Literal-constrained array schema (enum: place, person, system, relationship, cosmos) | array |
+| `segment-narrative-structure.md` | Literal-constrained array schema (enum: quest, mystery, tragedy, comedy, romance, horror) | array |
+| `segment-narrative-contracts.md` | `{"type": "array", "items": NarrativeContract.model_json_schema()}` | array |
 | `segment-state-variables.md` | `{"type": "array", "items": StateVariableTemplate.model_json_schema()}` | array |
 | `segment-boundaries.md` | `{"type": "array", "items": GenreBoundary.model_json_schema()}` | array |
 | `segment-meta.md` | inline schema for genre_slug, genre_name, classification, etc. | single object |
@@ -192,6 +194,7 @@ prompts/structure/segments/
   genre-region-locus-of-power.md
   genre-region-narrative-structure.md
   genre-region-state-variables.md
+  genre-region-narrative-contracts.md
   genre-region-boundaries.md
   genre-region-meta.md
   discovery-entity.md              ← generic for any discovery entity type
@@ -229,6 +232,7 @@ def aggregate_genre_dimensions(segment_dir: Path) -> GenreDimensions:
         world_affordances=load_segment_json(segment_dir / "segment-world-affordances.json"),
         locus_of_power=load_segment_json(segment_dir / "segment-locus-of-power.json"),
         narrative_structure=load_segment_json(segment_dir / "segment-narrative-structure.json"),
+        narrative_contracts=load_segment_json(segment_dir / "segment-narrative-contracts.json"),
         active_state_variables=load_segment_json(segment_dir / "segment-state-variables.json"),
         boundaries=load_segment_json(segment_dir / "segment-boundaries.json"),
         modifies=meta.get("modifies", []),
