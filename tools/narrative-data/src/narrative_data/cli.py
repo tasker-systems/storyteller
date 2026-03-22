@@ -631,6 +631,9 @@ def structure() -> None:
 @click.option(
     "--plan", "plan_only", is_flag=True, default=False, help="Show plan without executing."
 )
+@click.option(
+    "--model", default=None, help="Override structuring model (default: qwen2.5:7b-instruct)."
+)
 def structure_run(
     type_slug: str,
     genre: str | None,
@@ -638,6 +641,7 @@ def structure_run(
     clusters: bool,
     force: bool,
     plan_only: bool,
+    model: str | None,
 ) -> None:
     """Structure raw markdown into validated JSON for a given type.
 
@@ -676,6 +680,7 @@ def structure_run(
             genres=genres,
             force=force,
             plan_only=plan_only,
+            model=model,
         )
 
     if clusters:
@@ -685,6 +690,7 @@ def structure_run(
             type_slug=type_slug,
             force=force,
             plan_only=plan_only,
+            model=model,
         )
 
     if not all_genres and not genre and not clusters:

@@ -184,6 +184,7 @@ def structure_type(
     genres: list[str] | None = None,
     force: bool = False,
     plan_only: bool = False,
+    model: str | None = None,
 ) -> dict:
     """Structure per-genre files for a given type.
 
@@ -226,15 +227,19 @@ def structure_type(
             skipped += 1
             continue
 
-        console.print(f"[cyan]Structuring {type_slug} for {genre_slug}...[/cyan]")
-        result = run_structuring(
-            client=client,
-            raw_path=source_path,
-            output_path=output_path,
-            schema_type=config.per_genre,
-            structure_type=config.prompt_slug,
-            is_collection=config.is_collection,
-        )
+        model_label = f" ({model})" if model else ""
+        console.print(f"[cyan]Structuring {type_slug} for {genre_slug}{model_label}...[/cyan]")
+        kwargs: dict = {
+            "client": client,
+            "raw_path": source_path,
+            "output_path": output_path,
+            "schema_type": config.per_genre,
+            "structure_type": config.prompt_slug,
+            "is_collection": config.is_collection,
+        }
+        if model:
+            kwargs["model"] = model
+        result = run_structuring(**kwargs)
 
         if result["success"]:
             console.print(f"[green]✓ {genre_slug}[/green]")
@@ -264,6 +269,7 @@ def structure_clusters(
     type_slug: str,
     force: bool = False,
     plan_only: bool = False,
+    model: str | None = None,
 ) -> dict:
     """Structure cluster synthesis files for a given type.
 
@@ -315,15 +321,22 @@ def structure_clusters(
             skipped += 1
             continue
 
-        console.print(f"[cyan]Structuring {type_slug} for cluster '{cluster_name}'...[/cyan]")
-        result = run_structuring(
-            client=client,
-            raw_path=source_path,
-            output_path=output_path,
-            schema_type=config.cluster,
-            structure_type=cluster_prompt_slug,
-            is_collection=True,
+        model_label = f" ({model})" if model else ""
+        console.print(
+            f"[cyan]Structuring {type_slug} for cluster"
+            f" '{cluster_name}'{model_label}...[/cyan]"
         )
+        kwargs: dict = {
+            "client": client,
+            "raw_path": source_path,
+            "output_path": output_path,
+            "schema_type": config.cluster,
+            "structure_type": cluster_prompt_slug,
+            "is_collection": True,
+        }
+        if model:
+            kwargs["model"] = model
+        result = run_structuring(**kwargs)
 
         if result["success"]:
             console.print(f"[green]✓ cluster-{cluster_name}[/green]")
