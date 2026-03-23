@@ -882,8 +882,62 @@ def fill(
       spatial-topology → fills agency from friction.type + directionality.type
     """
     if tier == "llm-patch":
-        click.echo("LLM patch fills: not implemented yet.", err=True)
-        raise SystemExit(1)
+        from rich.console import Console
+        from rich.table import Table
+
+        from narrative_data.config import OLLAMA_BASE_URL, resolve_output_path
+        from narrative_data.ollama import OllamaClient
+        from narrative_data.pipeline.llm_patch import fill_all_llm_patch
+
+        llm_console = Console()
+
+        try:
+            llm_corpus_dir = resolve_output_path()
+        except RuntimeError as exc:
+            llm_console.print(f"[red]Error: {exc}[/red]")
+            raise SystemExit(1) from exc
+
+        llm_type_list = list(types) if types else None
+        llm_genre_list = list(genres) if genres else None
+        llm_client = OllamaClient(base_url=OLLAMA_BASE_URL)
+
+        if dry_run:
+            llm_console.print("[yellow]Dry run — no files will be written.[/yellow]")
+        llm_console.print(f"\n[bold]Running LLM patch fills on:[/bold] {llm_corpus_dir}")
+        if llm_type_list:
+            llm_console.print(f"  Types:  {', '.join(llm_type_list)}")
+        if llm_genre_list:
+            llm_console.print(f"  Genres: {', '.join(llm_genre_list)}")
+        llm_console.print()
+
+        llm_summary = fill_all_llm_patch(
+            corpus_dir=llm_corpus_dir,
+            client=llm_client,
+            types=llm_type_list,
+            genres=llm_genre_list,
+            dry_run=dry_run,
+        )
+
+        llm_table = Table(title="LLM Patch Fill Summary", show_header=True, header_style="bold cyan")
+        llm_table.add_column("Type", style="cyan")
+        llm_table.add_column("Files", justify="right")
+        llm_table.add_column("Updated", justify="right")
+        llm_table.add_column("Skipped", justify="right")
+
+        for type_slug, result in sorted(llm_summary.items()):
+            updated = result["entities_updated"]
+            updated_str = f"[green]{updated}[/green]" if updated > 0 else str(updated)
+            llm_table.add_row(
+                type_slug,
+                str(result["files_processed"]),
+                updated_str,
+                str(result["entities_skipped"]),
+            )
+
+        llm_console.print(llm_table)
+        if dry_run:
+            llm_console.print("\n[yellow]Dry run complete — no files written.[/yellow]")
+        return
 
     from rich.console import Console
     from rich.table import Table
