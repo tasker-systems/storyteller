@@ -60,4 +60,4 @@ This CLA is accepted by including the following statement in your first pull req
 
 Project maintainers will record your acceptance. Subsequent contributions are covered by the same agreement without needing to repeat it.
 
-For contributions from organizations or multiple individuals, contact [licensing@tasker-systems.com](mailto:licensing@tasker-systems.com) to arrange an entity-level CLA.
+For contributions from organizations or multiple individuals, contact [Pete Taylor](mailto:pete.jc.taylor@hey.com) to arrange an entity-level CLA.

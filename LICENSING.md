@@ -23,7 +23,7 @@ You can use Storyteller as a dependency or foundation for your own open source p
 
 The AGPL-3.0 requires that if you modify the software and make it available to users over a network (as a service, a hosted application, an API, etc.), you must release the complete source code of your modified version under the AGPL-3.0. This applies even if you never "distribute" the software in the traditional sense.
 
-If this requirement is incompatible with your use case, a commercial license is available. Contact [licensing@tasker-systems.com](mailto:licensing@tasker-systems.com) to discuss terms.
+If this requirement is incompatible with your use case, a commercial license is available. Contact [Pete Taylor](mailto:pete.jc.taylor@hey.com) to discuss terms.
 
 ### If you are providing Storyteller as a hosted service
 
