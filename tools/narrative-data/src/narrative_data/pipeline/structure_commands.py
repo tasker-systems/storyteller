@@ -537,7 +537,7 @@ def structure_clusters(
                     continue
 
                 schema = config.cluster.model_json_schema()
-                prompt_slug = f"{config.prompt_slug}-cluster"
+                prompt_slug = "discovery-entity-cluster"
 
                 console.print(f"  [cyan]{seg.name}{model_label}[/cyan]", end=" ")
 
