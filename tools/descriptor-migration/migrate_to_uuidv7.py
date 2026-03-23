@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 #!/usr/bin/env python3
 """Migrate descriptor JSON files to include UUIDv7 entity_id fields.
 

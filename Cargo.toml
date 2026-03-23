@@ -13,6 +13,9 @@ members = [
     "crates/storyteller-workshop/src-tauri",
 ]
 
+[workspace.package]
+license = "AGPL-3.0-only"
+
 # =============================================================================
 # Workspace Dependencies
 # =============================================================================

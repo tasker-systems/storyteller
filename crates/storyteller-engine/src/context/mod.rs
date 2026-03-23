@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Context assembly pipeline — builds the Narrator's three-tier context.
 //!
 //! See: `docs/technical/narrator-architecture.md` § Three-Tier Context

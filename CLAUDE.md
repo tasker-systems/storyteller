@@ -258,6 +258,8 @@ tools/doc-tools/src/doc_tools/
 - Follow Microsoft Universal Guidelines + Rust API Guidelines
 - Workspace dependency versions in root `Cargo.toml` under `[workspace.dependencies]`; crates use `{ workspace = true }`
 - Versions aligned with tasker-core where they overlap (tokio, serde, sqlx, lapin, tonic, tracing)
+- All new `.rs` files must include the SPDX header: `// SPDX-License-Identifier: AGPL-3.0-only` + copyright + licensing reference
+- All new `.py` files must include the SPDX header: `# SPDX-License-Identifier: AGPL-3.0-only` + copyright + licensing reference
 
 ## Documentation
 
@@ -272,3 +274,13 @@ Design documentation in `docs/`:
 **Private content**: Creative works and training data live in the separate `storyteller-data` repository, accessed via `STORYTELLER_DATA_PATH` (see `.env.example`).
 
 See [`docs/README.md`](docs/README.md) for a full guide with reading order.
+
+## Knowledge Vault
+
+A cross-project knowledge graph lives at `~/projects/knowledge/`. When working on
+storyteller foundation, technical, or game-design topics, check the vault for:
+- Concept notes that trace ideas across storyteller, writing, and academic work
+- Recent session notes for context from prior conversations
+- Source indexes that link storyteller docs to related work in other repos
+
+Access via Obsidian CLI: `obsidian search query="<term>"`

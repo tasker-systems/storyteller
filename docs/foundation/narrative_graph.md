@@ -107,6 +107,55 @@ The system must distinguish between:
 
 ---
 
+## The Tilted Sheet: Narrative Flow and Irreversibility
+
+The gravitational landscape metaphor as described above is isotropic — it has no preferred direction. A marble on a rubber sheet can roll any way the gravity pulls it. But narrative is not isotropic. Stories have a direction: forward. Characters move through narrative-chronological time, and that movement is irreversible.
+
+This does not foreclose time travel as a literary device, but it does mean that a character cannot move backward along the current of the plot. A player could reload state (exiting the narrative frame), but a character within the story can only move with the current, not against it. They cannot even affect the rate of change of narrative chronology — that is bound up with genre, trope, and plot-level pacing, which are authorial and narrative devices, not character choices.
+
+The rubber sheet, then, is not flat. It tilts.
+
+### The Gradient
+
+Imagine the mass-warped rubber sheet tilted so that one end is higher than the other. The metal balls (high-mass scenes) still create basins of attraction, and the curvature of the sheet (genre physics) still shapes how gravity operates. But now there is also a *gradient* — a directional pull that moves everything forward. Characters are not marbles rolling freely on a flat surface. They are kayakers on a river: they have genuine agency about which channel to take, whether to pause in a quiet pool or push through rapids, whether to steer toward one bank or the other. But they cannot paddle upstream. The river flows.
+
+The gradient is not uniform. It is shaped by the narrative shapes data:
+
+- **The Spiral of Diminishing Certainty** (folk horror) tilts steeply — the current accelerates as knowledge accumulates, pulling harder toward the ritual. The kayaker can steer left or right but the water moves faster with every turn.
+- **The Sanctuary Reclaimed** (cozy fantasy) tilts gently — the current is patient, seasonal, with wide quiet pools between the rapids. There is time to linger. The destination is not in doubt, but the pace of arrival is generous.
+- **The Heat Curve** (cyberpunk) tilts with increasing gradient — every action steepens the slope. Early in the story, the surface is nearly flat. Late in the story, it is nearly vertical.
+
+### Channels and Riverbeds
+
+The genre's tropes and narrative beats create **channels** in the tilted surface — riverbeds worn by the kind of stories this genre characteristically tells. The kayaker can choose which channel to follow, but the channels themselves are genre-determined:
+
+- Folk horror's channels **converge** — all tributaries flow toward the ritual. The kayaker can delay but not diverge.
+- Romance's channels **converge** — all paths lead toward union (the HEA contract). The question is not whether they arrive but what they carry when they do.
+- Literary fiction's channels may **diverge** — the river deltas, and the ending is which estuary the kayaker reaches. Multiple endings are equally valid because the genre does not guarantee a single destination.
+- Tragedy's channel is **a single deepening course** — there are no tributaries. The kayaker can see the waterfall ahead but cannot steer away from it. Agency is expressed in *how* they go over, not *whether*.
+
+### Quiet Pools
+
+The narrative shape's "rest rhythm" — the connector beats between intensity — manifests as widenings in the channel where the current slows. A quiet pool in a river is not zero-gravity; the water is still flowing, just more slowly. The Dramaturge recognizes these pools: "this is a breathing beat; the current is gentle here; there is time for the characters to process what just happened before the next rapids."
+
+The pacing of a genre is the characteristic profile of its gradient: how steeply it tilts, where it levels off, where it drops. A thriller tilts steeply and has few pools. A pastoral tilts gently and has many. A horror story tilts gently at first and then drops off a cliff. These profiles are described in the narrative shapes data and used by the Dramaturge to calibrate per-turn pacing guidance.
+
+### What This Means for the System
+
+The directional flow model adds a dimension to the narrative graph that the original gravitational metaphor lacks:
+
+1. **Scenes have position along the gradient** — not just mass and connectivity, but where they sit in the narrative's forward flow. Early scenes are upstream; climactic scenes are downstream. The gradient determines how strongly the current pulls toward them from the current position.
+
+2. **Approach vectors now include momentum** — a character arriving at a scene from a steep section of the gradient (after rapid escalation) carries different narrative momentum than one arriving from a quiet pool (after a breathing beat). The scene must accommodate both.
+
+3. **The author tilts the sheet, not just places masses** — authoring is not only about where the high-mass scenes sit, but about the characteristic gradient profile between them. The same two scenes connected by a steep drop (thriller) feel completely different when connected by a gentle slope (literary fiction).
+
+4. **Forward flow is the Dramaturge's primary responsibility** — the Dramaturge doesn't just recognize narrative position (which beat in which shape). It manages the felt sense of current: "the story is accelerating," "the story is breathing," "the story is approaching a drop." This is the temporal dimension of dramatic guidance.
+
+5. **The river metaphor limits are important** — unlike a real river, the narrative current is *shaped by the characters' accumulated choices*. A character who has been making choices that steepen the gradient (accumulating debt, eroding trust, approaching thresholds) creates their own rapids. The sheet tilts in response to what has happened, not just what was authored. This is the connection between the gravity model and the per-turn graph update cycle described in the Storykeeper context assembly architecture.
+
+---
+
 ## Scene Design: The Author's Work
 
 The story designer authors scenes not as scripts but as **possibility spaces**. A scene definition includes:

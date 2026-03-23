@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Scene journal management — Tier 2 of the Narrator's context.
 //!
 //! See: `docs/technical/narrator-architecture.md` § Rolling Scene Journal

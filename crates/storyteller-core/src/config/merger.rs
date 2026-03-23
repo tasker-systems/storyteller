@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Configuration merger: loads base + environment overlay and produces merged TOML.
 //!
 //! Simplified from tasker-core's `merger.rs` — storyteller has a single config

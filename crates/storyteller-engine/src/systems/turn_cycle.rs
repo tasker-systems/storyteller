@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Turn pipeline orchestration — synchronous Bevy systems for each stage.
 //!
 //! See: `docs/technical/turn-cycle-architecture.md`

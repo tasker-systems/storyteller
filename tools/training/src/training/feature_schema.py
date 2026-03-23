@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Feature encoding schema — shared contract between Rust and Python.
 
 Constants transliterated from storyteller-ml/src/feature_schema.rs (lines 40-113).

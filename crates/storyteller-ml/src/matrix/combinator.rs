@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Combinatorial matrix generation — iterates valid cells and produces scenario skeletons.
 
 use std::collections::BTreeMap;

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Event grammar types — the formal specification of events in the storyteller system.
 //!
 //! See: `docs/ticket-specs/event-system-foundations/event-grammar.md`

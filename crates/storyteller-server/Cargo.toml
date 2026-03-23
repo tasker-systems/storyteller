@@ -2,9 +2,9 @@
 name = "storyteller-server"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Player-facing HTTP/WebSocket API for the storyteller engine — deployment-agnostic"
 readme = "../README.md"
-license = "MIT"
 repository = "https://github.com/tasker-systems/storyteller"
 keywords = ["storytelling", "narrative", "api"]
 categories = ["game-engines", "web-programming"]

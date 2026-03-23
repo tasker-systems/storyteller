@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """JSONL loading, tokenization, BIO alignment, and HuggingFace Dataset creation.
 
 The critical function is `align_bio_labels()` which converts character-level

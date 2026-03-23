@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Agent message types — inter-agent communication for the turn cycle.
 //!
 //! See: `docs/technical/agent-message-catalog.md`, `docs/technical/narrator-architecture.md`

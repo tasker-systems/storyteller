@@ -52,3 +52,4 @@ checkpoints/
 
 # ignore our .story cache
 .story/
+.superpowers/

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Local descriptor cache for the CLI.
 //!
 //! `ComposerCache` syncs genre descriptors from the server and persists them

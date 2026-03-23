@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Tensor components — personality, motivation, and emotional state as ECS data.
 //!
 //! See: `docs/technical/tensor-schema-spec.md`, `docs/technical/tensor-case-study-sarah.md`

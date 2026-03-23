@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Pipeline phase observability — Layer 2 (session debug) event emission.
 //!
 //! See: `docs/technical/infrastructure-architecture.md` § Layer 2: Session Observability

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! SQLx migrator for the storyteller database schema.
 //!
 //! Embeds all migrations at compile time. Use in `#[sqlx::test]` tests:

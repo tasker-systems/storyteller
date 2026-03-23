@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Relational implication inference — heuristic mapping from events to relationships.
 //!
 //! See: `docs/ticket-specs/event-system-foundations/phase-c-ml-classification-pipeline.md`

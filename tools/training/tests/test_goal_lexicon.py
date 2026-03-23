@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 Tasker Systems. All rights reserved.
+# See LICENSING.md for details.
+
 """Tests for goal lexicon enrichment."""
 
 from goal_lexicon.enrich import build_enrichment_prompt

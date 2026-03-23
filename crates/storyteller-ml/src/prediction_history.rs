@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Prediction history — ring buffer of recent turn outcomes per character.
 //!
 //! Captures what the ML model predicted each turn so subsequent predictions

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Scene composition and descriptor catalog for the storyteller engine.
 //!
 //! This crate owns the creative assembly layer: descriptor catalogs,

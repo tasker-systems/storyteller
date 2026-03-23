@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Compose subcommand — compose a scene via the engine server.
 //!
 //! Resolves slugs from the local composer cache, sends a `ComposeSceneRequest`

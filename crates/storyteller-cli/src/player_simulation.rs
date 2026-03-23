@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Simulated player for automated playtest runs.
 //!
 //! Uses a direct Ollama HTTP call (`/api/chat`) to generate player responses

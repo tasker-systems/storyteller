@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Tasker Systems. All rights reserved.
+// See LICENSING.md for details.
+
 //! Scene composition — transforms UI selections into playable `SceneData` + `CharacterSheet` pairs.
 //!
 //! The [`compose`](SceneComposer::compose) method on [`SceneComposer`] is the core
