@@ -190,6 +190,10 @@ A dedicated `ground_state` schema, namespaced away from story-instance tables:
 
 ```sql
 CREATE SCHEMA IF NOT EXISTS ground_state;
+-- NOTE: ground_state.settings (genre-level setting archetypes from Tier B)
+-- is distinct from public.settings (per-story authored locations from
+-- postgresql-schema-design.md). The names collide intentionally — they
+-- represent the same concept at different layers of the data model.
 ```
 
 ### 3.3 Reference Entity Tables
@@ -283,9 +287,16 @@ CREATE TABLE ground_state.archetypes (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Natural key for upsert (functional index for nullable cluster_id)
-CREATE UNIQUE INDEX idx_archetypes_natural_key
-    ON ground_state.archetypes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+-- Natural key constraint for upsert (functional expression handles nullable cluster_id)
+ALTER TABLE ground_state.archetypes
+    ADD CONSTRAINT uq_archetypes_natural_key
+    UNIQUE USING INDEX (CREATE UNIQUE INDEX idx_archetypes_natural_key
+        ON ground_state.archetypes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID)));
+
+-- NOTE: PostgreSQL requires ON CONFLICT ON CONSTRAINT for named constraints.
+-- If ALTER TABLE ... UNIQUE USING INDEX is not available, create the unique index
+-- and use ON CONFLICT (genre_id, entity_slug, COALESCE(cluster_id, '...')) with
+-- the full expression in the upsert instead of ON CONFLICT ON CONSTRAINT.
 
 CREATE INDEX idx_archetypes_genre ON ground_state.archetypes (genre_id);
 CREATE INDEX idx_archetypes_cluster ON ground_state.archetypes (cluster_id) WHERE cluster_id IS NOT NULL;
@@ -414,30 +425,44 @@ BEGIN
         RETURN NULL;
     END IF;
 
+    -- Each entity is wrapped as {"slug": ..., "data": ...} to preserve the
+    -- entity_slug for downstream overlay lookups and cache correlation without
+    -- requiring JSONB payload parsing.
     RETURN jsonb_build_object(
         'genre_slug', p_genre_slug,
         'genre', (SELECT payload FROM ground_state.genres WHERE id = v_genre_id),
-        'archetypes', (SELECT jsonb_agg(payload) FROM ground_state.archetypes
+        'archetypes', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                       FROM ground_state.archetypes
                        WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'dynamics',   (SELECT jsonb_agg(payload) FROM ground_state.dynamics
+        'dynamics',   (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                       FROM ground_state.dynamics
                        WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'settings',   (SELECT jsonb_agg(payload) FROM ground_state.settings
+        'settings',   (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                       FROM ground_state.settings
                        WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'goals',      (SELECT jsonb_agg(payload) FROM ground_state.goals
+        'goals',      (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                       FROM ground_state.goals
                        WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'profiles',   (SELECT jsonb_agg(payload) FROM ground_state.profiles
+        'profiles',   (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                       FROM ground_state.profiles
                        WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'tropes',     (SELECT jsonb_agg(payload) FROM ground_state.tropes
+        'tropes',     (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                       FROM ground_state.tropes
                        WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'narrative_shapes', (SELECT jsonb_agg(payload) FROM ground_state.narrative_shapes
+        'narrative_shapes', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                            FROM ground_state.narrative_shapes
                             WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'ontological_posture', (SELECT jsonb_agg(payload) FROM ground_state.ontological_posture
+        'ontological_posture', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                               FROM ground_state.ontological_posture
                                WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'spatial_topology', (SELECT jsonb_agg(payload) FROM ground_state.spatial_topology
+        'spatial_topology', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                            FROM ground_state.spatial_topology
                             WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'place_entities', (SELECT jsonb_agg(payload) FROM ground_state.place_entities
+        'place_entities', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                          FROM ground_state.place_entities
                           WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'archetype_dynamics', (SELECT jsonb_agg(payload) FROM ground_state.archetype_dynamics
+        'archetype_dynamics', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
+                              FROM ground_state.archetype_dynamics
                               WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'genre_dimensions', (SELECT payload FROM ground_state.genre_dimensions
                             WHERE genre_id = v_genre_id LIMIT 1)
@@ -507,6 +532,78 @@ promotion) but are otherwise independent of each other.
 - Python loader with upsert/drift/prune
 - Tests for cleanup and persistence
 - Session documentation of tiering decisions
+
+## Part 5: Future Work — Advisory Notes from Architecture Review
+
+These notes capture concerns and design considerations that are out of scope for this branch
+but should be folded into future work. They emerged from a system architecture review of this
+design against the existing Storykeeper API contract, knowledge graph domain model, and
+PostgreSQL schema proposals.
+
+### 5.1 Pruning and Overlay Interaction
+
+When the story-composition overlay layer (layer 2) is built, pruned ground-state records that
+have active overlays will cause problems — either FK violations (if overlays FK to ground-state
+UUIDs) or orphaned overlays (if they don't). Design options:
+
+- Overlays reference slugs (not UUIDs) and re-resolve on load
+- Pruning checks for dependent overlays before deleting
+- The `--skip-prune` flag is a safety valve in the interim
+
+### 5.2 Grammar vs Vocabulary — Parallel Layer Models
+
+The three-layer model (ground-state → overlay → runtime) applies independently to both
+grammar data (this design, genre-universal rules from Tier B) and vocabulary data (Tome/Lore,
+world-specific content). Vocabulary will likely need its own schema (e.g., `world_state`) with
+its own loader and its own overlay axis. The two customization axes are parallel but
+independent:
+
+- Grammar overlay: "in this story, folk horror archetypes are weighted differently"
+- Vocabulary overlay: "in this story, Harrowfield has these specific properties"
+
+### 5.3 Source Hash Stability
+
+The `source_hash` for drift detection should be computed on raw file bytes *before* Pydantic
+processing. If Pydantic schemas ever add computed or default-filled fields during validation,
+the hash must remain stable against the source file, not the processed output. The loader
+implementation should make this explicit.
+
+### 5.4 Loader Phase Ordering Invariant
+
+The two-phase load (reference entities first, then primitives) relies on the phase 1
+slug→UUID map being fully populated before any phase 2 work begins. If the loader is ever
+parallelized (e.g., loading multiple primitive types concurrently), this invariant must be
+enforced. Document this as an explicit contract in the loader module.
+
+### 5.5 Ground-State → Story-Instance Seeding
+
+When a story is instantiated, ground-state data needs to seed the AGE graph structures:
+archetypes become character entities, spatial topology becomes setting topology vertices and
+edges, dynamics inform initial relational web edge configurations. This seeding path is not
+specified in this design but is the natural next step after ground-state persistence is
+operational. The schema supports it — each ground-state record has a stable UUID and promoted
+core columns that provide filtering surfaces for "select entities appropriate for this story's
+genre." A **seeding manifest** concept (declaring which ground-state records a story uses as
+its starting point) would live in the overlay layer.
+
+### 5.6 Cross-Type Narrative Relevance Queries
+
+The current SQL functions return all entities of a type for a genre. During active play, the
+Storykeeper will need more surgical queries: "given this archetype in this genre, what
+dynamics, goals, and tropes are most relevant to the current scene state?" These queries
+combine ground-state data with story-instance state and are a layer-2/layer-3 concern. The
+promoted core columns and GIN indexes on JSONB payloads provide the filtering surface such
+queries will need.
+
+### 5.7 Dimensions as Cross-Cutting Anchors
+
+The `ground_state.dimensions` table (34 universal dimensions) appears across multiple
+primitive types — archetypes express some, dynamics express others, profiles express others.
+Having dimensions as first-class entities with UUIDs means the overlay layer can eventually
+say "for this story, reweight dimension X" and have that propagate to all primitive types
+that reference it. Currently, dimension references are embedded in JSONB payloads. A future
+enhancement could add a junction table linking primitive type records to dimension records,
+enabling relational queries like "which archetypes are most expressive on this dimension."
 
 ## References
 
