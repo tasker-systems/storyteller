@@ -104,12 +104,25 @@ class PromptBuilder:
         segment_type: str,
         raw_content: str,
         schema: dict,
+        extra_context: dict[str, str] | None = None,
     ) -> str:
-        """Build a segment-level structuring prompt."""
+        """Build a segment-level structuring prompt.
+
+        Args:
+            segment_type: Prompt template slug (e.g. ``"discovery-entity"``).
+            raw_content: Source markdown content for this segment.
+            schema: JSON schema dict for the target type.
+            extra_context: Optional template replacements beyond the standard
+                ``{raw_content}`` and ``{schema}`` (e.g. ``{genre_slug}``,
+                ``{state_variables}``).
+        """
         template_path = self.prompts_dir / "structure" / "segments" / f"{segment_type}.md"
         if not template_path.exists():
             raise FileNotFoundError(f"Segment prompt template not found: {template_path}")
         prompt = template_path.read_text()
         prompt = prompt.replace("{raw_content}", raw_content)
         prompt = prompt.replace("{schema}", json.dumps(schema, indent=2))
+        if extra_context:
+            for key, value in extra_context.items():
+                prompt = prompt.replace(f"{{{key}}}", value)
         return prompt

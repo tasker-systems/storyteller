@@ -555,6 +555,30 @@ def _heading_to_slug(heading_line: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Heading-level auto-detection
+# ---------------------------------------------------------------------------
+
+_ANY_NUMBERED_HEADING = re.compile(r"^(#{1,6})\s+\d+\.\s+")
+
+
+def _detect_heading_level(source_path: Path) -> int:
+    """Scan a file for the first numbered heading and return its level.
+
+    Discovery and cluster files use inconsistent heading levels across the
+    corpus (H2, H3, or H4 for entity entries). This function finds the first
+    numbered heading (e.g. ``## 1.``, ``### 1.``, ``#### 1.``) and returns its
+    level so the slicer can adapt.
+
+    Falls back to 4 if no numbered heading is found.
+    """
+    for line in source_path.read_text().splitlines():
+        m = _ANY_NUMBERED_HEADING.match(line.strip())
+        if m:
+            return len(m.group(1))
+    return 4
+
+
+# ---------------------------------------------------------------------------
 # Generic heading-level slicer (used by discovery, cluster, genre-native)
 # ---------------------------------------------------------------------------
 
@@ -679,11 +703,11 @@ def slice_discovery(
     output_dir: Path,
     force: bool = False,
 ) -> list[SegmentInfo]:
-    """Split a discovery per-genre file on H4 numbered entity headers.
+    """Split a discovery per-genre file on numbered entity headers.
 
-    Discovery files contain per-entity sections like ``#### 1. The Unwilling
-    Vessel``.  Commentary (``### _commentary``) and suggestions sections are
-    dropped automatically.
+    The heading level is auto-detected from the first numbered heading in the
+    file (H2, H3, or H4 depending on how the 35b model structured its output).
+    Commentary and suggestions sections are dropped automatically.
 
     Args:
         source_path: Path to the discovery .md file (e.g.
@@ -694,7 +718,8 @@ def slice_discovery(
     Returns:
         List of SegmentInfo for each entity segment produced.
     """
-    return _slice_on_heading_level(source_path, output_dir, heading_level=4, force=force)
+    level = _detect_heading_level(source_path)
+    return _slice_on_heading_level(source_path, output_dir, heading_level=level, force=force)
 
 
 def slice_cluster(
@@ -702,10 +727,10 @@ def slice_cluster(
     output_dir: Path,
     force: bool = False,
 ) -> list[SegmentInfo]:
-    """Split a cluster synthesis file on H3 numbered entity headers.
+    """Split a cluster synthesis file on numbered entity headers.
 
-    Cluster files contain entries like ``### 1. The Epistemic Seeker`` that
-    aggregate genre variants.
+    The heading level is auto-detected from the first numbered heading in the
+    file. Cluster files aggregate genre variants into canonical entries.
 
     Args:
         source_path: Path to the cluster .md file (e.g.
@@ -716,7 +741,8 @@ def slice_cluster(
     Returns:
         List of SegmentInfo for each cluster entity segment produced.
     """
-    return _slice_on_heading_level(source_path, output_dir, heading_level=3, force=force)
+    level = _detect_heading_level(source_path)
+    return _slice_on_heading_level(source_path, output_dir, heading_level=level, force=force)
 
 
 def slice_genre_native(

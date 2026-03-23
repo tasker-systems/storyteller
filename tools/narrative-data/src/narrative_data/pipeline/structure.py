@@ -81,6 +81,7 @@ def run_segment_extraction(
     segment_prompt_slug: str,
     model: str = STRUCTURING_MODEL,
     max_retries: int = 3,
+    extra_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Extract structured JSON from a single segment.
 
@@ -92,7 +93,9 @@ def run_segment_extraction(
     """
     raw_content = _strip_frontmatter(segment_path.read_text())
 
-    base_prompt = PromptBuilder().build_segment_structure(segment_prompt_slug, raw_content, schema)
+    base_prompt = PromptBuilder().build_segment_structure(
+        segment_prompt_slug, raw_content, schema, extra_context=extra_context
+    )
     errors: list[str] = []
     raw_output: Any = None
     last_error: str | None = None

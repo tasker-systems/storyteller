@@ -319,6 +319,33 @@ def _resolve_segment_config(config: TypeConfig, segment_name: str) -> tuple[dict
 
 
 # ---------------------------------------------------------------------------
+# Genre context injection (slug + state variables from region.json)
+# ---------------------------------------------------------------------------
+
+
+def _build_genre_context(output_base: Path, genre_slug: str) -> dict[str, str]:
+    """Build extra template context for a genre's segment extraction.
+
+    Reads the genre's region.json (if it exists) to extract canonical state
+    variable IDs, and provides the genre slug for direct injection into prompts.
+    """
+    context: dict[str, str] = {"genre_slug": genre_slug}
+
+    region_json = output_base / "genres" / genre_slug / "region.json"
+    if region_json.exists():
+        data = json.loads(region_json.read_text())
+        sv_ids = [sv["canonical_id"] for sv in data.get("active_state_variables", [])]
+        if sv_ids:
+            context["state_variables"] = ", ".join(sv_ids)
+        else:
+            context["state_variables"] = "(none defined for this genre)"
+    else:
+        context["state_variables"] = "(no region data available)"
+
+    return context
+
+
+# ---------------------------------------------------------------------------
 # structure_type()
 # ---------------------------------------------------------------------------
 
@@ -362,6 +389,9 @@ def structure_type(
 
         console.print(f"[cyan]Structuring {type_slug} for {genre_slug}...[/cyan]")
 
+        # Build extra context for prompt injection (genre slug + state variables)
+        extra_context = _build_genre_context(output_base, genre_slug)
+
         # Segment directory is sibling to source, named after the stem
         segment_dir = source_path.parent / source_path.stem
 
@@ -392,6 +422,7 @@ def structure_type(
                     "output_path": seg_json_path,
                     "schema": schema,
                     "segment_prompt_slug": prompt_slug,
+                    "extra_context": extra_context,
                 }
                 if model:
                     kwargs["model"] = model
