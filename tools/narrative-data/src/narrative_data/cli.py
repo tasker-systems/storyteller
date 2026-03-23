@@ -845,7 +845,7 @@ def structure_run(
     required=True,
     help=(
         "Fill tier: 'deterministic' uses regex/lookup rules; "
-        "'llm-patch' uses an LLM (not yet implemented)."
+        "'llm-patch' uses an LLM for targeted field extraction."
     ),
 )
 @click.option(
