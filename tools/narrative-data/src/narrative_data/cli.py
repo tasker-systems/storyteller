@@ -626,6 +626,138 @@ def structure() -> None:
     """Stage 2: Structure raw markdown into validated JSON."""
 
 
+# ---------------------------------------------------------------------------
+# audit command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("audit")
+@click.option(
+    "--type",
+    "types",
+    multiple=True,
+    help="Type slug(s) to audit (repeatable). Defaults to all known types.",
+)
+@click.option(
+    "--genre",
+    "genres",
+    multiple=True,
+    help="Genre slug(s) to include (repeatable). Defaults to all found.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    default=None,
+    type=click.Path(),
+    help="Save JSON report to this path.",
+)
+@click.option(
+    "--threshold-warn",
+    default=0.5,
+    show_default=True,
+    type=float,
+    help="Null rate >= this value is shown in yellow.",
+)
+@click.option(
+    "--threshold-error",
+    default=0.8,
+    show_default=True,
+    type=float,
+    help="Null rate >= this value is shown in red.",
+)
+def audit(
+    types: tuple[str, ...],
+    genres: tuple[str, ...],
+    output_path: str | None,
+    threshold_warn: float,
+    threshold_error: float,
+) -> None:
+    """Scan the corpus for null/empty fields and report coverage rates.
+
+    Outputs a Rich table per type with color-coded field rates:
+    green = well-filled, yellow = sparse, red = mostly empty.
+    """
+    import json as _json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from narrative_data.config import resolve_output_path
+    from narrative_data.pipeline.postprocess import AuditResult, audit_corpus
+
+    console = Console()
+
+    try:
+        corpus_dir = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    type_list = list(types) if types else None
+    genre_list = list(genres) if genres else None
+
+    console.print(f"\n[bold]Auditing corpus at:[/bold] {corpus_dir}")
+    if type_list:
+        console.print(f"  Types:  {', '.join(type_list)}")
+    if genre_list:
+        console.print(f"  Genres: {', '.join(genre_list)}")
+    console.print()
+
+    results: dict[str, AuditResult] = audit_corpus(
+        corpus_dir=corpus_dir,
+        types=type_list,
+        genres=genre_list,
+    )
+
+    for type_slug, result in sorted(results.items()):
+        title = (
+            f"{type_slug}  "
+            f"[dim]({result.total_entities} entities, {result.file_count} files)[/dim]"
+        )
+        table = Table(title=title, show_header=True, header_style="bold cyan")
+        table.add_column("Field", style="cyan", no_wrap=True)
+        table.add_column("Null Rate", justify="right")
+        table.add_column("Status", justify="center")
+
+        if result.errors and not result.field_rates:
+            for err in result.errors:
+                table.add_row("[dim]—[/dim]", "[dim]—[/dim]", f"[red]{err}[/red]")
+        else:
+            for field_name, rate in sorted(result.field_rates.items()):
+                pct = f"{rate * 100:.1f}%"
+                if rate >= threshold_error:
+                    status = "[red]sparse[/red]"
+                    rate_str = f"[red]{pct}[/red]"
+                elif rate >= threshold_warn:
+                    status = "[yellow]partial[/yellow]"
+                    rate_str = f"[yellow]{pct}[/yellow]"
+                else:
+                    status = "[green]ok[/green]"
+                    rate_str = f"[green]{pct}[/green]"
+                table.add_row(field_name, rate_str, status)
+
+            if result.errors:
+                console.print(f"  [yellow]Warnings:[/yellow] {'; '.join(result.errors)}")
+
+        console.print(table)
+        console.print()
+
+    if output_path:
+        report = {
+            type_slug: {
+                "type_name": r.type_name,
+                "genre": r.genre,
+                "total_entities": r.total_entities,
+                "file_count": r.file_count,
+                "field_rates": r.field_rates,
+                "errors": r.errors,
+            }
+            for type_slug, r in results.items()
+        }
+        Path(output_path).write_text(_json.dumps(report, indent=2))
+        console.print(f"[dim]JSON report saved to {output_path}[/dim]")
+
+
 @structure.command("run")
 @click.argument("type_slug")
 @click.option("--genre", default=None, help="Single genre slug to structure.")
