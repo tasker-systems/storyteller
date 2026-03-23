@@ -12,7 +12,7 @@ expresses itself across atmospheric, sensory, spatial, and temporal channels.
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from narrative_data.schemas.shared import GenreVariant, OverlapSignal
 
@@ -20,35 +20,35 @@ from narrative_data.schemas.shared import GenreVariant, OverlapSignal
 class SettingCommunicability(BaseModel):
     """How a setting communicates across four channels."""
 
-    atmospheric: str | None = None
-    sensory: str | None = None
-    spatial: str | None = None
-    temporal: str | None = None
+    atmospheric: str | None = Field(None, json_schema_extra={"tier": "core"})
+    sensory: str | None = Field(None, json_schema_extra={"tier": "core"})
+    spatial: str | None = Field(None, json_schema_extra={"tier": "core"})
+    temporal: str | None = Field(None, json_schema_extra={"tier": "core"})
 
 
 class Settings(BaseModel):
     """Per-genre setting model capturing place as narrative entity."""
 
-    canonical_name: str
-    genre_slug: str
-    variant_name: str
-    atmospheric_palette: list[str] = []
-    sensory_vocabulary: list[str] = []
-    narrative_function: str | None = None
-    communicability: SettingCommunicability | None = None
-    overlap_signals: list[OverlapSignal] = []
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_slug: str = Field(..., json_schema_extra={"tier": "core"})
+    variant_name: str = Field(..., json_schema_extra={"tier": "core"})
+    atmospheric_palette: list[str] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    sensory_vocabulary: list[str] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    narrative_function: str | None = Field(None, json_schema_extra={"tier": "core"})
+    communicability: SettingCommunicability | None = Field(None, json_schema_extra={"tier": "core"})
+    overlap_signals: list[OverlapSignal] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class ClusterSettings(BaseModel):
     """Cluster-level setting capturing canonical identity and genre variants."""
 
-    canonical_name: str
-    cluster_name: str
-    core_identity: str
-    genre_variants: list[GenreVariant]
-    uniqueness: Literal["universal", "cluster_specific", "genre_unique"]
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    cluster_name: str = Field(..., json_schema_extra={"tier": "core"})
+    core_identity: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_variants: list[GenreVariant] = Field(..., json_schema_extra={"tier": "extended"})
+    uniqueness: Literal["universal", "cluster_specific", "genre_unique"] = Field(..., json_schema_extra={"tier": "core"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 __all__ = [

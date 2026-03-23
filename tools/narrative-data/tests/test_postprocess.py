@@ -9,6 +9,20 @@ from pathlib import Path
 
 import pytest
 
+from narrative_data.schemas import (
+    archetype_dynamics,
+    archetypes,
+    dynamics,
+    genre_dimensions,
+    goals,
+    narrative_shapes,
+    ontological_posture,
+    place_entities,
+    scene_profiles,
+    settings,
+    spatial_topology,
+    tropes,
+)
 from narrative_data.pipeline.postprocess import (
     AuditResult,
     _flatten_fields,
@@ -569,3 +583,96 @@ class TestFillAllDeterministic:
         assert "files_processed" in result
         assert "entities_updated" in result
         assert "entities_skipped" in result
+
+
+# ---------------------------------------------------------------------------
+# TestSchemaTiering — every field in every per-genre model has a tier annotation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "model_cls",
+    [
+        # archetypes
+        archetypes.Archetype,
+        archetypes.ClusterArchetype,
+        archetypes.PersonalityProfile,
+        # dynamics
+        dynamics.Dynamic,
+        dynamics.ClusterDynamic,
+        dynamics.RoleSlot,
+        dynamics.ScaleManifestations,
+        # goals
+        goals.Goal,
+        goals.ClusterGoal,
+        goals.CrossScaleTension,
+        # settings
+        settings.Settings,
+        settings.ClusterSettings,
+        settings.SettingCommunicability,
+        # place_entities
+        place_entities.PlaceEntity,
+        place_entities.ClusterPlaceEntity,
+        place_entities.AtmosphericChannel,
+        place_entities.SensoryChannel,
+        place_entities.SpatialChannel,
+        place_entities.TemporalChannel,
+        place_entities.PlaceCommunicability,
+        place_entities.EntityProperties,
+        place_entities.StateVariableExpression,
+        # scene_profiles
+        scene_profiles.SceneProfile,
+        scene_profiles.ClusterSceneProfile,
+        scene_profiles.SceneDimensionalProperties,
+        # ontological_posture
+        ontological_posture.OntologicalPosture,
+        ontological_posture.ClusterOntologicalPosture,
+        ontological_posture.ModeOfBeing,
+        ontological_posture.SelfOtherBoundary,
+        ontological_posture.EthicalOrientation,
+        # spatial_topology
+        spatial_topology.SpatialTopologyEdge,
+        spatial_topology.ClusterSpatialTopology,
+        spatial_topology.TopologyFriction,
+        spatial_topology.TopologyDirectionality,
+        spatial_topology.TonalInheritance,
+        spatial_topology.TraversalCost,
+        # archetype_dynamics
+        archetype_dynamics.ArchetypeDynamic,
+        archetype_dynamics.ClusterArchetypeDynamic,
+        archetype_dynamics.EdgeProperties,
+        archetype_dynamics.CharacteristicScene,
+        archetype_dynamics.ShadowPairing,
+        # genre_dimensions
+        genre_dimensions.GenreDimensions,
+        genre_dimensions.AestheticDimensions,
+        genre_dimensions.TonalDimensions,
+        genre_dimensions.TemporalDimensions,
+        genre_dimensions.ThematicDimensions,
+        genre_dimensions.AgencyDimensions,
+        genre_dimensions.WorldAffordances,
+        genre_dimensions.EpistemologicalDimensions,
+        genre_dimensions.NarrativeContract,
+        # tropes
+        tropes.Trope,
+        tropes.TropeVariants,
+        # narrative_shapes
+        narrative_shapes.NarrativeShape,
+        narrative_shapes.TensionProfile,
+        narrative_shapes.Beat,
+        narrative_shapes.RestBeat,
+        narrative_shapes.Composability,
+        narrative_shapes.ShapeOverlapSignal,
+    ],
+)
+class TestSchemaTiering:
+    def test_all_fields_have_tier_annotation(self, model_cls):
+        for field_name, field_info in model_cls.model_fields.items():
+            extra = field_info.json_schema_extra or {}
+            assert "tier" in extra, (
+                f"{model_cls.__name__}.{field_name} missing tier annotation"
+            )
+            assert extra["tier"] in ("core", "extended"), (
+                f"{model_cls.__name__}.{field_name} tier must be 'core' or 'extended', "
+                f"got {extra['tier']!r}"
+            )

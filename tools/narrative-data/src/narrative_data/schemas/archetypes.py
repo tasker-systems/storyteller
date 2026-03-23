@@ -11,7 +11,7 @@ profile across 7 axes, and optional extended axes for cluster-specific dimension
 
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from narrative_data.schemas.shared import GenreVariant, OverlapSignal, StateVariableInteraction
 
@@ -19,13 +19,13 @@ from narrative_data.schemas.shared import GenreVariant, OverlapSignal, StateVari
 class PersonalityProfile(BaseModel):
     """Seven-axis personality profile, all values normalized 0.0-1.0."""
 
-    warmth: float
-    authority: float
-    openness: float
-    interiority: float
-    stability: float
-    agency: float
-    morality: float
+    warmth: float = Field(..., json_schema_extra={"tier": "core"})
+    authority: float = Field(..., json_schema_extra={"tier": "core"})
+    openness: float = Field(..., json_schema_extra={"tier": "core"})
+    interiority: float = Field(..., json_schema_extra={"tier": "core"})
+    stability: float = Field(..., json_schema_extra={"tier": "core"})
+    agency: float = Field(..., json_schema_extra={"tier": "core"})
+    morality: float = Field(..., json_schema_extra={"tier": "core"})
 
     @field_validator(
         "warmth", "authority", "openness", "interiority", "stability", "agency", "morality"
@@ -40,17 +40,17 @@ class PersonalityProfile(BaseModel):
 class Archetype(BaseModel):
     """Per-genre archetype model capturing genre-specific variant detail."""
 
-    canonical_name: str
-    genre_slug: str
-    variant_name: str
-    personality_profile: PersonalityProfile
-    extended_axes: dict[str, float] = {}
-    distinguishing_tension: str
-    structural_necessity: str
-    overlap_signals: list[OverlapSignal] = []
-    state_variables: list[str] = []
-    universality: Literal["universal", "cluster_specific", "genre_unique"]
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_slug: str = Field(..., json_schema_extra={"tier": "core"})
+    variant_name: str = Field(..., json_schema_extra={"tier": "core"})
+    personality_profile: PersonalityProfile = Field(..., json_schema_extra={"tier": "core"})
+    extended_axes: dict[str, float] = Field(default_factory=dict, json_schema_extra={"tier": "extended"})
+    distinguishing_tension: str = Field(..., json_schema_extra={"tier": "core"})
+    structural_necessity: str = Field(..., json_schema_extra={"tier": "core"})
+    overlap_signals: list[OverlapSignal] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
+    state_variables: list[str] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    universality: Literal["universal", "cluster_specific", "genre_unique"] = Field(..., json_schema_extra={"tier": "core"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
     @field_validator("extended_axes")
     @classmethod
@@ -64,12 +64,12 @@ class Archetype(BaseModel):
 class ClusterArchetype(BaseModel):
     """Cluster-level archetype capturing canonical identity and genre variants."""
 
-    canonical_name: str
-    cluster_name: str
-    core_identity: str
-    genre_variants: list[GenreVariant]
-    uniqueness: Literal["universal", "cluster_specific", "genre_unique"]
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    cluster_name: str = Field(..., json_schema_extra={"tier": "core"})
+    core_identity: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_variants: list[GenreVariant] = Field(..., json_schema_extra={"tier": "extended"})
+    uniqueness: Literal["universal", "cluster_specific", "genre_unique"] = Field(..., json_schema_extra={"tier": "core"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 __all__ = [

@@ -12,7 +12,7 @@ scene type's distinct identity.
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from narrative_data.schemas.shared import GenreVariant
 
@@ -35,37 +35,37 @@ UniquenessLiteral = Literal["genre_unique", "cluster_wide", "likely_universal"]
 class SceneDimensionalProperties(BaseModel):
     """The dimensional fingerprint of a scene type."""
 
-    tension_signature: TensionSignatureLiteral | None = None
-    emotional_register: EmotionalRegisterLiteral | None = None
-    pacing: PacingLiteral | None = None
-    cast_density: CastDensityLiteral | None = None
-    physical_dynamism: PhysicalDynamismLiteral | None = None
-    information_flow: InformationFlowLiteral | None = None
-    resolution_tendency: ResolutionTendencyLiteral | None = None
-    locus_of_power: str | None = None
+    tension_signature: TensionSignatureLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    emotional_register: EmotionalRegisterLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    pacing: PacingLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    cast_density: CastDensityLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    physical_dynamism: PhysicalDynamismLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    information_flow: InformationFlowLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    resolution_tendency: ResolutionTendencyLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    locus_of_power: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class SceneProfile(BaseModel):
     """Per-genre scene profile capturing the dimensional properties of a scene type."""
 
-    name: str
-    genre_slug: str
-    core_identity: str
-    dimensional_properties: SceneDimensionalProperties
-    uniqueness: UniquenessLiteral | None = None
-    provenance: list[str] = []
-    flavor_text: str | None = None
+    name: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_slug: str = Field(..., json_schema_extra={"tier": "core"})
+    core_identity: str = Field(..., json_schema_extra={"tier": "core"})
+    dimensional_properties: SceneDimensionalProperties = Field(..., json_schema_extra={"tier": "core"})
+    uniqueness: UniquenessLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    provenance: list[str] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class ClusterSceneProfile(BaseModel):
     """Cluster-level scene profile capturing canonical identity and genre variants."""
 
-    canonical_name: str
-    cluster_name: str
-    core_identity: str
-    genre_variants: list[GenreVariant]
-    uniqueness: UniquenessLiteral
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    cluster_name: str = Field(..., json_schema_extra={"tier": "core"})
+    core_identity: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_variants: list[GenreVariant] = Field(..., json_schema_extra={"tier": "extended"})
+    uniqueness: UniquenessLiteral = Field(..., json_schema_extra={"tier": "core"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 __all__ = [

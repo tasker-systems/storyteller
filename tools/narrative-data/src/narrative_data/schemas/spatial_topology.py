@@ -11,7 +11,7 @@ Settings are not merely adjacent — they exert narrative forces on each other.
 
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from narrative_data.schemas.shared import GenreVariant
 
@@ -19,35 +19,35 @@ from narrative_data.schemas.shared import GenreVariant
 class TopologyFriction(BaseModel):
     """The resistance that impedes or shapes movement between settings."""
 
-    type: Literal["ontological", "social", "informational", "temporal", "environmental", "tonal"]
-    level: Literal["high", "medium", "low"]
-    description: str | None = None
+    type: Literal["ontological", "social", "informational", "temporal", "environmental", "tonal"] = Field(..., json_schema_extra={"tier": "core"})
+    level: Literal["high", "medium", "low"] = Field(..., json_schema_extra={"tier": "core"})
+    description: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class TopologyDirectionality(BaseModel):
     """How movement flows between two connected settings."""
 
-    type: Literal["asymmetric", "one_way", "bidirectional_unequal", "circular", "progressive"]
-    forward_cost: str | None = None
-    return_cost: str | None = None
-    description: str | None = None
+    type: Literal["asymmetric", "one_way", "bidirectional_unequal", "circular", "progressive"] = Field(..., json_schema_extra={"tier": "core"})
+    forward_cost: str | None = Field(None, json_schema_extra={"tier": "extended"})
+    return_cost: str | None = Field(None, json_schema_extra={"tier": "extended"})
+    description: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class TonalInheritance(BaseModel):
     """How tone bleeds or transfers between connected settings."""
 
-    direction: Literal["inward", "outward", "mutual", "masking", "saturation", "total"]
-    resistance: str | None = None
-    contamination_threshold: str | None = None
-    description: str | None = None
+    direction: Literal["inward", "outward", "mutual", "masking", "saturation", "total"] = Field(..., json_schema_extra={"tier": "core"})
+    resistance: str | None = Field(None, json_schema_extra={"tier": "extended"})
+    contamination_threshold: str | None = Field(None, json_schema_extra={"tier": "extended"})
+    description: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class TraversalCost(BaseModel):
     """The cost to a specific state variable of traversing an edge."""
 
-    variable_id: str
-    delta: float
-    description: str | None = None
+    variable_id: str = Field(..., json_schema_extra={"tier": "core"})
+    delta: float = Field(..., json_schema_extra={"tier": "core"})
+    description: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
     @field_validator("delta")
     @classmethod
@@ -60,26 +60,26 @@ class TraversalCost(BaseModel):
 class SpatialTopologyEdge(BaseModel):
     """Per-genre edge between two settings in the spatial topology graph."""
 
-    genre_slug: str
-    source_setting: str
-    target_setting: str
-    friction: TopologyFriction
-    directionality: TopologyDirectionality
-    agency: Literal["high", "medium", "low", "illusion", "none"] | None = None
-    tonal_inheritance: TonalInheritance
-    traversal_cost: list[TraversalCost] = []
-    state_shift: str | None = None
-    flavor_text: str | None = None
+    genre_slug: str = Field(..., json_schema_extra={"tier": "core"})
+    source_setting: str = Field(..., json_schema_extra={"tier": "core"})
+    target_setting: str = Field(..., json_schema_extra={"tier": "core"})
+    friction: TopologyFriction = Field(..., json_schema_extra={"tier": "core"})
+    directionality: TopologyDirectionality = Field(..., json_schema_extra={"tier": "core"})
+    agency: Literal["high", "medium", "low", "illusion", "none"] | None = Field(None, json_schema_extra={"tier": "core"})
+    tonal_inheritance: TonalInheritance = Field(..., json_schema_extra={"tier": "core"})
+    traversal_cost: list[TraversalCost] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    state_shift: str | None = Field(None, json_schema_extra={"tier": "extended"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class ClusterSpatialTopology(BaseModel):
     """Cluster-level spatial topology capturing canonical identity and genre variants."""
 
-    canonical_name: str
-    cluster_name: str
-    core_identity: str
-    genre_variants: list[GenreVariant]
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    cluster_name: str = Field(..., json_schema_extra={"tier": "core"})
+    core_identity: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_variants: list[GenreVariant] = Field(..., json_schema_extra={"tier": "extended"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 __all__ = [

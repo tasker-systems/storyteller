@@ -12,7 +12,7 @@ cluster variant — they are genre-native structural patterns.
 
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 TensionFamilyLiteral = Literal[
     "monotonic_build",
@@ -35,23 +35,23 @@ LayerTypeLiteral = Literal["parallel_tracks", "nested", "separated_axes"]
 class TensionProfile(BaseModel):
     """The family and character of a narrative shape's tension movement."""
 
-    family: TensionFamilyLiteral
-    description: str | None = None
-    distinctive_feature: str | None = None
+    family: TensionFamilyLiteral = Field(..., json_schema_extra={"tier": "core"})
+    description: str | None = Field(None, json_schema_extra={"tier": "core"})
+    distinctive_feature: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class Beat(BaseModel):
     """A single load-bearing or ornamental moment in the narrative arc."""
 
-    name: str
-    dramatic_function: str | None = None
-    position: float
-    flexibility: FlexibilityLiteral
-    tension_effect: TensionEffectLiteral
-    pacing_effect: PacingEffectLiteral | None = None
-    state_thresholds: dict[str, float] = {}
-    genre_constraints: list[str] = []
-    flavor_text: str | None = None
+    name: str = Field(..., json_schema_extra={"tier": "core"})
+    dramatic_function: str | None = Field(None, json_schema_extra={"tier": "core"})
+    position: float = Field(..., json_schema_extra={"tier": "core"})
+    flexibility: FlexibilityLiteral = Field(..., json_schema_extra={"tier": "core"})
+    tension_effect: TensionEffectLiteral = Field(..., json_schema_extra={"tier": "core"})
+    pacing_effect: PacingEffectLiteral | None = Field(None, json_schema_extra={"tier": "extended"})
+    state_thresholds: dict[str, float] = Field(default_factory=dict, json_schema_extra={"tier": "extended"})
+    genre_constraints: list[str] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
     @field_validator("position")
     @classmethod
@@ -72,37 +72,37 @@ class Beat(BaseModel):
 class RestBeat(BaseModel):
     """A rest moment in the arc that modulates tension without advancing plot."""
 
-    type: RestBeatTypeLiteral
-    tension_behavior: TensionBehaviorLiteral
-    description: str | None = None
-    genre_constraints: list[str] = []
+    type: RestBeatTypeLiteral = Field(..., json_schema_extra={"tier": "core"})
+    tension_behavior: TensionBehaviorLiteral = Field(..., json_schema_extra={"tier": "core"})
+    description: str | None = Field(None, json_schema_extra={"tier": "extended"})
+    genre_constraints: list[str] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
 
 
 class Composability(BaseModel):
     """How this narrative shape can combine with other shapes."""
 
-    can_layer_with: list[str] = []
-    layer_type: LayerTypeLiteral | None = None
+    can_layer_with: list[str] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
+    layer_type: LayerTypeLiteral | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class ShapeOverlapSignal(BaseModel):
     """Cross-genre overlap markers for narrative shapes."""
 
-    incompatible_physics: str | None = None
-    neighboring_shapes: list[str] = []
+    incompatible_physics: str | None = Field(None, json_schema_extra={"tier": "extended"})
+    neighboring_shapes: list[str] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
 
 
 class NarrativeShape(BaseModel):
     """Per-genre narrative shape model capturing tension arc structure."""
 
-    name: str
-    genre_slug: str
-    tension_profile: TensionProfile
-    beats: list[Beat]
-    rest_beats: list[RestBeat] = []
-    composability: Composability | None = None
-    overlap_signal: ShapeOverlapSignal | None = None
-    flavor_text: str | None = None
+    name: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_slug: str = Field(..., json_schema_extra={"tier": "core"})
+    tension_profile: TensionProfile = Field(..., json_schema_extra={"tier": "core"})
+    beats: list[Beat] = Field(..., json_schema_extra={"tier": "core"})
+    rest_beats: list[RestBeat] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
+    composability: Composability | None = Field(None, json_schema_extra={"tier": "extended"})
+    overlap_signal: ShapeOverlapSignal | None = Field(None, json_schema_extra={"tier": "extended"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 __all__ = [
