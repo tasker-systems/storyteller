@@ -52,8 +52,8 @@ class TraversalCost(BaseModel):
     @field_validator("delta")
     @classmethod
     def delta_in_unit_interval(cls, v: float) -> float:
-        if not 0.0 <= v <= 1.0:
-            raise ValueError(f"delta must be 0.0-1.0, got {v}")
+        if not -1.0 <= v <= 1.0:
+            raise ValueError(f"delta must be -1.0 to 1.0, got {v}")
         return v
 
 

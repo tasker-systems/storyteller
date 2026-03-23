@@ -936,11 +936,17 @@ class TestSpatialTopology:
 
             TraversalCost(variable_id="safety", delta=1.5)  # invalid
 
-    def test_traversal_cost_delta_below_zero_rejected(self):
+    def test_traversal_cost_negative_delta_accepted(self):
+        from narrative_data.schemas.spatial_topology import TraversalCost
+
+        tc = TraversalCost(variable_id="safety", delta=-0.5)
+        assert tc.delta == -0.5  # negative = traversal depletes variable
+
+    def test_traversal_cost_delta_below_negative_one_rejected(self):
         with pytest.raises(ValidationError):
             from narrative_data.schemas.spatial_topology import TraversalCost
 
-            TraversalCost(variable_id="safety", delta=-0.1)  # invalid
+            TraversalCost(variable_id="safety", delta=-1.5)  # invalid
 
     def test_friction_type_enum_invalid_rejected(self):
         with pytest.raises(ValidationError):
