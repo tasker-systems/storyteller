@@ -770,9 +770,7 @@ def slice_genre_native(
     # _detect_heading_level returns 4 as default when nothing found;
     # use the caller's fallback if detection didn't find anything
     level = detected if detected != 4 else heading_level
-    return _slice_on_heading_level(
-        source_path, output_dir, heading_level=level, force=force
-    )
+    return _slice_on_heading_level(source_path, output_dir, heading_level=level, force=force)
 
 
 def slice_file(

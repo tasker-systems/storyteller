@@ -711,8 +711,7 @@ def audit(
 
     for type_slug, result in sorted(results.items()):
         title = (
-            f"{type_slug}  "
-            f"[dim]({result.total_entities} entities, {result.file_count} files)[/dim]"
+            f"{type_slug}  [dim]({result.total_entities} entities, {result.file_count} files)[/dim]"
         )
         table = Table(title=title, show_header=True, header_style="bold cyan")
         table.add_column("Field", style="cyan", no_wrap=True)
@@ -832,3 +831,109 @@ def structure_run(
     if not all_genres and not genre and not clusters:
         click.echo("Specify --all, --genre <slug>, or --clusters", err=True)
         raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# fill command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("fill")
+@click.option(
+    "--tier",
+    type=click.Choice(["deterministic", "llm-patch"]),
+    required=True,
+    help=(
+        "Fill tier: 'deterministic' uses regex/lookup rules; "
+        "'llm-patch' uses an LLM (not yet implemented)."
+    ),
+)
+@click.option(
+    "--type",
+    "types",
+    multiple=True,
+    help="Type slug(s) to fill (repeatable). Defaults to all supported fill types.",
+)
+@click.option(
+    "--genre",
+    "genres",
+    multiple=True,
+    help="Genre slug(s) to include (repeatable). Defaults to all found.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Report changes without writing any files.",
+)
+def fill(
+    tier: str,
+    types: tuple[str, ...],
+    genres: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """Fill null/empty fields in structured JSON files.
+
+    For --tier deterministic: applies rule-based fills (regex patterns,
+    lookup tables) that require no LLM.  Currently supports:
+
+    \b
+      dynamics        → fills spans_scales from source markdown Scale: lines
+      spatial-topology → fills agency from friction.type + directionality.type
+    """
+    if tier == "llm-patch":
+        click.echo("LLM patch fills: not implemented yet.", err=True)
+        raise SystemExit(1)
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from narrative_data.config import resolve_output_path
+    from narrative_data.pipeline.postprocess import fill_all_deterministic
+
+    console = Console()
+
+    try:
+        corpus_dir = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    type_list = list(types) if types else None
+    genre_list = list(genres) if genres else None
+
+    if dry_run:
+        console.print("[yellow]Dry run — no files will be written.[/yellow]")
+    console.print(f"\n[bold]Running deterministic fills on:[/bold] {corpus_dir}")
+    if type_list:
+        console.print(f"  Types:  {', '.join(type_list)}")
+    if genre_list:
+        console.print(f"  Genres: {', '.join(genre_list)}")
+    console.print()
+
+    summary = fill_all_deterministic(
+        corpus_dir=corpus_dir,
+        types=type_list,
+        genres=genre_list,
+        dry_run=dry_run,
+    )
+
+    table = Table(title="Fill Summary", show_header=True, header_style="bold cyan")
+    table.add_column("Type", style="cyan")
+    table.add_column("Files", justify="right")
+    table.add_column("Updated", justify="right")
+    table.add_column("Skipped", justify="right")
+
+    for type_slug, result in sorted(summary.items()):
+        updated = result["entities_updated"]
+        updated_str = f"[green]{updated}[/green]" if updated > 0 else str(updated)
+        table.add_row(
+            type_slug,
+            str(result["files_processed"]),
+            updated_str,
+            str(result["entities_skipped"]),
+        )
+
+    console.print(table)
+    if dry_run:
+        console.print("\n[yellow]Dry run complete — no files written.[/yellow]")

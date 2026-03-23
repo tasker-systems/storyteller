@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Tasker Systems. All rights reserved.
 # See LICENSING.md for details.
 
-"""Tests for pipeline.postprocess — corpus null-rate audit."""
+"""Tests for pipeline.postprocess — corpus null-rate audit and deterministic fills."""
 
 import json
 from pathlib import Path
@@ -15,6 +15,9 @@ from narrative_data.pipeline.postprocess import (
     _is_null_or_empty,
     audit_corpus,
     audit_type,
+    fill_agency,
+    fill_all_deterministic,
+    fill_spans_scales,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -312,3 +315,257 @@ class TestAuditCorpus:
         results = audit_corpus(corpus, types=["dynamics"])
         # Aggregate result has no single genre
         assert results["dynamics"].genre is None
+
+
+# ---------------------------------------------------------------------------
+# fill_spans_scales — extract Scale patterns from source markdown
+# ---------------------------------------------------------------------------
+
+
+FOLK_HORROR_MD = (Path(__file__).parent / "fixtures" / "dynamics_folk_horror.md").read_text()
+
+
+class TestFillSpansScales:
+    def _entity(self, spans_scales: list) -> dict:
+        return {"canonical_name": "Blood-Line Contract", "spans_scales": spans_scales}
+
+    def test_spanning_orbital_scene(self):
+        entity = self._entity([])
+        result = fill_spans_scales(entity, FOLK_HORROR_MD, "Blood-Line Contract")
+        assert result["spans_scales"] == ["orbital", "scene"]
+
+    def test_cross_scale_orbital_vs_scene(self):
+        entity = {"canonical_name": "The Dissolution of Self", "spans_scales": []}
+        result = fill_spans_scales(entity, FOLK_HORROR_MD, "The Dissolution of Self")
+        assert "orbital" in result["spans_scales"]
+        assert "scene" in result["spans_scales"]
+
+    def test_primary_secondary_pattern(self):
+        entity = {"canonical_name": "The Hearth's Trap", "spans_scales": []}
+        result = fill_spans_scales(entity, FOLK_HORROR_MD, "The Hearth's Trap")
+        assert "orbital" in result["spans_scales"]
+        assert "scene" in result["spans_scales"]
+
+    def test_skip_when_already_populated(self):
+        entity = {"canonical_name": "Blood-Line Contract", "spans_scales": ["arc"]}
+        result = fill_spans_scales(entity, FOLK_HORROR_MD, "Blood-Line Contract")
+        # Already populated — must not change
+        assert result["spans_scales"] == ["arc"]
+
+    def test_idempotent(self):
+        entity = {"canonical_name": "Blood-Line Contract", "spans_scales": []}
+        first = fill_spans_scales(entity, FOLK_HORROR_MD, "Blood-Line Contract")
+        second = fill_spans_scales(first, FOLK_HORROR_MD, "Blood-Line Contract")
+        assert first["spans_scales"] == second["spans_scales"]
+
+    def test_no_match_returns_entity_unchanged(self):
+        entity = {"canonical_name": "Unknown Dynamic", "spans_scales": []}
+        result = fill_spans_scales(entity, FOLK_HORROR_MD, "Unknown Dynamic")
+        assert result["spans_scales"] == []
+
+    def test_single_scale_no_spans(self):
+        md = "# Single Thing\n*   **Scale:** Orbital\n"
+        entity = {"canonical_name": "Single Thing", "spans_scales": []}
+        result = fill_spans_scales(entity, md, "Single Thing")
+        # A single scale with no parenthetical — should not populate spans_scales
+        # (it doesn't span multiple scales)
+        assert result["spans_scales"] == []
+
+    def test_returns_new_dict_not_mutated(self):
+        entity = {"canonical_name": "Blood-Line Contract", "spans_scales": []}
+        original_spans = entity["spans_scales"]
+        result = fill_spans_scales(entity, FOLK_HORROR_MD, "Blood-Line Contract")
+        # Original list must not be mutated
+        assert original_spans == []
+        assert result is not entity or result["spans_scales"] is not original_spans
+
+
+# ---------------------------------------------------------------------------
+# fill_agency — infer agency from friction + directionality
+# ---------------------------------------------------------------------------
+
+
+class TestFillAgency:
+    def _entity(self, friction_type: str, directionality_type: str, agency=None) -> dict:
+        return {
+            "agency": agency,
+            "friction": {"type": friction_type, "level": "severe", "description": None},
+            "directionality": {
+                "type": directionality_type,
+                "forward_cost": None,
+                "reverse_cost": None,
+            },
+        }
+
+    def test_high_friction_one_way_is_none(self):
+        entity = self._entity("high", "one_way")
+        result = fill_agency(entity)
+        assert result["agency"] == "none"
+
+    def test_high_friction_unidirectional_is_none(self):
+        entity = self._entity("high", "unidirectional")
+        result = fill_agency(entity)
+        assert result["agency"] == "none"
+
+    def test_high_friction_bidirectional_is_low(self):
+        entity = self._entity("high", "bidirectional")
+        result = fill_agency(entity)
+        assert result["agency"] == "low"
+
+    def test_medium_friction_bidirectional_is_medium(self):
+        entity = self._entity("medium", "bidirectional")
+        result = fill_agency(entity)
+        assert result["agency"] == "medium"
+
+    def test_low_friction_bidirectional_is_high(self):
+        entity = self._entity("low", "bidirectional")
+        result = fill_agency(entity)
+        assert result["agency"] == "high"
+
+    def test_low_friction_constrained_is_illusion(self):
+        entity = self._entity("low", "constrained")
+        result = fill_agency(entity)
+        assert result["agency"] == "illusion"
+
+    def test_medium_friction_constrained_is_illusion(self):
+        entity = self._entity("medium", "constrained")
+        result = fill_agency(entity)
+        assert result["agency"] == "illusion"
+
+    def test_hyphen_variant_one_way(self):
+        entity = self._entity("high", "one-way")
+        result = fill_agency(entity)
+        assert result["agency"] == "none"
+
+    def test_skip_when_already_populated(self):
+        entity = self._entity("high", "one_way", agency="high")
+        result = fill_agency(entity)
+        # Pre-existing value must be preserved
+        assert result["agency"] == "high"
+
+    def test_skip_when_agency_is_empty_string(self):
+        # Empty string is treated as "not populated" — fill it
+        entity = self._entity("high", "one_way")
+        entity["agency"] = ""
+        result = fill_agency(entity)
+        assert result["agency"] == "none"
+
+    def test_unknown_combo_returns_none_agency(self):
+        entity = self._entity("extreme", "wormhole")
+        result = fill_agency(entity)
+        # No lookup match — agency remains None
+        assert result["agency"] is None
+
+    def test_missing_friction_key_returns_entity_unchanged(self):
+        entity = {"agency": None, "directionality": {"type": "bidirectional"}}
+        result = fill_agency(entity)
+        assert result["agency"] is None
+
+
+# ---------------------------------------------------------------------------
+# fill_all_deterministic — orchestration with fixture corpus
+# ---------------------------------------------------------------------------
+
+
+class TestFillAllDeterministic:
+    def _make_corpus(self, tmp_path: Path) -> Path:
+        """Build minimal corpus with dynamics and spatial-topology files."""
+        corpus = tmp_path / "narrative-data"
+
+        # dynamics source markdown + JSON
+        dynamics_dir = corpus / "discovery" / "dynamics"
+        dynamics_dir.mkdir(parents=True)
+        (dynamics_dir / "folk-horror.md").write_text(FOLK_HORROR_MD)
+        dynamics_entities = [
+            {
+                "canonical_name": "Blood-Line Contract",
+                "spans_scales": [],
+                "scale": "orbital",
+            },
+            {
+                "canonical_name": "The Dissolution of Self",
+                "spans_scales": [],
+                "scale": "arc",
+            },
+        ]
+        (dynamics_dir / "folk-horror.json").write_text(json.dumps(dynamics_entities))
+
+        # spatial-topology JSON
+        spatial_dir = corpus / "discovery" / "spatial-topology"
+        spatial_dir.mkdir(parents=True)
+        spatial_entities = [
+            {
+                "agency": None,
+                "friction": {"type": "high", "level": "severe", "description": None},
+                "directionality": {"type": "one_way", "forward_cost": None},
+            },
+            {
+                "agency": None,
+                "friction": {"type": "low", "level": "mild", "description": None},
+                "directionality": {"type": "bidirectional", "forward_cost": None},
+            },
+        ]
+        (spatial_dir / "folk-horror.json").write_text(json.dumps(spatial_entities))
+
+        return corpus
+
+    def test_dynamics_spans_scales_filled(self, tmp_path: Path):
+        corpus = self._make_corpus(tmp_path)
+        summary = fill_all_deterministic(corpus, types=["dynamics"], genres=None, dry_run=False)
+        # At least one entity should have been updated
+        assert summary["dynamics"]["entities_updated"] >= 1
+
+    def test_spatial_topology_agency_filled(self, tmp_path: Path):
+        corpus = self._make_corpus(tmp_path)
+        summary = fill_all_deterministic(
+            corpus, types=["spatial-topology"], genres=None, dry_run=False
+        )
+        assert summary["spatial-topology"]["entities_updated"] >= 1
+
+    def test_dry_run_does_not_write(self, tmp_path: Path):
+        corpus = self._make_corpus(tmp_path)
+        spatial_path = corpus / "discovery" / "spatial-topology" / "folk-horror.json"
+        original = spatial_path.read_text()
+
+        fill_all_deterministic(corpus, types=["spatial-topology"], genres=None, dry_run=True)
+
+        assert spatial_path.read_text() == original
+
+    def test_dry_run_still_reports_changes(self, tmp_path: Path):
+        corpus = self._make_corpus(tmp_path)
+        summary = fill_all_deterministic(
+            corpus, types=["spatial-topology"], genres=None, dry_run=True
+        )
+        assert summary["spatial-topology"]["entities_updated"] >= 1
+
+    def test_genre_filter_limits_files(self, tmp_path: Path):
+        corpus = self._make_corpus(tmp_path)
+        # Add a second genre file that would also be touched
+        spatial_dir = corpus / "discovery" / "spatial-topology"
+        extra = [
+            {"agency": None, "friction": {"type": "high"}, "directionality": {"type": "one_way"}}
+        ]
+        (spatial_dir / "cosmic-horror.json").write_text(json.dumps(extra))
+
+        summary = fill_all_deterministic(
+            corpus, types=["spatial-topology"], genres=["folk-horror"], dry_run=False
+        )
+        # Only folk-horror processed — cosmic-horror not touched
+        assert summary["spatial-topology"]["files_processed"] == 1
+
+    def test_idempotent_second_run_no_changes(self, tmp_path: Path):
+        corpus = self._make_corpus(tmp_path)
+        fill_all_deterministic(corpus, types=["spatial-topology"], genres=None, dry_run=False)
+        summary2 = fill_all_deterministic(
+            corpus, types=["spatial-topology"], genres=None, dry_run=False
+        )
+        assert summary2["spatial-topology"]["entities_updated"] == 0
+
+    def test_summary_keys_present(self, tmp_path: Path):
+        corpus = self._make_corpus(tmp_path)
+        summary = fill_all_deterministic(corpus, types=["dynamics"], genres=None, dry_run=False)
+        assert "dynamics" in summary
+        result = summary["dynamics"]
+        assert "files_processed" in result
+        assert "entities_updated" in result
+        assert "entities_skipped" in result
