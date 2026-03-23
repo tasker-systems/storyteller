@@ -192,17 +192,86 @@ A dedicated `ground_state` schema, namespaced away from story-instance tables:
 CREATE SCHEMA IF NOT EXISTS ground_state;
 ```
 
-### 3.3 Table Structure
+### 3.3 Reference Entity Tables
 
-Each of the 12 primitive types gets a table following a shared pattern:
+The analytical scaffolding that situates the entire corpus — genres, clusters, state variables,
+and dimensions — are first-class relational entities with their own UUIDv7 identifiers. All
+primitive type tables reference these via foreign keys rather than denormalized text slugs.
+
+```sql
+-- The genre as a modeled entity (source: region.json per genre)
+CREATE TABLE ground_state.genres (
+    id            UUID PRIMARY KEY DEFAULT uuidv7(),
+    slug          TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    payload       JSONB NOT NULL,      -- full region.json content
+    source_hash   TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Genre clusters (the 6 semantic groupings)
+CREATE TABLE ground_state.genre_clusters (
+    id            UUID PRIMARY KEY DEFAULT uuidv7(),
+    slug          TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    payload       JSONB,               -- cluster synthesis metadata
+    source_hash   TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Genre ↔ cluster membership
+CREATE TABLE ground_state.genre_cluster_members (
+    genre_id      UUID NOT NULL REFERENCES ground_state.genres(id) ON DELETE CASCADE,
+    cluster_id    UUID NOT NULL REFERENCES ground_state.genre_clusters(id) ON DELETE CASCADE,
+    PRIMARY KEY (genre_id, cluster_id)
+);
+
+-- Canonical state variables (the 12 that emerged from axis inventory)
+CREATE TABLE ground_state.state_variables (
+    id            UUID PRIMARY KEY DEFAULT uuidv7(),
+    slug          TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    default_range JSONB,               -- { "min": 0.0, "max": 1.0 } or similar
+    payload       JSONB,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Universal dimensions (34 dimensions across 7 groups from terrain analysis)
+CREATE TABLE ground_state.dimensions (
+    id            UUID PRIMARY KEY DEFAULT uuidv7(),
+    slug          TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    dimension_group TEXT NOT NULL,      -- e.g., "narrative-structure", "relational", "world"
+    description   TEXT,
+    payload       JSONB,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_dimensions_group ON ground_state.dimensions (dimension_group);
+```
+
+These tables are loaded first, before any primitive type tables, since they provide the FK
+targets. The loader resolves slugs to UUIDs during the primitive type load phase.
+
+### 3.4 Primitive Type Table Structure
+
+Each of the 12 primitive types gets a table following a shared pattern, now with FK references
+to the scaffolding entities:
 
 ```sql
 CREATE TABLE ground_state.archetypes (
     id            UUID PRIMARY KEY DEFAULT uuidv7(),
-    genre_slug    TEXT NOT NULL,
+    genre_id      UUID NOT NULL REFERENCES ground_state.genres(id),
+    cluster_id    UUID REFERENCES ground_state.genre_clusters(id),
     entity_slug   TEXT NOT NULL,
     name          TEXT NOT NULL,
-    cluster_id    TEXT,
     -- promoted core fields (type-specific, driven by tier annotations)
     archetype_family  TEXT,
     primary_scale     TEXT,
@@ -211,18 +280,26 @@ CREATE TABLE ground_state.archetypes (
     -- housekeeping
     source_hash   TEXT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (genre_slug, entity_slug, COALESCE(cluster_id, ''))
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_archetypes_genre ON ground_state.archetypes (genre_slug);
+-- Natural key for upsert (functional index for nullable cluster_id)
+CREATE UNIQUE INDEX idx_archetypes_natural_key
+    ON ground_state.archetypes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+
+CREATE INDEX idx_archetypes_genre ON ground_state.archetypes (genre_id);
+CREATE INDEX idx_archetypes_cluster ON ground_state.archetypes (cluster_id) WHERE cluster_id IS NOT NULL;
 CREATE INDEX idx_archetypes_payload ON ground_state.archetypes USING gin (payload);
 ```
 
 **Key design choices:**
 
-- **Composite unique constraint** on `(genre_slug, entity_slug, COALESCE(cluster_id, ''))` —
-  the upsert key. Distinguishes per-genre entities from cluster-level entities.
+- **FK to `genres` and `genre_clusters`** — proper relational integrity instead of
+  denormalized text slugs. The loader resolves `genre_slug` → `genre_id` via lookup during
+  the load phase.
+- **Functional unique index** with `COALESCE` on `cluster_id` — PostgreSQL doesn't support
+  nullable columns in inline `UNIQUE` constraints with the semantics we need. A functional
+  index handles this correctly, and serves as the upsert conflict target.
 - **`source_hash`** — SHA256 of the source JSON file content. The loader compares hashes to
   detect drift: changed file = upsert, identical = skip.
 - **`payload` JSONB** — the full entity including both core and extended fields. Core fields
@@ -233,110 +310,154 @@ CREATE INDEX idx_archetypes_payload ON ground_state.archetypes USING gin (payloa
 - **Promoted core columns** vary per type, driven by tier annotations. Only fields the
   Storykeeper would plausibly `WHERE` or `JOIN` on get promoted.
 
-### 3.4 Table Inventory
+### 3.5 Table Inventory
+
+**Reference entities (scaffolding):**
+
+| Table | Natural Key | Est. Records |
+|---|---|---|
+| `genres` | slug | 30 |
+| `genre_clusters` | slug | 6 |
+| `genre_cluster_members` | (genre_id, cluster_id) | ~30 |
+| `state_variables` | slug | 12 |
+| `dimensions` | slug | 34 |
+
+**Primitive type tables:**
 
 | Table | Promoted Core Columns | Est. Records |
 |---|---|---|
-| `archetypes` | genre_slug, entity_slug, archetype_family, primary_scale | ~240 |
-| `settings` | genre_slug, entity_slug, setting_type, communicability_profile | ~210 |
-| `dynamics` | genre_slug, entity_slug, edge_type, scale | ~290 |
-| `goals` | genre_slug, entity_slug, goal_scale, archetype_refs | ~200 |
-| `profiles` | genre_slug, entity_slug, archetype_ref | ~230 |
-| `tropes` | genre_slug, entity_slug, trope_family | ~300 |
-| `narrative_shapes` | genre_slug, entity_slug, shape_type, beat_count | ~280 |
-| `ontological_posture` | genre_slug, entity_slug, boundary_stability | ~210 |
-| `spatial_topology` | genre_slug, entity_slug, friction_type, directionality_type | ~250 |
-| `place_entities` | genre_slug, entity_slug, place_type | ~200 |
-| `archetype_dynamics` | genre_slug, entity_slug, archetype_a, archetype_b | ~230 |
-| `genre_dimensions` | genre_slug | 30 |
+| `archetypes` | genre_id, entity_slug, archetype_family, primary_scale | ~240 |
+| `settings` | genre_id, entity_slug, setting_type, communicability_profile | ~210 |
+| `dynamics` | genre_id, entity_slug, edge_type, scale | ~290 |
+| `goals` | genre_id, entity_slug, goal_scale | ~200 |
+| `profiles` | genre_id, entity_slug, archetype_ref | ~230 |
+| `tropes` | genre_id, entity_slug, trope_family | ~300 |
+| `narrative_shapes` | genre_id, entity_slug, shape_type, beat_count | ~280 |
+| `ontological_posture` | genre_id, entity_slug, boundary_stability | ~210 |
+| `spatial_topology` | genre_id, entity_slug, friction_type, directionality_type | ~250 |
+| `place_entities` | genre_id, entity_slug, place_type | ~200 |
+| `archetype_dynamics` | genre_id, entity_slug, archetype_a, archetype_b | ~230 |
+| `genre_dimensions` | genre_id | 30 |
 
 Record counts are approximate, based on current corpus size. The promoted core columns listed
 are initial candidates — final selection depends on post-cleanup audit results and tier
 annotation decisions.
 
-### 3.5 Loader Design
+### 3.6 Loader Design
 
 Python script in the narrative-data package, integrated as a CLI subcommand:
 `narrative-data load-ground-state`
 
-**Operation sequence:**
+**Two-phase load:**
+
+**Phase 1: Reference entities** (must complete before phase 2)
+
+1. Load `genres` from `region.json` files — one per genre directory
+2. Load `genre_clusters` from cluster synthesis file metadata
+3. Load `genre_cluster_members` from cluster membership data in region files
+4. Load `state_variables` from the canonical list (sourced from terrain analysis / region data)
+5. Load `dimensions` from the 34 universal dimensions (sourced from terrain analysis)
+
+Phase 1 establishes the FK targets. The loader builds an in-memory slug→UUID lookup map
+for use in phase 2.
+
+**Phase 2: Primitive type entities**
 
 1. Walk the corpus directory structure (`storyteller-data/narrative-data/`)
 2. For each JSON file, deserialize through the Pydantic schema (validation gate — reuses the
    same schemas as extraction)
-3. Compute `source_hash` (SHA256 of file content)
-4. Upsert via `INSERT ... ON CONFLICT DO UPDATE`:
+3. Resolve `genre_slug` → `genre_id` and `cluster_slug` → `cluster_id` via the phase 1
+   lookup map
+4. Compute `source_hash` (SHA256 of file content)
+5. Upsert via `INSERT ... ON CONFLICT DO UPDATE`:
    ```sql
-   INSERT INTO ground_state.archetypes (genre_slug, entity_slug, name, ..., payload, source_hash)
+   INSERT INTO ground_state.archetypes (genre_id, entity_slug, name, ..., payload, source_hash)
    VALUES ($1, $2, $3, ..., $4, $5)
-   ON CONFLICT (genre_slug, entity_slug, COALESCE(cluster_id, ''))
+   ON CONFLICT ON CONSTRAINT idx_archetypes_natural_key
    DO UPDATE SET
        payload = EXCLUDED.payload,
        source_hash = EXCLUDED.source_hash,
        updated_at = now()
    WHERE archetypes.source_hash != EXCLUDED.source_hash;
    ```
-5. **Pruning pass**: after load, delete rows whose `(genre_slug, entity_slug)` combination no
-   longer exists in the corpus. Handles entity removal or rename across extraction runs.
-6. **Report**: `inserted N, updated M, pruned P, skipped Q (unchanged)`
+6. **Pruning pass**: after load, delete rows whose `(genre_id, entity_slug, cluster_id)`
+   combination no longer exists in the corpus. Matches on the full composite key to avoid
+   accidentally deleting cluster-level entities when per-genre entities are removed (or
+   vice versa).
+7. **Report**: `inserted N, updated M, pruned P, skipped Q (unchanged)`
 
 **Flags:**
 - `--dry-run` — report what would change without writing
 - `--type <type>` — load only a specific primitive type
 - `--genre <genre>` — load only a specific genre
 - `--skip-prune` — skip the pruning pass (useful during incremental development)
+- `--refs-only` — load only reference entities (phase 1), useful for bootstrapping
 
 **Database connection:** Uses `DATABASE_URL` from `.env` (same as storyteller engine),
 targeting the existing PostgreSQL 18 + Apache AGE instance on port 5435.
 
-### 3.6 SQL Query Functions
+### 3.7 SQL Query Functions
 
 Purpose-built SQL functions encapsulate join logic and return pre-assembled payloads. The Rust
 Storykeeper calls these via sqlx, receiving JSONB results deserializable into domain types.
 
 ```sql
 -- Get all ground-state data for a genre, pre-joined across types
+-- Accepts slug (human-readable) and resolves to genre_id internally
 CREATE OR REPLACE FUNCTION ground_state.genre_context(p_genre_slug TEXT)
 RETURNS JSONB AS $$
-    SELECT jsonb_build_object(
+DECLARE
+    v_genre_id UUID;
+BEGIN
+    SELECT id INTO v_genre_id FROM ground_state.genres WHERE slug = p_genre_slug;
+    IF v_genre_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    RETURN jsonb_build_object(
         'genre_slug', p_genre_slug,
+        'genre', (SELECT payload FROM ground_state.genres WHERE id = v_genre_id),
         'archetypes', (SELECT jsonb_agg(payload) FROM ground_state.archetypes
-                       WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                       WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'dynamics',   (SELECT jsonb_agg(payload) FROM ground_state.dynamics
-                       WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                       WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'settings',   (SELECT jsonb_agg(payload) FROM ground_state.settings
-                       WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                       WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'goals',      (SELECT jsonb_agg(payload) FROM ground_state.goals
-                       WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                       WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'profiles',   (SELECT jsonb_agg(payload) FROM ground_state.profiles
-                       WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                       WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'tropes',     (SELECT jsonb_agg(payload) FROM ground_state.tropes
-                       WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                       WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'narrative_shapes', (SELECT jsonb_agg(payload) FROM ground_state.narrative_shapes
-                            WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                            WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'ontological_posture', (SELECT jsonb_agg(payload) FROM ground_state.ontological_posture
-                               WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                               WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'spatial_topology', (SELECT jsonb_agg(payload) FROM ground_state.spatial_topology
-                            WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                            WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'place_entities', (SELECT jsonb_agg(payload) FROM ground_state.place_entities
-                          WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                          WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'archetype_dynamics', (SELECT jsonb_agg(payload) FROM ground_state.archetype_dynamics
-                              WHERE genre_slug = p_genre_slug AND cluster_id IS NULL),
+                              WHERE genre_id = v_genre_id AND cluster_id IS NULL),
         'genre_dimensions', (SELECT payload FROM ground_state.genre_dimensions
-                            WHERE genre_slug = p_genre_slug LIMIT 1)
+                            WHERE genre_id = v_genre_id LIMIT 1)
     );
-$$ LANGUAGE SQL STABLE;
+END;
+$$ LANGUAGE plpgsql STABLE;
 ```
 
 Additional functions will be defined as Storykeeper query patterns emerge:
-- `ground_state.archetype_context(genre_slug, archetype_slug)` — single archetype with
+- `ground_state.archetype_context(p_genre_slug, p_archetype_slug)` — single archetype with
   associated profiles, dynamics, goals
-- `ground_state.cluster_context(cluster_id)` — cluster-level synthesis data
-- `ground_state.entity_by_state_variable(variable_id)` — cross-type lookup for entities
-  referencing a specific state variable
+- `ground_state.cluster_context(p_cluster_slug)` — cluster-level synthesis data across all
+  member genres
+- `ground_state.entity_by_state_variable(p_variable_slug)` — cross-type lookup for entities
+  referencing a specific state variable (joins through JSONB payload containment)
 
 These are single-trip queries — one round-trip returns everything the Storykeeper needs for
 context assembly. Query complexity lives in SQL; the Rust side deserializes `JsonValue`.
+Functions accept human-readable slugs and resolve to UUIDs internally, keeping the calling
+code clean.
 
 ## Part 4: Composition and Test Strategy
 
@@ -380,7 +501,8 @@ promotion) but are otherwise independent of each other.
 - `tools/narrative-data/src/narrative_data/pipeline/postprocess.py` — audit + fill module
 - CLI subcommands: `audit`, `fill`, `load-ground-state`
 - Tier annotations across all 12 Pydantic schema models
-- SQL migration: `ground_state` schema, 12 tables, indexes
+- SQL migration: `ground_state` schema, reference entity tables (genres, clusters, state
+  variables, dimensions), 12 primitive type tables, indexes
 - SQL query functions (at minimum `genre_context()`)
 - Python loader with upsert/drift/prune
 - Tests for cleanup and persistence
