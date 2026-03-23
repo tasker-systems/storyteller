@@ -751,24 +751,27 @@ def slice_genre_native(
     heading_level: int,
     force: bool = False,
 ) -> list[SegmentInfo]:
-    """Split a genre-native file on the specified heading level.
+    """Split a genre-native file on numbered entity headings.
 
-    Use ``heading_level=2`` for narrative-shape files (``## 1. Shape Name``)
-    and ``heading_level=4`` for tropes files which share the H4 discovery
-    structure.
+    The ``heading_level`` parameter is used as a fallback; the actual level
+    is auto-detected from the first numbered heading in the file to handle
+    inconsistent heading levels across the 35b-generated corpus.
 
     Args:
         source_path: Path to the genre-native .md file.
         output_dir: Directory to write segment files into.
-        heading_level: Heading depth to split on (2 for narrative shapes,
-            4 for tropes).
+        heading_level: Fallback heading depth if auto-detection finds nothing.
         force: If True, re-slice even if the manifest is fresh.
 
     Returns:
         List of SegmentInfo for each entity segment produced.
     """
+    detected = _detect_heading_level(source_path)
+    # _detect_heading_level returns 4 as default when nothing found;
+    # use the caller's fallback if detection didn't find anything
+    level = detected if detected != 4 else heading_level
     return _slice_on_heading_level(
-        source_path, output_dir, heading_level=heading_level, force=force
+        source_path, output_dir, heading_level=level, force=force
     )
 
 
