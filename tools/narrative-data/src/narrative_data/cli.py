@@ -591,6 +591,112 @@ def pipeline_status(primitive_type: str | None) -> None:
         console.print(f"  Phase 4 (elaborate):   {p4} pairs complete")
 
 
+# ---------------------------------------------------------------------------
+# load-ground-state command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("load-ground-state")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Validate and report without writing to the database.",
+)
+@click.option(
+    "--type",
+    "type_filter",
+    default=None,
+    help="Comma-separated list of primitive types to load (default: all).",
+)
+@click.option(
+    "--genre",
+    "genre_filter",
+    default=None,
+    help="Comma-separated list of genre slugs to load (default: all).",
+)
+@click.option(
+    "--skip-prune",
+    is_flag=True,
+    default=True,
+    help="Skip pruning of rows absent from current corpus (default: True).",
+)
+@click.option(
+    "--refs-only",
+    is_flag=True,
+    default=False,
+    help="Load only reference entities (genres, clusters, state variables, dimensions).",
+)
+def load_ground_state_cmd(
+    dry_run: bool,
+    type_filter: str | None,
+    genre_filter: str | None,
+    skip_prune: bool,
+    refs_only: bool,
+) -> None:
+    """Load narrative corpus into ground_state PostgreSQL tables.
+
+    Phase 1 loads reference entities (genres, clusters, state variables, dimensions).
+    Phase 2 loads primitive types from the corpus into type-specific tables.
+
+    Requires DATABASE_URL and STORYTELLER_DATA_PATH environment variables.
+    """
+    import psycopg
+    from rich.console import Console
+
+    from narrative_data.config import resolve_output_path
+    from narrative_data.persistence.connection import get_connection_string
+    from narrative_data.persistence.loader import load_ground_state
+
+    console = Console()
+
+    try:
+        corpus_dir = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    try:
+        dsn = get_connection_string()
+    except ValueError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    types = _parse_list(type_filter)
+    genres = _parse_list(genre_filter)
+
+    if dry_run:
+        console.print("[yellow]Dry-run mode — no database writes will occur.[/yellow]")
+
+    try:
+        with psycopg.connect(dsn) as conn:
+            report = load_ground_state(
+                conn=conn,
+                corpus_dir=corpus_dir,
+                types=types,
+                genre_filter=genres,
+                refs_only=refs_only,
+                skip_prune=skip_prune,
+                dry_run=dry_run,
+            )
+    except Exception as exc:
+        console.print(f"[red]Load failed: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    console.print("[green]Load complete.[/green]")
+    console.print(f"  inserted : {report.inserted}")
+    console.print(f"  updated  : {report.updated}")
+    console.print(f"  pruned   : {report.pruned}")
+    console.print(f"  skipped  : {report.skipped}")
+    console.print(f"  errors   : {report.errors}")
+    if report.error_details:
+        console.print("[red]Errors:[/red]")
+        for detail in report.error_details[:20]:
+            console.print(f"  - {detail}")
+        if len(report.error_details) > 20:
+            console.print(f"  ... and {len(report.error_details) - 20} more")
+
+
 @pipeline.command("approve")
 @click.option("--type", "primitive_type", required=True, help="Primitive type being approved.")
 @click.option("--phase", required=True, type=int, help="Phase number (2).")
@@ -836,6 +942,112 @@ def structure_run(
 # ---------------------------------------------------------------------------
 # fill command
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# migrate command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("migrate")
+@click.option("--dry-run", is_flag=True, default=False, help="Show SQL without executing.")
+def migrate_cmd(dry_run: bool) -> None:
+    """Apply ground-state migrations via direct SQL execution.
+
+    Reads migration files from crates/storyteller-storykeeper/migrations/ that
+    begin with '20260323' (the ground-state schema date prefix) and applies
+    them in filename order using a direct psycopg connection.
+
+    Note: These migrations are co-located with sqlx migrations in
+    crates/storyteller-storykeeper/migrations/ but can be applied
+    independently via this command for Python-only workflows. In production,
+    'sqlx migrate run' handles everything.
+
+    Requires DATABASE_URL to be set, e.g.:
+      postgres://storyteller:storyteller@localhost:5435/storyteller_development
+    """
+    import psycopg
+    from rich.console import Console
+
+    from narrative_data.persistence.connection import get_connection_string
+
+    console = Console()
+
+    # Locate the migrations directory relative to this file's repo root.
+    # tools/narrative-data/src/narrative_data/cli.py → up 5 levels → repo root
+    repo_root = Path(__file__).parent.parent.parent.parent.parent.parent
+    migrations_dir = repo_root / "crates" / "storyteller-storykeeper" / "migrations"
+
+    if not migrations_dir.exists():
+        console.print(f"[red]Migrations directory not found: {migrations_dir}[/red]")
+        raise SystemExit(1)
+
+    # Collect ground-state migration files (date prefix 20260323)
+    migration_files = sorted(
+        f for f in migrations_dir.glob("20260323*.sql") if f.is_file()
+    )
+
+    if not migration_files:
+        console.print(
+            f"[yellow]No ground-state migration files found in {migrations_dir}[/yellow]"
+        )
+        return
+
+    console.print(f"\n[bold]Ground-state migrations:[/bold] {migrations_dir}")
+    console.print(f"  Found {len(migration_files)} file(s):\n")
+    for f in migration_files:
+        console.print(f"    [cyan]{f.name}[/cyan]")
+    console.print()
+
+    if dry_run:
+        console.print("[yellow]Dry run — SQL will be printed but not executed.[/yellow]\n")
+        for migration_path in migration_files:
+            sql = migration_path.read_text()
+            console.print(f"[bold]-- {migration_path.name}[/bold]")
+            console.print(sql)
+            console.print()
+        return
+
+    try:
+        conn_str = get_connection_string()
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1) from exc
+
+    try:
+        with psycopg.connect(conn_str) as conn:
+            # Check whether ground_state schema already exists
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT schema_name FROM information_schema.schemata "
+                    "WHERE schema_name = 'ground_state'"
+                )
+                schema_exists = cur.fetchone() is not None
+
+            if schema_exists:
+                console.print(
+                    "[yellow]Schema 'ground_state' already exists — "
+                    "migrations are idempotent via CREATE IF NOT EXISTS, "
+                    "but duplicate table creation will raise errors.[/yellow]"
+                )
+                console.print(
+                    "  To re-run: drop the schema first with "
+                    "[dim]DROP SCHEMA ground_state CASCADE;[/dim]\n"
+                )
+
+            for migration_path in migration_files:
+                sql = migration_path.read_text()
+                console.print(f"  Applying [cyan]{migration_path.name}[/cyan] ...", end=" ")
+                with conn.cursor() as cur:
+                    cur.execute(sql)
+                conn.commit()
+                console.print("[green]done[/green]")
+
+    except psycopg.Error as exc:
+        console.print(f"\n[red]Database error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    console.print("\n[green]All ground-state migrations applied.[/green]")
 
 
 @cli.command("fill")
