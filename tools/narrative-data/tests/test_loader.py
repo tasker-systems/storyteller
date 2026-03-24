@@ -152,9 +152,41 @@ def _db_available() -> bool:
 _skip_db = pytest.mark.skipif(not _db_available(), reason="PostgreSQL not available")
 
 
+class _TransactionIsolatedConn:
+    """Proxy wrapper around a psycopg Connection that suppresses commit() and
+    autocommit assignments so all writes remain in a single transaction that
+    can be rolled back on test teardown.
+
+    Every other attribute access is forwarded to the underlying connection.
+    """
+
+    def __init__(self, conn: object) -> None:
+        object.__setattr__(self, "_conn", conn)
+
+    def commit(self) -> None:  # no-op — keep writes in the open transaction
+        pass
+
+    def rollback(self) -> None:
+        object.__getattribute__(self, "_conn").rollback()
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(object.__getattribute__(self, "_conn"), name)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "autocommit":
+            return  # already set correctly; re-setting fails when INTRANS
+        object.__setattr__(object.__getattribute__(self, "_conn"), name, value)
+
+
 @pytest.fixture
 def db_conn():
-    """Provide a transactional psycopg connection that rolls back after the test."""
+    """Provide a transactional psycopg connection that rolls back after the test.
+
+    Wraps the connection in _TransactionIsolatedConn so that loader code
+    calling conn.commit() or setting conn.autocommit = False doesn't break
+    test isolation — all writes stay in the transaction and get rolled back
+    on cleanup.
+    """
     import psycopg
 
     dsn = os.environ.get(
@@ -163,7 +195,7 @@ def db_conn():
     )
     with psycopg.connect(dsn) as conn:
         conn.autocommit = False
-        yield conn
+        yield _TransactionIsolatedConn(conn)
         conn.rollback()
 
 
@@ -813,7 +845,8 @@ class TestLoadPrimitiveType:
         report = load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
 
         assert report.errors == 0
-        assert report.inserted > 0 or report.updated > 0
+        # inserted or updated or skipped (already present with same hash) — all valid
+        assert report.inserted + report.updated + report.skipped > 0
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -855,13 +888,19 @@ class TestLoadPrimitiveType:
         db_conn.commit()
 
         load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
+
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            n1 = cur.fetchone()["n"]
+
         load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
-            row = cur.fetchone()
-        # Should not double the count
-        assert row["n"] == 1
+            n2 = cur.fetchone()["n"]
+
+        # Second load must not increase the count — upsert is idempotent
+        assert n1 == n2
 
     @_skip_db
     def test_unknown_genre_slug_is_skipped(self, db_conn, tmp_path: Path) -> None:
@@ -895,17 +934,25 @@ class TestLoadGroundState:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus(tmp_path)
-        load_ground_state(db_conn, corpus_dir, dry_run=True)
 
+        # Capture baseline counts before dry-run
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres")
-            row = cur.fetchone()
-        # In a transactional test session, genres may have been loaded by other tests
-        # but the dry-run-specific genres should NOT appear
-        # We verify by checking the folk-horror genre was NOT written by this run
-        cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres WHERE slug = 'folk-horror'")
-        row = cur.fetchone()
-        assert row["n"] == 0
+            genres_before = cur.fetchone()["n"]
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            archetypes_before = cur.fetchone()["n"]
+
+        load_ground_state(db_conn, corpus_dir, dry_run=True)
+
+        # Row counts must be unchanged — dry_run writes nothing
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres")
+            genres_after = cur.fetchone()["n"]
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            archetypes_after = cur.fetchone()["n"]
+
+        assert genres_after == genres_before
+        assert archetypes_after == archetypes_before
 
     @_skip_db
     def test_refs_only_skips_primitives(self, db_conn, tmp_path: Path) -> None:
@@ -913,19 +960,25 @@ class TestLoadGroundState:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus(tmp_path)
+
+        # Capture archetype count before load
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            archetypes_before = cur.fetchone()["n"]
+
         report = load_ground_state(db_conn, corpus_dir, refs_only=True)
 
-        # Genres should be present
+        # Genres should be present (upserted by refs_only load)
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT slug FROM ground_state.genres WHERE slug = 'folk-horror'")
             row = cur.fetchone()
         assert row is not None
 
-        # No primitive rows
+        # Primitive tables must be untouched — refs_only skips all primitive types
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
-            row = cur.fetchone()
-        assert row["n"] == 0
+            archetypes_after = cur.fetchone()["n"]
+        assert archetypes_after == archetypes_before
 
         assert report.inserted == 0
         assert report.updated == 0
@@ -958,6 +1011,12 @@ class TestLoadGroundState:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus(tmp_path)
+
+        # Capture trope count before the filtered load
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.tropes")
+            tropes_before = cur.fetchone()["n"]
+
         load_ground_state(db_conn, corpus_dir, types=["archetypes"])
         db_conn.commit()
 
@@ -967,8 +1026,10 @@ class TestLoadGroundState:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.tropes")
             nt = cur.fetchone()["n"]
 
+        # archetypes must be present (at least the minimal corpus archetype or pre-existing)
         assert na > 0
-        assert nt == 0
+        # tropes must be untouched — type filter excluded them
+        assert nt == tropes_before
 
 
 # ---------------------------------------------------------------------------
