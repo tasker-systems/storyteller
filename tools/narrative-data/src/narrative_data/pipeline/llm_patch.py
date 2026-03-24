@@ -86,7 +86,7 @@ def _find_entity_section(md_content: str, entity_name: str) -> str:
     return md_content[start:end]
 
 
-def extract_valence(entity: dict, md_content: str, client: "OllamaClient") -> dict:
+def extract_valence(entity: dict, md_content: str, client: OllamaClient) -> dict:
     """Fill the ``valence`` field of a dynamics entity using LLM classification.
 
     Skips silently if ``valence`` is already a non-None, non-empty value.
@@ -138,7 +138,7 @@ def extract_valence(entity: dict, md_content: str, client: "OllamaClient") -> di
     return result
 
 
-def extract_currencies(entity: dict, md_content: str, client: "OllamaClient") -> dict:
+def extract_currencies(entity: dict, md_content: str, client: OllamaClient) -> dict:
     """Fill the ``currencies`` field (list[str]) from source markdown using structured LLM.
 
     Skips silently if ``currencies`` is already a non-empty list.
@@ -195,7 +195,7 @@ def extract_currencies(entity: dict, md_content: str, client: "OllamaClient") ->
     return result
 
 
-def extract_scale_manifestations(entity: dict, md_content: str, client: "OllamaClient") -> dict:
+def extract_scale_manifestations(entity: dict, md_content: str, client: OllamaClient) -> dict:
     """Fill the ``scale_manifestations`` nested object using structured LLM extraction.
 
     Fills the ``orbital``, ``arc``, and ``scene`` sub-fields.  Skips silently
@@ -213,10 +213,9 @@ def extract_scale_manifestations(entity: dict, md_content: str, client: "OllamaC
 
     result = dict(entity)
     existing = result.get("scale_manifestations")
-    if isinstance(existing, dict):
-        # Skip if any sub-field is already populated
-        if any(v is not None for v in existing.values()):
-            return result
+    # Skip if any sub-field is already populated
+    if isinstance(existing, dict) and any(v is not None for v in existing.values()):
+        return result
 
     entity_name = str(result.get("canonical_name", ""))
     edge_type = str(result.get("edge_type", ""))
@@ -264,7 +263,7 @@ def extract_scale_manifestations(entity: dict, md_content: str, client: "OllamaC
 
 def fill_all_llm_patch(
     corpus_dir: Path,
-    client: "OllamaClient",
+    client: OllamaClient,
     types: list[str] | None,
     genres: list[str] | None,
     dry_run: bool = False,

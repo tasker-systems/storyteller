@@ -9,6 +9,16 @@ from pathlib import Path
 
 import pytest
 
+from narrative_data.pipeline.postprocess import (
+    AuditResult,
+    _flatten_fields,
+    _is_null_or_empty,
+    audit_corpus,
+    audit_type,
+    fill_agency,
+    fill_all_deterministic,
+    fill_spans_scales,
+)
 from narrative_data.schemas import (
     archetype_dynamics,
     archetypes,
@@ -22,16 +32,6 @@ from narrative_data.schemas import (
     settings,
     spatial_topology,
     tropes,
-)
-from narrative_data.pipeline.postprocess import (
-    AuditResult,
-    _flatten_fields,
-    _is_null_or_empty,
-    audit_corpus,
-    audit_type,
-    fill_agency,
-    fill_all_deterministic,
-    fill_spans_scales,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

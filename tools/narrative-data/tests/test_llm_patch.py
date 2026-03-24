@@ -8,8 +8,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from narrative_data.pipeline.llm_patch import (
     _VALID_VALENCE,
     extract_currencies,
