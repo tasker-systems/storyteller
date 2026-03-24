@@ -1006,9 +1006,7 @@ class TestStateVariableInteractionExtraction:
     def test_extract_from_dynamics(self) -> None:
         """Dynamics use the same shape as tropes."""
         entity = {
-            "state_variable_interactions": [
-                {"variable_id": "trust", "operation": "accumulates"}
-            ]
+            "state_variable_interactions": [{"variable_id": "trust", "operation": "accumulates"}]
         }
         interactions = _extract_state_variable_interactions("dynamics", entity)
         assert len(interactions) == 1
@@ -1016,9 +1014,7 @@ class TestStateVariableInteractionExtraction:
 
     def test_extract_from_goals(self) -> None:
         """Goals use the same shape as tropes."""
-        entity = {
-            "state_variable_interactions": [{"variable_id": "safety", "operation": "gates"}]
-        }
+        entity = {"state_variable_interactions": [{"variable_id": "safety", "operation": "gates"}]}
         interactions = _extract_state_variable_interactions("goals", entity)
         assert len(interactions) == 1
 

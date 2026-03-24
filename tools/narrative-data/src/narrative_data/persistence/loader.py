@@ -222,9 +222,7 @@ def _extract_state_variable_interactions(type_name: str, entity: dict) -> list[d
                     vid = expr.get("variable_id")
                     if vid and isinstance(vid, str):
                         manifestation = expr.get("physical_manifestation")
-                        ctx = (
-                            {"physical_manifestation": manifestation} if manifestation else None
-                        )
+                        ctx = {"physical_manifestation": manifestation} if manifestation else None
                         results.append(
                             {"variable_slug": vid.strip(), "operation": None, "context": ctx}
                         )
@@ -380,9 +378,7 @@ def _upsert_clusters(
                 (slug, cluster["name"], json.dumps(payload), h),
             )
             if cur.rowcount == 0:
-                cur.execute(
-                    "SELECT id FROM ground_state.genre_clusters WHERE slug = %s", (slug,)
-                )
+                cur.execute("SELECT id FROM ground_state.genre_clusters WHERE slug = %s", (slug,))
             row = cur.fetchone()
             cluster_id = str(row["id"])
             slug_map[slug] = cluster_id
@@ -462,9 +458,7 @@ def _upsert_trope_families(
                 (slug, fam["name"], fam.get("description")),
             )
             if cur.rowcount == 0:
-                cur.execute(
-                    "SELECT id FROM ground_state.trope_families WHERE slug = %s", (slug,)
-                )
+                cur.execute("SELECT id FROM ground_state.trope_families WHERE slug = %s", (slug,))
             row = cur.fetchone()
             slug_map[f"tf:{slug}"] = str(row["id"])
     return slug_map
@@ -631,9 +625,7 @@ def _upsert_primitive_row(
 
     col_list = ", ".join(all_cols)
     # payload needs ::jsonb cast
-    placeholders_casted = ", ".join(
-        ["%s::jsonb" if c in ("payload",) else "%s" for c in all_cols]
-    )
+    placeholders_casted = ", ".join(["%s::jsonb" if c in ("payload",) else "%s" for c in all_cols])
 
     update_sets = ", ".join(
         [
@@ -720,9 +712,7 @@ def load_primitive_type(
                 report.skipped += 1
                 continue
             try:
-                outcome, _ = _upsert_genre_dimensions_row(
-                    conn, genre_id, data, h, dry_run=dry_run
-                )
+                outcome, _ = _upsert_genre_dimensions_row(conn, genre_id, data, h, dry_run=dry_run)
                 _tally(report, outcome)
             except Exception as exc:
                 log.error("Error upserting genre_dimensions for %s: %s", genre_slug, exc)
