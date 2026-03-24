@@ -1142,3 +1142,18 @@ class TestQueryFunctions:
         first = result["archetypes"][0]
         assert "slug" in first
         assert "data" in first
+
+    @_skip_db
+    def test_genre_context_tropes_include_family(self, db_conn, tmp_path: Path) -> None:
+        """genre_context returns tropes with family_slug and family_name."""
+        corpus_dir = _minimal_corpus(tmp_path)
+        load_ground_state(db_conn, corpus_dir)
+        db_conn.commit()
+
+        cur = db_conn.execute("SELECT ground_state.genre_context('folk-horror')")
+        result = cur.fetchone()[0]
+        tropes = result.get("tropes") or []
+        if tropes:
+            first = tropes[0]
+            assert "family_slug" in first
+            assert "family_name" in first

@@ -33,9 +33,14 @@ BEGIN
         'profiles', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
                      FROM ground_state.profiles
                      WHERE genre_id = v_genre_id AND cluster_id IS NULL),
-        'tropes', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
-                   FROM ground_state.tropes
-                   WHERE genre_id = v_genre_id AND cluster_id IS NULL),
+        'tropes', (SELECT jsonb_agg(jsonb_build_object(
+                        'slug', t.entity_slug,
+                        'data', t.payload,
+                        'family_slug', tf.slug,
+                        'family_name', tf.name))
+                   FROM ground_state.tropes t
+                   LEFT JOIN ground_state.trope_families tf ON t.trope_family_id = tf.id
+                   WHERE t.genre_id = v_genre_id AND t.cluster_id IS NULL),
         'narrative_shapes', (SELECT jsonb_agg(jsonb_build_object('slug', entity_slug, 'data', payload))
                             FROM ground_state.narrative_shapes
                             WHERE genre_id = v_genre_id AND cluster_id IS NULL),
