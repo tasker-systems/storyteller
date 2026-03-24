@@ -14,6 +14,7 @@ from narrative_data.persistence.connection import get_connection_string
 from narrative_data.persistence.loader import (
     LoadReport,
     _entity_slug,
+    _extract_state_variable_interactions,
     _is_valid_value,
     _promoted_columns,
     _source_hash,
@@ -553,6 +554,25 @@ class TestLoaderHelpers:
         cols = _promoted_columns("profiles", entity)
         assert cols == {}
 
+    def test_promoted_columns_tropes_with_slug_map(self) -> None:
+        """Tropes: trope_family_id resolved from slug_map."""
+        entity = {"genre_derivation": "Temporal Dimensions: Seasonal"}
+        slug_map = {"tf:temporal-dimension": "fake-uuid-123"}
+        cols = _promoted_columns("tropes", entity, slug_map=slug_map)
+        assert cols["trope_family_id"] == "fake-uuid-123"
+
+    def test_promoted_columns_tropes_no_slug_map(self) -> None:
+        """Tropes without slug_map get None for family_id."""
+        entity = {"genre_derivation": "Temporal: Seasonal"}
+        cols = _promoted_columns("tropes", entity)
+        assert cols["trope_family_id"] is None
+
+    def test_promoted_columns_tropes_missing_derivation(self) -> None:
+        """Tropes with no genre_derivation get None."""
+        entity = {"name": "Some trope"}
+        cols = _promoted_columns("tropes", entity, slug_map={})
+        assert cols["trope_family_id"] is None
+
 
 # ---------------------------------------------------------------------------
 # Sentinel validation tests
@@ -663,6 +683,35 @@ class TestTropeFamilyNormalization:
 # ---------------------------------------------------------------------------
 # DB integration tests
 # ---------------------------------------------------------------------------
+
+
+class TestTropeFamilyLoading:
+    def test_upsert_trope_families_extracts_from_corpus(self, tmp_path: Path) -> None:
+        """Trope families can be extracted from minimal corpus."""
+        corpus_dir = _minimal_corpus(tmp_path)
+        nmap = build_normalization_map(corpus_dir)
+        families = extract_trope_families(nmap)
+        assert len(families) >= 1
+        # _minimal_corpus has genre_derivation "Temporal: Seasonal"
+        slugs = [f["slug"] for f in families]
+        assert "temporal" in slugs
+
+    @_skip_db
+    def test_load_reference_entities_includes_trope_families(self, db_conn, tmp_path: Path) -> None:
+        """load_reference_entities now loads trope families and includes tf: keys in slug_map."""
+        from psycopg.rows import dict_row
+
+        corpus_dir = _minimal_corpus(tmp_path)
+        slug_map = load_reference_entities(db_conn, corpus_dir)
+        db_conn.commit()
+
+        tf_keys = [k for k in slug_map if k.startswith("tf:")]
+        assert len(tf_keys) >= 1
+
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.trope_families")
+            row = cur.fetchone()
+        assert row["n"] >= 1
 
 
 class TestLoadReferenceEntities:
@@ -925,6 +974,145 @@ class TestLoadGroundState:
 # ---------------------------------------------------------------------------
 # SQL query function tests (DB-dependent)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# State variable interaction extraction tests (no DB required)
+# ---------------------------------------------------------------------------
+
+
+class TestStateVariableInteractionExtraction:
+    def test_extract_from_structured_type(self) -> None:
+        """Extracts variable_id and operation from StateVariableInteraction shape."""
+        entity = {
+            "state_variable_interactions": [
+                {"variable_id": "trust", "operation": "depletes", "description": "Erodes trust."},
+                {"variable_id": "safety", "operation": "consumes"},
+            ]
+        }
+        interactions = _extract_state_variable_interactions("tropes", entity)
+        assert len(interactions) == 2
+        assert interactions[0] == {
+            "variable_slug": "trust",
+            "operation": "depletes",
+            "context": None,
+        }
+        assert interactions[1] == {
+            "variable_slug": "safety",
+            "operation": "consumes",
+            "context": None,
+        }
+
+    def test_extract_from_dynamics(self) -> None:
+        """Dynamics use the same shape as tropes."""
+        entity = {
+            "state_variable_interactions": [
+                {"variable_id": "trust", "operation": "accumulates"}
+            ]
+        }
+        interactions = _extract_state_variable_interactions("dynamics", entity)
+        assert len(interactions) == 1
+        assert interactions[0]["variable_slug"] == "trust"
+
+    def test_extract_from_goals(self) -> None:
+        """Goals use the same shape as tropes."""
+        entity = {
+            "state_variable_interactions": [{"variable_id": "safety", "operation": "gates"}]
+        }
+        interactions = _extract_state_variable_interactions("goals", entity)
+        assert len(interactions) == 1
+
+    def test_extract_from_expression_type(self) -> None:
+        """Place entities use StateVariableExpression shape."""
+        entity = {
+            "state_variable_expression": [
+                {"variable_id": "trust", "physical_manifestation": "Walls closing in."}
+            ]
+        }
+        interactions = _extract_state_variable_interactions("place-entities", entity)
+        assert len(interactions) == 1
+        assert interactions[0]["variable_slug"] == "trust"
+        assert interactions[0]["operation"] is None
+        assert interactions[0]["context"] == {"physical_manifestation": "Walls closing in."}
+
+    def test_extract_from_bare_slugs(self) -> None:
+        """Archetypes use bare list[str]."""
+        entity = {"state_variables": ["trust", "safety"]}
+        interactions = _extract_state_variable_interactions("archetypes", entity)
+        assert len(interactions) == 2
+        assert interactions[0] == {
+            "variable_slug": "trust",
+            "operation": None,
+            "context": None,
+        }
+        assert interactions[1] == {
+            "variable_slug": "safety",
+            "operation": None,
+            "context": None,
+        }
+
+    def test_extract_empty_list(self) -> None:
+        entity = {"state_variable_interactions": []}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+    def test_extract_missing_field(self) -> None:
+        entity = {"name": "No interactions"}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+    def test_extract_ignores_non_dict_items(self) -> None:
+        entity = {"state_variable_interactions": ["bad", 42]}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+    def test_extract_ignores_missing_variable_id(self) -> None:
+        entity = {"state_variable_interactions": [{"operation": "depletes"}]}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+
+# ---------------------------------------------------------------------------
+# State variable interaction DB tests
+# ---------------------------------------------------------------------------
+
+
+def _minimal_corpus_with_sv_interactions(tmp_path: Path) -> Path:
+    """Build corpus with state variable interactions in tropes."""
+    corpus_dir = _minimal_corpus(tmp_path)
+    tropes_dir = corpus_dir / "genres" / "folk-horror"
+    tropes = [
+        {
+            "name": "The Calendar Trope",
+            "genre_slug": "folk-horror",
+            "genre_derivation": "Temporal: Seasonal",
+            "narrative_function": ["escalating"],
+            "variants": {},
+            "state_variable_interactions": [
+                {"variable_id": "trust", "operation": "depletes", "description": "Erodes trust."}
+            ],
+            "ontological_dimension": None,
+            "overlap_signal": None,
+            "flavor_text": "A test trope.",
+        }
+    ]
+    (tropes_dir / "tropes.json").write_text(json.dumps(tropes))
+    return corpus_dir
+
+
+class TestStateVariableInteractionDB:
+    @_skip_db
+    def test_interactions_loaded_for_tropes(self, db_conn, tmp_path: Path) -> None:
+        """State variable interactions are extracted and inserted for tropes."""
+        from psycopg.rows import dict_row
+
+        corpus_dir = _minimal_corpus_with_sv_interactions(tmp_path)
+        load_ground_state(db_conn, corpus_dir)
+        db_conn.commit()
+
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM ground_state.primitive_state_variable_interactions "
+                "WHERE primitive_table = 'tropes'"
+            )
+            row = cur.fetchone()
+        assert row["n"] >= 1
 
 
 class TestQueryFunctions:
