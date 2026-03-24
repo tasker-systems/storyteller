@@ -180,7 +180,7 @@ Note: `StateVariableInteraction` (shared.py) has `variable_id` + `operation` + `
 After all changes:
 
 1. Drop the `storyteller_development` database (or `DROP SCHEMA ground_state CASCADE`)
-2. Run sqlx migrations (`cargo make docker-psql` + manual, or sqlx-cli)
+2. Run sqlx migrations via `sqlx database create && sqlx migrate run` from `crates/storyteller-storykeeper/` — these migrations are owned by the Storykeeper crate and must always run through sqlx
 3. Run `narrative-data load-ground-state` to reload full corpus with fixes
 4. Verify entity counts, spot-check promoted columns, run `genre_context('folk-horror')` to confirm query function works
 
