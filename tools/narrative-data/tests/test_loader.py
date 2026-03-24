@@ -14,6 +14,7 @@ from narrative_data.persistence.connection import get_connection_string
 from narrative_data.persistence.loader import (
     LoadReport,
     _entity_slug,
+    _is_valid_value,
     _promoted_columns,
     _source_hash,
     load_ground_state,
@@ -512,6 +513,53 @@ class TestLoaderHelpers:
         """Unknown type returns empty dict."""
         cols = _promoted_columns("unknown-type", {"key": "val"})
         assert cols == {}
+
+    def test_entity_slug_skips_sentinel_null(self) -> None:
+        """Entities with 'null' in primary field fall back to next candidate."""
+        entity = {"default_subject": "null", "canonical_name": "The Real Name"}
+        assert _entity_slug(entity) == "the-real-name"
+
+    def test_entity_slug_returns_none_when_all_sentinels(self) -> None:
+        """Returns None when all candidate fields are sentinels."""
+        entity = {"default_subject": "null", "name": "None"}
+        assert _entity_slug(entity) is None
+
+
+# ---------------------------------------------------------------------------
+# Sentinel validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestSentinelValidation:
+    def test_rejects_none(self) -> None:
+        assert _is_valid_value(None) is False
+
+    def test_rejects_literal_null_string(self) -> None:
+        assert _is_valid_value("null") is False
+
+    def test_rejects_none_string(self) -> None:
+        assert _is_valid_value("None") is False
+
+    def test_rejects_lowercase_none(self) -> None:
+        assert _is_valid_value("none") is False
+
+    def test_rejects_empty_string(self) -> None:
+        assert _is_valid_value("") is False
+
+    def test_rejects_whitespace_padded_sentinel(self) -> None:
+        assert _is_valid_value(" null ") is False
+
+    def test_rejects_na(self) -> None:
+        assert _is_valid_value("N/A") is False
+
+    def test_accepts_valid_string(self) -> None:
+        assert _is_valid_value("firm_defensive") is True
+
+    def test_accepts_non_string_truthy(self) -> None:
+        assert _is_valid_value(42) is True
+
+    def test_accepts_list(self) -> None:
+        assert _is_valid_value(["a", "b"]) is True
 
 
 # ---------------------------------------------------------------------------

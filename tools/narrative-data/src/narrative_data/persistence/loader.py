@@ -15,6 +15,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -94,11 +95,21 @@ def _slugify(name: str) -> str:
     return name.strip().lower().replace(" ", "-").replace("_", "-")
 
 
+_SENTINEL_VALUES = frozenset({"null", "None", "none", "N/A", "n/a", ""})
+
+
+def _is_valid_value(val: Any) -> bool:
+    """Reject sentinel strings that represent missing data."""
+    if val is None:
+        return False
+    return not (isinstance(val, str) and val.strip() in _SENTINEL_VALUES)
+
+
 def _entity_slug(entity: dict) -> str | None:
     """Derive the entity slug from canonical_name, name, pairing_name, or default_subject."""
     for key in ("canonical_name", "pairing_name", "name", "default_subject"):
         val = entity.get(key)
-        if val and isinstance(val, str):
+        if _is_valid_value(val) and isinstance(val, str):
             return _slugify(val)
     return None
 
@@ -178,7 +189,7 @@ def _entity_name(type_name: str, entity: dict) -> str:
     """Return a human-readable name for the entity."""
     for key in ("canonical_name", "pairing_name", "name", "default_subject"):
         val = entity.get(key)
-        if val and isinstance(val, str):
+        if _is_valid_value(val) and isinstance(val, str):
             return val.strip()
     return "unknown"
 
