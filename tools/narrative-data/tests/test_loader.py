@@ -14,6 +14,8 @@ from narrative_data.persistence.connection import get_connection_string
 from narrative_data.persistence.loader import (
     LoadReport,
     _entity_slug,
+    _extract_state_variable_interactions,
+    _is_valid_value,
     _promoted_columns,
     _source_hash,
     load_ground_state,
@@ -25,6 +27,11 @@ from narrative_data.persistence.reference_data import (
     extract_dimensions,
     extract_genres,
     extract_state_variables,
+)
+from narrative_data.persistence.trope_families import (
+    build_normalization_map,
+    extract_trope_families,
+    normalize_family_name,
 )
 
 # ---------------------------------------------------------------------------
@@ -145,9 +152,41 @@ def _db_available() -> bool:
 _skip_db = pytest.mark.skipif(not _db_available(), reason="PostgreSQL not available")
 
 
+class _TransactionIsolatedConn:
+    """Proxy wrapper around a psycopg Connection that suppresses commit() and
+    autocommit assignments so all writes remain in a single transaction that
+    can be rolled back on test teardown.
+
+    Every other attribute access is forwarded to the underlying connection.
+    """
+
+    def __init__(self, conn: object) -> None:
+        object.__setattr__(self, "_conn", conn)
+
+    def commit(self) -> None:  # no-op — keep writes in the open transaction
+        pass
+
+    def rollback(self) -> None:
+        object.__getattribute__(self, "_conn").rollback()
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(object.__getattribute__(self, "_conn"), name)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "autocommit":
+            return  # already set correctly; re-setting fails when INTRANS
+        object.__setattr__(object.__getattribute__(self, "_conn"), name, value)
+
+
 @pytest.fixture
 def db_conn():
-    """Provide a transactional psycopg connection that rolls back after the test."""
+    """Provide a transactional psycopg connection that rolls back after the test.
+
+    Wraps the connection in _TransactionIsolatedConn so that loader code
+    calling conn.commit() or setting conn.autocommit = False doesn't break
+    test isolation — all writes stay in the transaction and get rolled back
+    on cleanup.
+    """
     import psycopg
 
     dsn = os.environ.get(
@@ -156,7 +195,7 @@ def db_conn():
     )
     with psycopg.connect(dsn) as conn:
         conn.autocommit = False
-        yield conn
+        yield _TransactionIsolatedConn(conn)
         conn.rollback()
 
 
@@ -513,10 +552,198 @@ class TestLoaderHelpers:
         cols = _promoted_columns("unknown-type", {"key": "val"})
         assert cols == {}
 
+    def test_entity_slug_skips_sentinel_null(self) -> None:
+        """Entities with 'null' in primary field fall back to next candidate."""
+        entity = {"default_subject": "null", "canonical_name": "The Real Name"}
+        assert _entity_slug(entity) == "the-real-name"
+
+    def test_entity_slug_returns_none_when_all_sentinels(self) -> None:
+        """Returns None when all candidate fields are sentinels."""
+        entity = {"default_subject": "null", "name": "None"}
+        assert _entity_slug(entity) is None
+
+    def test_promoted_columns_ontological_posture_sentinel(self) -> None:
+        """Sentinel 'null' in stability yields None."""
+        entity = {"self_other_boundary": {"stability": "null"}}
+        cols = _promoted_columns("ontological-posture", entity)
+        assert cols["boundary_stability"] is None
+
+    def test_promoted_columns_place_entities_topological_role(self) -> None:
+        """Place entities extract topological_role, not type."""
+        entity = {"entity_properties": {"topological_role": "hub", "has_agency": True}}
+        cols = _promoted_columns("place-entities", entity)
+        assert cols == {"topological_role": "hub"}
+
+    def test_promoted_columns_place_entities_missing_role(self) -> None:
+        """Place entities with no topological_role get None."""
+        entity = {"entity_properties": {"has_agency": False}}
+        cols = _promoted_columns("place-entities", entity)
+        assert cols == {"topological_role": None}
+
+    def test_promoted_columns_profiles_empty(self) -> None:
+        """Profiles have no promoted columns (archetype_ref removed)."""
+        entity = {"provenance": ["Tarot-derived"], "name": "Foo"}
+        cols = _promoted_columns("profiles", entity)
+        assert cols == {}
+
+    def test_promoted_columns_tropes_with_slug_map(self) -> None:
+        """Tropes: trope_family_id resolved from slug_map."""
+        entity = {"genre_derivation": "Temporal Dimensions: Seasonal"}
+        slug_map = {"tf:temporal-dimension": "fake-uuid-123"}
+        cols = _promoted_columns("tropes", entity, slug_map=slug_map)
+        assert cols["trope_family_id"] == "fake-uuid-123"
+
+    def test_promoted_columns_tropes_no_slug_map(self) -> None:
+        """Tropes without slug_map get None for family_id."""
+        entity = {"genre_derivation": "Temporal: Seasonal"}
+        cols = _promoted_columns("tropes", entity)
+        assert cols["trope_family_id"] is None
+
+    def test_promoted_columns_tropes_missing_derivation(self) -> None:
+        """Tropes with no genre_derivation get None."""
+        entity = {"name": "Some trope"}
+        cols = _promoted_columns("tropes", entity, slug_map={})
+        assert cols["trope_family_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Sentinel validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestSentinelValidation:
+    def test_rejects_none(self) -> None:
+        assert _is_valid_value(None) is False
+
+    def test_rejects_literal_null_string(self) -> None:
+        assert _is_valid_value("null") is False
+
+    def test_rejects_none_string(self) -> None:
+        assert _is_valid_value("None") is False
+
+    def test_rejects_lowercase_none(self) -> None:
+        assert _is_valid_value("none") is False
+
+    def test_rejects_empty_string(self) -> None:
+        assert _is_valid_value("") is False
+
+    def test_rejects_whitespace_padded_sentinel(self) -> None:
+        assert _is_valid_value(" null ") is False
+
+    def test_rejects_na(self) -> None:
+        assert _is_valid_value("N/A") is False
+
+    def test_accepts_valid_string(self) -> None:
+        assert _is_valid_value("firm_defensive") is True
+
+    def test_accepts_non_string_truthy(self) -> None:
+        assert _is_valid_value(42) is True
+
+    def test_accepts_list(self) -> None:
+        assert _is_valid_value(["a", "b"]) is True
+
+
+# ---------------------------------------------------------------------------
+# Trope family normalization tests
+# ---------------------------------------------------------------------------
+
+
+class TestTropeFamilyNormalization:
+    def test_normalize_strips_plural_dimensions(self) -> None:
+        assert normalize_family_name("Temporal Dimensions") == "temporal-dimension"
+
+    def test_normalize_strips_plural_affordances(self) -> None:
+        assert normalize_family_name("World Affordances") == "world-affordance"
+
+    def test_normalize_handles_casing(self) -> None:
+        assert normalize_family_name("epistemological stance") == "epistemological-stance"
+
+    def test_normalize_collapses_agency_variants(self) -> None:
+        assert normalize_family_name("Agency Dimension") == "agency-dimension"
+        assert normalize_family_name("Agency Dimensions") == "agency-dimension"
+
+    def test_normalize_takes_part_before_colon(self) -> None:
+        assert normalize_family_name("Temporal Dimensions: Seasonal") == "temporal-dimension"
+
+    def test_normalize_locus_of_power(self) -> None:
+        assert normalize_family_name("Locus of Power: Community") == "locus-of-power"
+
+    def test_long_derivation_maps_to_unclassified(self) -> None:
+        long_text = (
+            "Directly addresses the Agency Dimensions and Boundary Conditions"
+            " (Melodrama vs. Tragedy). The hero must be competent to fall from greatness."
+        )
+        assert normalize_family_name(long_text) == "unclassified"
+
+    def test_build_normalization_map_from_corpus(self, tmp_path: Path) -> None:
+        corpus_dir = tmp_path / "corpus"
+        tropes_dir = corpus_dir / "genres" / "folk-horror"
+        tropes_dir.mkdir(parents=True)
+        tropes = [
+            {"name": "T1", "genre_derivation": "Temporal Dimensions: Seasonal"},
+            {"name": "T2", "genre_derivation": "Temporal Dimension: Cyclical"},
+            {"name": "T3", "genre_derivation": "Locus of Power: Community"},
+        ]
+        (tropes_dir / "tropes.json").write_text(json.dumps(tropes))
+
+        nmap = build_normalization_map(corpus_dir)
+        assert nmap["Temporal Dimensions: Seasonal"] == "temporal-dimension"
+        assert nmap["Temporal Dimension: Cyclical"] == "temporal-dimension"
+        assert nmap["Locus of Power: Community"] == "locus-of-power"
+
+    def test_extract_trope_families_deduplicates(self) -> None:
+        nmap = {
+            "Temporal Dimensions: Seasonal": "temporal-dimension",
+            "Temporal Dimension: Cyclical": "temporal-dimension",
+            "Locus of Power: Community": "locus-of-power",
+        }
+        families = extract_trope_families(nmap)
+        slugs = [f["slug"] for f in families]
+        assert len(slugs) == 2
+        assert "temporal-dimension" in slugs
+        assert "locus-of-power" in slugs
+
+    def test_extract_trope_families_have_names(self) -> None:
+        nmap = {"Locus of Power: X": "locus-of-power"}
+        families = extract_trope_families(nmap)
+        f = families[0]
+        assert f["slug"] == "locus-of-power"
+        assert f["name"] == "Locus of Power"
+        assert "description" in f
+
 
 # ---------------------------------------------------------------------------
 # DB integration tests
 # ---------------------------------------------------------------------------
+
+
+class TestTropeFamilyLoading:
+    def test_upsert_trope_families_extracts_from_corpus(self, tmp_path: Path) -> None:
+        """Trope families can be extracted from minimal corpus."""
+        corpus_dir = _minimal_corpus(tmp_path)
+        nmap = build_normalization_map(corpus_dir)
+        families = extract_trope_families(nmap)
+        assert len(families) >= 1
+        # _minimal_corpus has genre_derivation "Temporal: Seasonal"
+        slugs = [f["slug"] for f in families]
+        assert "temporal" in slugs
+
+    @_skip_db
+    def test_load_reference_entities_includes_trope_families(self, db_conn, tmp_path: Path) -> None:
+        """load_reference_entities now loads trope families and includes tf: keys in slug_map."""
+        from psycopg.rows import dict_row
+
+        corpus_dir = _minimal_corpus(tmp_path)
+        slug_map = load_reference_entities(db_conn, corpus_dir)
+        db_conn.commit()
+
+        tf_keys = [k for k in slug_map if k.startswith("tf:")]
+        assert len(tf_keys) >= 1
+
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.trope_families")
+            row = cur.fetchone()
+        assert row["n"] >= 1
 
 
 class TestLoadReferenceEntities:
@@ -618,7 +845,8 @@ class TestLoadPrimitiveType:
         report = load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
 
         assert report.errors == 0
-        assert report.inserted > 0 or report.updated > 0
+        # inserted or updated or skipped (already present with same hash) — all valid
+        assert report.inserted + report.updated + report.skipped > 0
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -660,13 +888,19 @@ class TestLoadPrimitiveType:
         db_conn.commit()
 
         load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
+
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            n1 = cur.fetchone()["n"]
+
         load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
-            row = cur.fetchone()
-        # Should not double the count
-        assert row["n"] == 1
+            n2 = cur.fetchone()["n"]
+
+        # Second load must not increase the count — upsert is idempotent
+        assert n1 == n2
 
     @_skip_db
     def test_unknown_genre_slug_is_skipped(self, db_conn, tmp_path: Path) -> None:
@@ -700,17 +934,25 @@ class TestLoadGroundState:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus(tmp_path)
-        load_ground_state(db_conn, corpus_dir, dry_run=True)
 
+        # Capture baseline counts before dry-run
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres")
-            row = cur.fetchone()
-        # In a transactional test session, genres may have been loaded by other tests
-        # but the dry-run-specific genres should NOT appear
-        # We verify by checking the folk-horror genre was NOT written by this run
-        cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres WHERE slug = 'folk-horror'")
-        row = cur.fetchone()
-        assert row["n"] == 0
+            genres_before = cur.fetchone()["n"]
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            archetypes_before = cur.fetchone()["n"]
+
+        load_ground_state(db_conn, corpus_dir, dry_run=True)
+
+        # Row counts must be unchanged — dry_run writes nothing
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres")
+            genres_after = cur.fetchone()["n"]
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            archetypes_after = cur.fetchone()["n"]
+
+        assert genres_after == genres_before
+        assert archetypes_after == archetypes_before
 
     @_skip_db
     def test_refs_only_skips_primitives(self, db_conn, tmp_path: Path) -> None:
@@ -718,19 +960,25 @@ class TestLoadGroundState:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus(tmp_path)
+
+        # Capture archetype count before load
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            archetypes_before = cur.fetchone()["n"]
+
         report = load_ground_state(db_conn, corpus_dir, refs_only=True)
 
-        # Genres should be present
+        # Genres should be present (upserted by refs_only load)
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT slug FROM ground_state.genres WHERE slug = 'folk-horror'")
             row = cur.fetchone()
         assert row is not None
 
-        # No primitive rows
+        # Primitive tables must be untouched — refs_only skips all primitive types
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
-            row = cur.fetchone()
-        assert row["n"] == 0
+            archetypes_after = cur.fetchone()["n"]
+        assert archetypes_after == archetypes_before
 
         assert report.inserted == 0
         assert report.updated == 0
@@ -763,6 +1011,12 @@ class TestLoadGroundState:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus(tmp_path)
+
+        # Capture trope count before the filtered load
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM ground_state.tropes")
+            tropes_before = cur.fetchone()["n"]
+
         load_ground_state(db_conn, corpus_dir, types=["archetypes"])
         db_conn.commit()
 
@@ -772,13 +1026,150 @@ class TestLoadGroundState:
             cur.execute("SELECT COUNT(*) AS n FROM ground_state.tropes")
             nt = cur.fetchone()["n"]
 
+        # archetypes must be present (at least the minimal corpus archetype or pre-existing)
         assert na > 0
-        assert nt == 0
+        # tropes must be untouched — type filter excluded them
+        assert nt == tropes_before
 
 
 # ---------------------------------------------------------------------------
 # SQL query function tests (DB-dependent)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# State variable interaction extraction tests (no DB required)
+# ---------------------------------------------------------------------------
+
+
+class TestStateVariableInteractionExtraction:
+    def test_extract_from_structured_type(self) -> None:
+        """Extracts variable_id and operation from StateVariableInteraction shape."""
+        entity = {
+            "state_variable_interactions": [
+                {"variable_id": "trust", "operation": "depletes", "description": "Erodes trust."},
+                {"variable_id": "safety", "operation": "consumes"},
+            ]
+        }
+        interactions = _extract_state_variable_interactions("tropes", entity)
+        assert len(interactions) == 2
+        assert interactions[0] == {
+            "variable_slug": "trust",
+            "operation": "depletes",
+            "context": None,
+        }
+        assert interactions[1] == {
+            "variable_slug": "safety",
+            "operation": "consumes",
+            "context": None,
+        }
+
+    def test_extract_from_dynamics(self) -> None:
+        """Dynamics use the same shape as tropes."""
+        entity = {
+            "state_variable_interactions": [{"variable_id": "trust", "operation": "accumulates"}]
+        }
+        interactions = _extract_state_variable_interactions("dynamics", entity)
+        assert len(interactions) == 1
+        assert interactions[0]["variable_slug"] == "trust"
+
+    def test_extract_from_goals(self) -> None:
+        """Goals use the same shape as tropes."""
+        entity = {"state_variable_interactions": [{"variable_id": "safety", "operation": "gates"}]}
+        interactions = _extract_state_variable_interactions("goals", entity)
+        assert len(interactions) == 1
+
+    def test_extract_from_expression_type(self) -> None:
+        """Place entities use StateVariableExpression shape."""
+        entity = {
+            "state_variable_expression": [
+                {"variable_id": "trust", "physical_manifestation": "Walls closing in."}
+            ]
+        }
+        interactions = _extract_state_variable_interactions("place-entities", entity)
+        assert len(interactions) == 1
+        assert interactions[0]["variable_slug"] == "trust"
+        assert interactions[0]["operation"] is None
+        assert interactions[0]["context"] == {"physical_manifestation": "Walls closing in."}
+
+    def test_extract_from_bare_slugs(self) -> None:
+        """Archetypes use bare list[str]."""
+        entity = {"state_variables": ["trust", "safety"]}
+        interactions = _extract_state_variable_interactions("archetypes", entity)
+        assert len(interactions) == 2
+        assert interactions[0] == {
+            "variable_slug": "trust",
+            "operation": None,
+            "context": None,
+        }
+        assert interactions[1] == {
+            "variable_slug": "safety",
+            "operation": None,
+            "context": None,
+        }
+
+    def test_extract_empty_list(self) -> None:
+        entity = {"state_variable_interactions": []}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+    def test_extract_missing_field(self) -> None:
+        entity = {"name": "No interactions"}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+    def test_extract_ignores_non_dict_items(self) -> None:
+        entity = {"state_variable_interactions": ["bad", 42]}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+    def test_extract_ignores_missing_variable_id(self) -> None:
+        entity = {"state_variable_interactions": [{"operation": "depletes"}]}
+        assert _extract_state_variable_interactions("tropes", entity) == []
+
+
+# ---------------------------------------------------------------------------
+# State variable interaction DB tests
+# ---------------------------------------------------------------------------
+
+
+def _minimal_corpus_with_sv_interactions(tmp_path: Path) -> Path:
+    """Build corpus with state variable interactions in tropes."""
+    corpus_dir = _minimal_corpus(tmp_path)
+    tropes_dir = corpus_dir / "genres" / "folk-horror"
+    tropes = [
+        {
+            "name": "The Calendar Trope",
+            "genre_slug": "folk-horror",
+            "genre_derivation": "Temporal: Seasonal",
+            "narrative_function": ["escalating"],
+            "variants": {},
+            "state_variable_interactions": [
+                {"variable_id": "trust", "operation": "depletes", "description": "Erodes trust."}
+            ],
+            "ontological_dimension": None,
+            "overlap_signal": None,
+            "flavor_text": "A test trope.",
+        }
+    ]
+    (tropes_dir / "tropes.json").write_text(json.dumps(tropes))
+    return corpus_dir
+
+
+class TestStateVariableInteractionDB:
+    @_skip_db
+    def test_interactions_loaded_for_tropes(self, db_conn, tmp_path: Path) -> None:
+        """State variable interactions are extracted and inserted for tropes."""
+        from psycopg.rows import dict_row
+
+        corpus_dir = _minimal_corpus_with_sv_interactions(tmp_path)
+        load_ground_state(db_conn, corpus_dir)
+        db_conn.commit()
+
+        with db_conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM ground_state.primitive_state_variable_interactions "
+                "WHERE primitive_table = 'tropes'"
+            )
+            row = cur.fetchone()
+        assert row["n"] >= 1
 
 
 class TestQueryFunctions:
@@ -808,3 +1199,18 @@ class TestQueryFunctions:
         first = result["archetypes"][0]
         assert "slug" in first
         assert "data" in first
+
+    @_skip_db
+    def test_genre_context_tropes_include_family(self, db_conn, tmp_path: Path) -> None:
+        """genre_context returns tropes with family_slug and family_name."""
+        corpus_dir = _minimal_corpus(tmp_path)
+        load_ground_state(db_conn, corpus_dir)
+        db_conn.commit()
+
+        cur = db_conn.execute("SELECT ground_state.genre_context('folk-horror')")
+        result = cur.fetchone()[0]
+        tropes = result.get("tropes") or []
+        if tropes:
+            first = tropes[0]
+            assert "family_slug" in first
+            assert "family_name" in first

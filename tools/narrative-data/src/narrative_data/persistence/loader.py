@@ -5,7 +5,8 @@
 """Ground-state loader: populates PostgreSQL ground_state tables from the narrative corpus.
 
 Two-phase load:
-  Phase 1 — Reference entities: genres, clusters, cluster members, state variables, dimensions.
+  Phase 1 — Reference entities: genres, clusters, cluster members, state variables,
+             trope families, dimensions.
   Phase 2 — Primitive types: one file per (genre × type) or (cluster × type), upserted with
              source-hash drift detection so re-runs are idempotent.
 """
@@ -15,6 +16,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -25,6 +27,11 @@ from narrative_data.persistence.reference_data import (
     extract_dimensions,
     extract_genres,
     extract_state_variables,
+)
+from narrative_data.persistence.trope_families import (
+    build_normalization_map,
+    extract_trope_families,
+    normalize_family_name,
 )
 
 log = logging.getLogger(__name__)
@@ -94,11 +101,21 @@ def _slugify(name: str) -> str:
     return name.strip().lower().replace(" ", "-").replace("_", "-")
 
 
+_SENTINEL_VALUES = frozenset({"null", "None", "none", "N/A", "n/a", ""})
+
+
+def _is_valid_value(val: Any) -> bool:
+    """Reject sentinel strings that represent missing data."""
+    if val is None:
+        return False
+    return not (isinstance(val, str) and val.strip() in _SENTINEL_VALUES)
+
+
 def _entity_slug(entity: dict) -> str | None:
     """Derive the entity slug from canonical_name, name, pairing_name, or default_subject."""
     for key in ("canonical_name", "pairing_name", "name", "default_subject"):
         val = entity.get(key)
-        if val and isinstance(val, str):
+        if _is_valid_value(val) and isinstance(val, str):
             return _slugify(val)
     return None
 
@@ -108,7 +125,7 @@ def _source_hash(raw_bytes: bytes) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
 
-def _promoted_columns(type_name: str, entity: dict) -> dict:
+def _promoted_columns(type_name: str, entity: dict, slug_map: dict | None = None) -> dict:
     """Extract type-specific promoted columns beyond the shared set."""
     if type_name == "archetypes":
         return {
@@ -135,15 +152,14 @@ def _promoted_columns(type_name: str, entity: dict) -> dict:
     if type_name == "goals":
         return {"goal_scale": entity.get("scale")}
     if type_name == "profiles":
-        return {"archetype_ref": entity.get("provenance")}
+        return {}
     if type_name == "tropes":
-        # trope_family: from genre_derivation or narrative_function list
         derivation = entity.get("genre_derivation")
-        if isinstance(derivation, str) and derivation:
-            trope_family = derivation.split(":")[0].strip() if ":" in derivation else derivation
-        else:
-            trope_family = None
-        return {"trope_family": trope_family}
+        if isinstance(derivation, str) and derivation.strip():
+            family_slug = normalize_family_name(derivation)
+            family_id = slug_map.get(f"tf:{family_slug}") if slug_map else None
+            return {"trope_family_id": family_id}
+        return {"trope_family_id": None}
     if type_name == "narrative-shapes":
         tension_profile = entity.get("tension_profile") or {}
         shape_type = tension_profile.get("family") if isinstance(tension_profile, dict) else None
@@ -153,6 +169,8 @@ def _promoted_columns(type_name: str, entity: dict) -> dict:
     if type_name == "ontological-posture":
         boundary = entity.get("self_other_boundary") or {}
         stability = boundary.get("stability") if isinstance(boundary, dict) else None
+        if not _is_valid_value(stability):
+            stability = None
         return {"boundary_stability": stability}
     if type_name == "spatial-topology":
         friction = entity.get("friction") or {}
@@ -164,8 +182,10 @@ def _promoted_columns(type_name: str, entity: dict) -> dict:
         return {"friction_type": friction_type, "directionality_type": directionality_type}
     if type_name == "place-entities":
         entity_props = entity.get("entity_properties") or {}
-        place_type = entity_props.get("type") if isinstance(entity_props, dict) else None
-        return {"place_type": place_type}
+        topological_role = (
+            entity_props.get("topological_role") if isinstance(entity_props, dict) else None
+        )
+        return {"topological_role": topological_role}
     if type_name == "archetype-dynamics":
         return {
             "archetype_a": entity.get("archetype_a"),
@@ -174,11 +194,62 @@ def _promoted_columns(type_name: str, entity: dict) -> dict:
     return {}
 
 
+def _extract_state_variable_interactions(type_name: str, entity: dict) -> list[dict]:
+    """Extract state variable interaction records from an entity's payload.
+
+    Handles three shapes:
+    - StateVariableInteraction (tropes, dynamics, goals): variable_id + operation
+    - StateVariableExpression (place_entities): variable_id + physical_manifestation
+    - Bare list[str] (archetypes): just variable slugs
+    """
+    results: list[dict] = []
+
+    if type_name == "archetypes":
+        slugs = entity.get("state_variables") or []
+        if isinstance(slugs, list):
+            for slug in slugs:
+                if isinstance(slug, str) and slug.strip():
+                    results.append(
+                        {"variable_slug": slug.strip(), "operation": None, "context": None}
+                    )
+        return results
+
+    if type_name == "place-entities":
+        expressions = entity.get("state_variable_expression") or []
+        if isinstance(expressions, list):
+            for expr in expressions:
+                if isinstance(expr, dict):
+                    vid = expr.get("variable_id")
+                    if vid and isinstance(vid, str):
+                        manifestation = expr.get("physical_manifestation")
+                        ctx = {"physical_manifestation": manifestation} if manifestation else None
+                        results.append(
+                            {"variable_slug": vid.strip(), "operation": None, "context": ctx}
+                        )
+        return results
+
+    # Default: StateVariableInteraction (tropes, dynamics, goals)
+    interactions = entity.get("state_variable_interactions") or []
+    if isinstance(interactions, list):
+        for ix in interactions:
+            if isinstance(ix, dict):
+                vid = ix.get("variable_id")
+                if vid and isinstance(vid, str):
+                    results.append(
+                        {
+                            "variable_slug": vid.strip(),
+                            "operation": ix.get("operation"),
+                            "context": None,
+                        }
+                    )
+    return results
+
+
 def _entity_name(type_name: str, entity: dict) -> str:
     """Return a human-readable name for the entity."""
     for key in ("canonical_name", "pairing_name", "name", "default_subject"):
         val = entity.get(key)
-        if val and isinstance(val, str):
+        if _is_valid_value(val) and isinstance(val, str):
             return val.strip()
     return "unknown"
 
@@ -193,11 +264,12 @@ def load_reference_entities(
     corpus_dir: Path,
     dry_run: bool = False,
 ) -> dict[str, str]:
-    """Load genres, clusters, state variables, and dimensions.
+    """Load genres, clusters, state variables, trope families, and dimensions.
 
-    Returns a slug→UUID lookup map covering:
-      - genre slugs → genre UUIDs
-      - cluster slugs → cluster UUIDs
+    Returns a slug->UUID lookup map covering:
+      - genre slugs -> genre UUIDs
+      - cluster slugs -> cluster UUIDs
+      - tf:{family_slug} -> trope family UUIDs
     """
     slug_map: dict[str, str] = {}
 
@@ -211,6 +283,12 @@ def load_reference_entities(
     state_variables = extract_state_variables(corpus_dir)
     _upsert_state_variables(conn, state_variables, dry_run=dry_run)
 
+    # Trope families (scan corpus for genre_derivation values)
+    nmap = build_normalization_map(corpus_dir)
+    families = extract_trope_families(nmap)
+    tf_map = _upsert_trope_families(conn, families, dry_run=dry_run)
+    slug_map.update(tf_map)
+
     dimensions = extract_dimensions()
     _upsert_dimensions(conn, dimensions, dry_run=dry_run)
 
@@ -218,10 +296,12 @@ def load_reference_entities(
         conn.commit()
 
     log.info(
-        "Phase 1 complete: %d genres, %d clusters, %d state_variables, %d dimensions",
+        "Phase 1 complete: %d genres, %d clusters, %d state_variables,"
+        " %d trope_families, %d dimensions",
         len(genres),
         len(clusters),
         len(state_variables),
+        len(families),
         len(dimensions),
     )
     return slug_map
@@ -298,9 +378,7 @@ def _upsert_clusters(
                 (slug, cluster["name"], json.dumps(payload), h),
             )
             if cur.rowcount == 0:
-                cur.execute(
-                    "SELECT id FROM ground_state.genre_clusters WHERE slug = %s", (slug,)
-                )
+                cur.execute("SELECT id FROM ground_state.genre_clusters WHERE slug = %s", (slug,))
             row = cur.fetchone()
             cluster_id = str(row["id"])
             slug_map[slug] = cluster_id
@@ -352,6 +430,38 @@ def _upsert_state_variables(
                     json.dumps(sv["payload"]),
                 ),
             )
+
+
+def _upsert_trope_families(
+    conn: psycopg.Connection,
+    families: list[dict],
+    dry_run: bool = False,
+) -> dict[str, str]:
+    """Upsert trope_families; return slug->UUID map with 'tf:' prefix on slug keys."""
+    slug_map: dict[str, str] = {}
+    for fam in families:
+        slug = fam["slug"]
+        if dry_run:
+            slug_map[f"tf:{slug}"] = "dry-run-uuid"
+            continue
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                INSERT INTO ground_state.trope_families (slug, name, description)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (slug) DO UPDATE
+                  SET name = EXCLUDED.name,
+                      description = EXCLUDED.description,
+                      updated_at = now()
+                RETURNING id
+                """,
+                (slug, fam["name"], fam.get("description")),
+            )
+            if cur.rowcount == 0:
+                cur.execute("SELECT id FROM ground_state.trope_families WHERE slug = %s", (slug,))
+            row = cur.fetchone()
+            slug_map[f"tf:{slug}"] = str(row["id"])
+    return slug_map
 
 
 def _upsert_dimensions(
@@ -515,9 +625,7 @@ def _upsert_primitive_row(
 
     col_list = ", ".join(all_cols)
     # payload needs ::jsonb cast
-    placeholders_casted = ", ".join(
-        ["%s::jsonb" if c in ("payload",) else "%s" for c in all_cols]
-    )
+    placeholders_casted = ", ".join(["%s::jsonb" if c in ("payload",) else "%s" for c in all_cols])
 
     update_sets = ", ".join(
         [
@@ -604,9 +712,7 @@ def load_primitive_type(
                 report.skipped += 1
                 continue
             try:
-                outcome, _ = _upsert_genre_dimensions_row(
-                    conn, genre_id, data, h, dry_run=dry_run
-                )
+                outcome, _ = _upsert_genre_dimensions_row(conn, genre_id, data, h, dry_run=dry_run)
                 _tally(report, outcome)
             except Exception as exc:
                 log.error("Error upserting genre_dimensions for %s: %s", genre_slug, exc)
@@ -648,7 +754,7 @@ def load_primitive_type(
                 continue
 
             try:
-                extra = _promoted_columns(type_name, entity)
+                extra = _promoted_columns(type_name, entity, slug_map=slug_map)
                 outcome, _ = _upsert_primitive_row(
                     conn,
                     table,
@@ -681,6 +787,106 @@ def _tally(report: LoadReport, outcome: str) -> None:
         report.updated += 1
     else:
         report.skipped += 1
+
+
+_SV_TYPES = frozenset({"archetypes", "dynamics", "goals", "tropes", "place-entities"})
+
+
+def _load_state_variable_interactions(
+    conn: psycopg.Connection,
+    type_name: str,
+    corpus_dir: Path,
+    slug_map: dict[str, str],
+    genre_filter: list[str] | None = None,
+    dry_run: bool = False,
+) -> LoadReport:
+    """Second pass: extract state variable interactions from entity payloads and insert."""
+    report = LoadReport()
+    table = TABLE_MAP.get(type_name)
+    if not table:
+        return report
+
+    # Build state variable slug -> UUID map
+    sv_map: dict[str, str] = {}
+    if not dry_run:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT slug, id FROM ground_state.state_variables")
+            for row in cur.fetchall():
+                sv_map[row["slug"]] = str(row["id"])
+
+    files = _corpus_files_for_type(type_name, corpus_dir, genre_filter)
+    for file_path, genre_slug, _cluster_slug in files:
+        genre_id = slug_map.get(genre_slug) if genre_slug else None
+        if genre_slug and not genre_id:
+            continue
+
+        try:
+            data = json.loads(file_path.read_bytes())
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        if not isinstance(data, list):
+            continue
+
+        for entity in data:
+            if not isinstance(entity, dict):
+                continue
+
+            slug = _entity_slug(entity)
+            if not slug:
+                continue
+
+            interactions = _extract_state_variable_interactions(type_name, entity)
+            if not interactions:
+                continue
+
+            if dry_run:
+                report.skipped += len(interactions)
+                continue
+
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    f"SELECT id FROM ground_state.{table} "
+                    f"WHERE genre_id = %s AND entity_slug = %s LIMIT 1",
+                    (genre_id, slug),
+                )
+                row = cur.fetchone()
+                if not row:
+                    continue
+                primitive_id = str(row["id"])
+
+                for ix in interactions:
+                    sv_id = sv_map.get(ix["variable_slug"])
+                    if not sv_id:
+                        log.warning(
+                            "Unknown state variable '%s' in %s/%s — skipping",
+                            ix["variable_slug"],
+                            type_name,
+                            slug,
+                        )
+                        report.skipped += 1
+                        continue
+
+                    cur.execute(
+                        """
+                        INSERT INTO ground_state.primitive_state_variable_interactions
+                            (primitive_table, primitive_id, state_variable_id, operation, context)
+                        VALUES (%s, %s, %s, %s, %s::jsonb)
+                        """,
+                        (
+                            table,
+                            primitive_id,
+                            sv_id,
+                            ix["operation"],
+                            json.dumps(ix["context"]) if ix["context"] else None,
+                        ),
+                    )
+                    report.inserted += 1
+
+        if not dry_run:
+            conn.commit()
+
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -726,5 +932,24 @@ def load_ground_state(
         log.info("  %s: %s", type_name, report.summary())
         total = total + report
 
-    log.info("Load complete. Total: %s", total.summary())
-    return total
+    # Phase 2.5: State variable interaction extraction
+    sv_total = LoadReport()
+    for type_name in [t for t in active_types if t in _SV_TYPES]:
+        log.info("Extracting state variable interactions for: %s", type_name)
+        sv_report = _load_state_variable_interactions(
+            conn,
+            type_name,
+            corpus_dir,
+            slug_map,
+            genre_filter=genre_filter,
+            dry_run=dry_run,
+        )
+        log.info("  %s sv-interactions: %s", type_name, sv_report.summary())
+        sv_total = sv_total + sv_report
+
+    log.info(
+        "Load complete. Entities: %s | SV interactions: %s",
+        total.summary(),
+        sv_total.summary(),
+    )
+    return total + sv_total

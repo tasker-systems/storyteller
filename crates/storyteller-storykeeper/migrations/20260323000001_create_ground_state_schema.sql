@@ -95,3 +95,40 @@ CREATE TABLE ground_state.dimensions (
 );
 
 CREATE INDEX idx_dimensions_group ON ground_state.dimensions (dimension_group);
+
+-- ---------------------------------------------------------------------------
+-- trope_families
+-- ---------------------------------------------------------------------------
+-- Normalized lookup for trope family classification. Each family maps to
+-- a canonical narrative dimension (e.g. "Locus of Power", "Thematic Dimension").
+-- ---------------------------------------------------------------------------
+CREATE TABLE ground_state.trope_families (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug            VARCHAR     NOT NULL UNIQUE,
+    name            VARCHAR     NOT NULL,
+    description     TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------
+-- primitive_state_variable_interactions
+-- ---------------------------------------------------------------------------
+-- Polymorphic join table: links any primitive entity to state variables it
+-- interacts with. primitive_table is the discriminator (e.g. 'tropes',
+-- 'dynamics'). No FK on primitive_id (can't FK to multiple tables).
+-- ---------------------------------------------------------------------------
+CREATE TABLE ground_state.primitive_state_variable_interactions (
+    id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    primitive_table   VARCHAR     NOT NULL,
+    primitive_id      UUID        NOT NULL,
+    state_variable_id UUID        NOT NULL REFERENCES ground_state.state_variables(id),
+    operation         VARCHAR,
+    context           JSONB,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_psvi_primitive
+    ON ground_state.primitive_state_variable_interactions(primitive_table, primitive_id);
+CREATE INDEX idx_psvi_state_variable
+    ON ground_state.primitive_state_variable_interactions(state_variable_id);
