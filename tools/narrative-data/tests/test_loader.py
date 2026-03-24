@@ -708,9 +708,7 @@ class TestLoadGroundState:
         # In a transactional test session, genres may have been loaded by other tests
         # but the dry-run-specific genres should NOT appear
         # We verify by checking the folk-horror genre was NOT written by this run
-        cur.execute(
-            "SELECT COUNT(*) AS n FROM ground_state.genres WHERE slug = 'folk-horror'"
-        )
+        cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres WHERE slug = 'folk-horror'")
         row = cur.fetchone()
         assert row["n"] == 0
 
@@ -724,9 +722,7 @@ class TestLoadGroundState:
 
         # Genres should be present
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                "SELECT slug FROM ground_state.genres WHERE slug = 'folk-horror'"
-            )
+            cur.execute("SELECT slug FROM ground_state.genres WHERE slug = 'folk-horror'")
             row = cur.fetchone()
         assert row is not None
 
@@ -778,3 +774,37 @@ class TestLoadGroundState:
 
         assert na > 0
         assert nt == 0
+
+
+# ---------------------------------------------------------------------------
+# SQL query function tests (DB-dependent)
+# ---------------------------------------------------------------------------
+
+
+class TestQueryFunctions:
+    @_skip_db
+    def test_genre_context_returns_all_types(self, db_conn) -> None:
+        """genre_context('folk-horror') returns non-null result with genre_slug and archetypes."""
+        cur = db_conn.execute("SELECT ground_state.genre_context('folk-horror')")
+        result = cur.fetchone()[0]
+        assert result is not None
+        assert result["genre_slug"] == "folk-horror"
+        assert result["genre"] is not None
+        assert isinstance(result["archetypes"], list)
+        assert len(result["archetypes"]) > 0
+
+    @_skip_db
+    def test_genre_context_returns_null_for_unknown(self, db_conn) -> None:
+        """genre_context returns NULL for a genre slug that does not exist."""
+        cur = db_conn.execute("SELECT ground_state.genre_context('nonexistent')")
+        result = cur.fetchone()[0]
+        assert result is None
+
+    @_skip_db
+    def test_genre_context_wraps_with_slug(self, db_conn) -> None:
+        """Each element in the archetypes array has 'slug' and 'data' keys."""
+        cur = db_conn.execute("SELECT ground_state.genre_context('folk-horror')")
+        result = cur.fetchone()[0]
+        first = result["archetypes"][0]
+        assert "slug" in first
+        assert "data" in first
