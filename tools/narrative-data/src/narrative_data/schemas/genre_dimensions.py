@@ -40,65 +40,65 @@ ConstraintLayerTypeItem = Literal[
 class AestheticDimensions(BaseModel):
     """Sensory and stylistic character of the genre."""
 
-    sensory_density: ContinuousAxis
-    groundedness: ContinuousAxis
-    aesthetic_register: ContinuousAxis
-    prose_register: list[str] = Field(default_factory=list)
+    sensory_density: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    groundedness: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    aesthetic_register: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    prose_register: list[str] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
 
 
 class TonalDimensions(BaseModel):
     """Emotional and ironic register of the genre."""
 
-    emotional_contract: ContinuousAxis
-    cynicism_earnestness: ContinuousAxis
-    surface_irony: ContinuousAxis
-    structural_irony: ContinuousAxis
-    intimacy_distance: ContinuousAxis
+    emotional_contract: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    cynicism_earnestness: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    surface_irony: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    structural_irony: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    intimacy_distance: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
 
 
 class TemporalDimensions(BaseModel):
     """Time structure, pacing, and narrative span."""
 
-    time_structure: ContinuousAxis
-    pacing: ContinuousAxis
-    temporal_grounding: ContinuousAxis
-    narrative_span: ContinuousAxis
+    time_structure: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    pacing: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    temporal_grounding: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    narrative_span: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
 
 
 class ThematicDimensions(BaseModel):
     """Weighted tag sets for thematic content — not single enums."""
 
-    power_treatment: WeightedTags
-    identity_treatment: WeightedTags
-    knowledge_treatment: WeightedTags
-    connection_treatment: WeightedTags
+    power_treatment: WeightedTags = Field(..., json_schema_extra={"tier": "core"})
+    identity_treatment: WeightedTags = Field(..., json_schema_extra={"tier": "core"})
+    knowledge_treatment: WeightedTags = Field(..., json_schema_extra={"tier": "core"})
+    connection_treatment: WeightedTags = Field(..., json_schema_extra={"tier": "core"})
 
 
 class AgencyDimensions(BaseModel):
     """Protagonist agency level, type, and triumph mode."""
 
-    agency_level: ContinuousAxis
-    agency_type: AgencyTypeItem
-    triumph_mode: ContinuousAxis
-    competence_relevance: ContinuousAxis
+    agency_level: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    agency_type: AgencyTypeItem = Field(..., json_schema_extra={"tier": "core"})
+    triumph_mode: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    competence_relevance: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
 
 
 class WorldAffordances(BaseModel):
     """What the world permits — magic, technology, violence, death, supernatural."""
 
-    magic: list[str] = Field(default_factory=list)
-    technology: str
-    violence: str
-    death: str
-    supernatural: str
+    magic: list[str] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    technology: str = Field(..., json_schema_extra={"tier": "core"})
+    violence: str = Field(..., json_schema_extra={"tier": "core"})
+    death: str = Field(..., json_schema_extra={"tier": "core"})
+    supernatural: str = Field(..., json_schema_extra={"tier": "core"})
 
 
 class EpistemologicalDimensions(BaseModel):
     """Knowability, knowledge reward, and narration reliability."""
 
-    knowability: ContinuousAxis
-    knowledge_reward: ContinuousAxis
-    narration_reliability: ContinuousAxis
+    knowability: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    knowledge_reward: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
+    narration_reliability: ContinuousAxis = Field(..., json_schema_extra={"tier": "core"})
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +109,8 @@ class EpistemologicalDimensions(BaseModel):
 class NarrativeContract(BaseModel):
     """Hard guarantee the genre makes to the reader."""
 
-    invariant: str
-    enforced: bool
+    invariant: str = Field(..., json_schema_extra={"tier": "core"})
+    enforced: bool = Field(..., json_schema_extra={"tier": "core"})
 
 
 # ---------------------------------------------------------------------------
@@ -125,36 +125,39 @@ class GenreDimensions(BaseModel):
     26 of 30 genres are constraint layers that modify other genres.
     """
 
-    genre_slug: str
-    genre_name: str
-    classification: ClassificationItem
-    constraint_layer_type: ConstraintLayerTypeItem | None = None
+    genre_slug: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_name: str = Field(..., json_schema_extra={"tier": "core"})
+    classification: ClassificationItem = Field(..., json_schema_extra={"tier": "core"})
+    constraint_layer_type: ConstraintLayerTypeItem | None = Field(None, json_schema_extra={"tier": "core"})
 
-    aesthetic: AestheticDimensions
-    tonal: TonalDimensions
-    temporal: TemporalDimensions
-    thematic: ThematicDimensions
-    agency: AgencyDimensions
+    aesthetic: AestheticDimensions = Field(..., json_schema_extra={"tier": "core"})
+    tonal: TonalDimensions = Field(..., json_schema_extra={"tier": "core"})
+    temporal: TemporalDimensions = Field(..., json_schema_extra={"tier": "core"})
+    thematic: ThematicDimensions = Field(..., json_schema_extra={"tier": "core"})
+    agency: AgencyDimensions = Field(..., json_schema_extra={"tier": "core"})
 
     locus_of_power: list[LocusOfPowerItem] = Field(
         default_factory=list,
         max_length=3,
         description="Ranked list, first = primary. Max 3.",
+        json_schema_extra={"tier": "core"},
     )
     narrative_structure: list[NarrativeStructureItem] = Field(
         default_factory=list,
         max_length=3,
         description="Dominant narrative shapes. Max 3.",
+        json_schema_extra={"tier": "core"},
     )
 
-    world_affordances: WorldAffordances
-    epistemological: EpistemologicalDimensions
+    world_affordances: WorldAffordances = Field(..., json_schema_extra={"tier": "core"})
+    epistemological: EpistemologicalDimensions = Field(..., json_schema_extra={"tier": "core"})
 
-    narrative_contracts: list[NarrativeContract] = Field(default_factory=list)
-    active_state_variables: list[StateVariableTemplate] = Field(default_factory=list)
-    boundaries: list[GenreBoundary] = Field(default_factory=list)
+    narrative_contracts: list[NarrativeContract] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    active_state_variables: list[StateVariableTemplate] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    boundaries: list[GenreBoundary] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
     modifies: list[str] = Field(
         default_factory=list,
         description="Genre slugs this constraint layer can modify.",
+        json_schema_extra={"tier": "core"},
     )
-    flavor_text: str | None = None
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})

@@ -1,0 +1,55 @@
+{
+  "genre_slug": "folk-horror",
+  "genre_name": "Folk Horror",
+  "classification": "constraint_layer",
+  "constraint_layer_type": null,
+  "aesthetic": {
+    "sensory_density": {
+      "value": 0.9,
+      "low_label": null,
+      "high_label": "Lush/ornate",
+      "can_be_state_variable": false,
+      "flavor_text": null
+    },
+    "groundedness": {
+      "value": 0.1,
+      "low_label": "Grounded/mundane",
+      "high_label": null,
+      "can_be_state_variable": false,
+      "flavor_text": null
+    },
+    "aesthetic_register": {
+      "value": 0.1,
+      "low_label": "Gritty realism",
+      "high_label": null,
+      "can_be_state_variable": true,
+      "flavor_text": "The horror is visceral and physical."
+    },
+    "prose_register": []
+  },
+  "tonal": {
+    "emotional_contract": {
+      "value": 0.9,
+      "low_label": null,
+      "high_label": "Dread",
+      "can_be_state_variable": false,
+      "flavor_text": "Fear is secondary to dread."
+    },
+    "cynicism_earnestness": {
+      "value": 0.1,
+      "low_label": null,
+      "high_label": "Earnestness",
+      "can_be_state_variable": true,
+      "flavor_text": "The community does not view their rituals as superstition; they view them as necessity."
+    },
+    "surface_irony": {
+      "value": 0.1,
+      "low_label": null,
+      "high_label": "Surface sincerity",
+      "can_be_state_variable": false,
+      "flavor_text": null
+    }
+  },
+  "modifies": [],
+  "flavor_text": null
+}

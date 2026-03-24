@@ -101,3 +101,10 @@ def resolve_output_path() -> Path:
 
 def resolve_descriptor_dir() -> Path:
     return resolve_data_path() / "training-data" / "descriptors"
+
+
+def resolve_database_url() -> str:
+    """Resolve DATABASE_URL from environment."""
+    from narrative_data.persistence.connection import get_connection_string
+
+    return get_connection_string()

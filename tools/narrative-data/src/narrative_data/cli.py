@@ -591,6 +591,112 @@ def pipeline_status(primitive_type: str | None) -> None:
         console.print(f"  Phase 4 (elaborate):   {p4} pairs complete")
 
 
+# ---------------------------------------------------------------------------
+# load-ground-state command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("load-ground-state")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Validate and report without writing to the database.",
+)
+@click.option(
+    "--type",
+    "type_filter",
+    default=None,
+    help="Comma-separated list of primitive types to load (default: all).",
+)
+@click.option(
+    "--genre",
+    "genre_filter",
+    default=None,
+    help="Comma-separated list of genre slugs to load (default: all).",
+)
+@click.option(
+    "--skip-prune",
+    is_flag=True,
+    default=True,
+    help="Skip pruning of rows absent from current corpus (default: True).",
+)
+@click.option(
+    "--refs-only",
+    is_flag=True,
+    default=False,
+    help="Load only reference entities (genres, clusters, state variables, dimensions).",
+)
+def load_ground_state_cmd(
+    dry_run: bool,
+    type_filter: str | None,
+    genre_filter: str | None,
+    skip_prune: bool,
+    refs_only: bool,
+) -> None:
+    """Load narrative corpus into ground_state PostgreSQL tables.
+
+    Phase 1 loads reference entities (genres, clusters, state variables, dimensions).
+    Phase 2 loads primitive types from the corpus into type-specific tables.
+
+    Requires DATABASE_URL and STORYTELLER_DATA_PATH environment variables.
+    """
+    import psycopg
+    from rich.console import Console
+
+    from narrative_data.config import resolve_output_path
+    from narrative_data.persistence.connection import get_connection_string
+    from narrative_data.persistence.loader import load_ground_state
+
+    console = Console()
+
+    try:
+        corpus_dir = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    try:
+        dsn = get_connection_string()
+    except ValueError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    types = _parse_list(type_filter)
+    genres = _parse_list(genre_filter)
+
+    if dry_run:
+        console.print("[yellow]Dry-run mode — no database writes will occur.[/yellow]")
+
+    try:
+        with psycopg.connect(dsn) as conn:
+            report = load_ground_state(
+                conn=conn,
+                corpus_dir=corpus_dir,
+                types=types,
+                genre_filter=genres,
+                refs_only=refs_only,
+                skip_prune=skip_prune,
+                dry_run=dry_run,
+            )
+    except Exception as exc:
+        console.print(f"[red]Load failed: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    console.print("[green]Load complete.[/green]")
+    console.print(f"  inserted : {report.inserted}")
+    console.print(f"  updated  : {report.updated}")
+    console.print(f"  pruned   : {report.pruned}")
+    console.print(f"  skipped  : {report.skipped}")
+    console.print(f"  errors   : {report.errors}")
+    if report.error_details:
+        console.print("[red]Errors:[/red]")
+        for detail in report.error_details[:20]:
+            console.print(f"  - {detail}")
+        if len(report.error_details) > 20:
+            console.print(f"  ... and {len(report.error_details) - 20} more")
+
+
 @pipeline.command("approve")
 @click.option("--type", "primitive_type", required=True, help="Primitive type being approved.")
 @click.option("--phase", required=True, type=int, help="Phase number (2).")
@@ -624,6 +730,137 @@ def pipeline_approve(primitive_type: str, phase: int, primitives: str, note: str
 @cli.group()
 def structure() -> None:
     """Stage 2: Structure raw markdown into validated JSON."""
+
+
+# ---------------------------------------------------------------------------
+# audit command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("audit")
+@click.option(
+    "--type",
+    "types",
+    multiple=True,
+    help="Type slug(s) to audit (repeatable). Defaults to all known types.",
+)
+@click.option(
+    "--genre",
+    "genres",
+    multiple=True,
+    help="Genre slug(s) to include (repeatable). Defaults to all found.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    default=None,
+    type=click.Path(),
+    help="Save JSON report to this path.",
+)
+@click.option(
+    "--threshold-warn",
+    default=0.5,
+    show_default=True,
+    type=float,
+    help="Null rate >= this value is shown in yellow.",
+)
+@click.option(
+    "--threshold-error",
+    default=0.8,
+    show_default=True,
+    type=float,
+    help="Null rate >= this value is shown in red.",
+)
+def audit(
+    types: tuple[str, ...],
+    genres: tuple[str, ...],
+    output_path: str | None,
+    threshold_warn: float,
+    threshold_error: float,
+) -> None:
+    """Scan the corpus for null/empty fields and report coverage rates.
+
+    Outputs a Rich table per type with color-coded field rates:
+    green = well-filled, yellow = sparse, red = mostly empty.
+    """
+    import json as _json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from narrative_data.config import resolve_output_path
+    from narrative_data.pipeline.postprocess import AuditResult, audit_corpus
+
+    console = Console()
+
+    try:
+        corpus_dir = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    type_list = list(types) if types else None
+    genre_list = list(genres) if genres else None
+
+    console.print(f"\n[bold]Auditing corpus at:[/bold] {corpus_dir}")
+    if type_list:
+        console.print(f"  Types:  {', '.join(type_list)}")
+    if genre_list:
+        console.print(f"  Genres: {', '.join(genre_list)}")
+    console.print()
+
+    results: dict[str, AuditResult] = audit_corpus(
+        corpus_dir=corpus_dir,
+        types=type_list,
+        genres=genre_list,
+    )
+
+    for type_slug, result in sorted(results.items()):
+        title = (
+            f"{type_slug}  [dim]({result.total_entities} entities, {result.file_count} files)[/dim]"
+        )
+        table = Table(title=title, show_header=True, header_style="bold cyan")
+        table.add_column("Field", style="cyan", no_wrap=True)
+        table.add_column("Null Rate", justify="right")
+        table.add_column("Status", justify="center")
+
+        if result.errors and not result.field_rates:
+            for err in result.errors:
+                table.add_row("[dim]—[/dim]", "[dim]—[/dim]", f"[red]{err}[/red]")
+        else:
+            for field_name, rate in sorted(result.field_rates.items()):
+                pct = f"{rate * 100:.1f}%"
+                if rate >= threshold_error:
+                    status = "[red]sparse[/red]"
+                    rate_str = f"[red]{pct}[/red]"
+                elif rate >= threshold_warn:
+                    status = "[yellow]partial[/yellow]"
+                    rate_str = f"[yellow]{pct}[/yellow]"
+                else:
+                    status = "[green]ok[/green]"
+                    rate_str = f"[green]{pct}[/green]"
+                table.add_row(field_name, rate_str, status)
+
+            if result.errors:
+                console.print(f"  [yellow]Warnings:[/yellow] {'; '.join(result.errors)}")
+
+        console.print(table)
+        console.print()
+
+    if output_path:
+        report = {
+            type_slug: {
+                "type_name": r.type_name,
+                "genre": r.genre,
+                "total_entities": r.total_entities,
+                "file_count": r.file_count,
+                "field_rates": r.field_rates,
+                "errors": r.errors,
+            }
+            for type_slug, r in results.items()
+        }
+        Path(output_path).write_text(_json.dumps(report, indent=2))
+        console.print(f"[dim]JSON report saved to {output_path}[/dim]")
 
 
 @structure.command("run")
@@ -700,3 +937,269 @@ def structure_run(
     if not all_genres and not genre and not clusters:
         click.echo("Specify --all, --genre <slug>, or --clusters", err=True)
         raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# fill command
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# migrate command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("migrate")
+@click.option("--dry-run", is_flag=True, default=False, help="Show SQL without executing.")
+def migrate_cmd(dry_run: bool) -> None:
+    """Apply ground-state migrations via direct SQL execution.
+
+    Reads migration files from crates/storyteller-storykeeper/migrations/ that
+    begin with '20260323' (the ground-state schema date prefix) and applies
+    them in filename order using a direct psycopg connection.
+
+    Note: These migrations are co-located with sqlx migrations in
+    crates/storyteller-storykeeper/migrations/ but can be applied
+    independently via this command for Python-only workflows. In production,
+    'sqlx migrate run' handles everything.
+
+    Requires DATABASE_URL to be set, e.g.:
+      postgres://storyteller:storyteller@localhost:5435/storyteller_development
+    """
+    import psycopg
+    from rich.console import Console
+
+    from narrative_data.persistence.connection import get_connection_string
+
+    console = Console()
+
+    # Locate the migrations directory relative to this file's repo root.
+    # tools/narrative-data/src/narrative_data/cli.py → up 5 levels → repo root
+    repo_root = Path(__file__).parent.parent.parent.parent.parent.parent
+    migrations_dir = repo_root / "crates" / "storyteller-storykeeper" / "migrations"
+
+    if not migrations_dir.exists():
+        console.print(f"[red]Migrations directory not found: {migrations_dir}[/red]")
+        raise SystemExit(1)
+
+    # Collect ground-state migration files (date prefix 20260323)
+    migration_files = sorted(
+        f for f in migrations_dir.glob("20260323*.sql") if f.is_file()
+    )
+
+    if not migration_files:
+        console.print(
+            f"[yellow]No ground-state migration files found in {migrations_dir}[/yellow]"
+        )
+        return
+
+    console.print(f"\n[bold]Ground-state migrations:[/bold] {migrations_dir}")
+    console.print(f"  Found {len(migration_files)} file(s):\n")
+    for f in migration_files:
+        console.print(f"    [cyan]{f.name}[/cyan]")
+    console.print()
+
+    if dry_run:
+        console.print("[yellow]Dry run — SQL will be printed but not executed.[/yellow]\n")
+        for migration_path in migration_files:
+            sql = migration_path.read_text()
+            console.print(f"[bold]-- {migration_path.name}[/bold]")
+            console.print(sql)
+            console.print()
+        return
+
+    try:
+        conn_str = get_connection_string()
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1) from exc
+
+    try:
+        with psycopg.connect(conn_str) as conn:
+            # Check whether ground_state schema already exists
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT schema_name FROM information_schema.schemata "
+                    "WHERE schema_name = 'ground_state'"
+                )
+                schema_exists = cur.fetchone() is not None
+
+            if schema_exists:
+                console.print(
+                    "[yellow]Schema 'ground_state' already exists — "
+                    "migrations are idempotent via CREATE IF NOT EXISTS, "
+                    "but duplicate table creation will raise errors.[/yellow]"
+                )
+                console.print(
+                    "  To re-run: drop the schema first with "
+                    "[dim]DROP SCHEMA ground_state CASCADE;[/dim]\n"
+                )
+
+            for migration_path in migration_files:
+                sql = migration_path.read_text()
+                console.print(f"  Applying [cyan]{migration_path.name}[/cyan] ...", end=" ")
+                with conn.cursor() as cur:
+                    cur.execute(sql)
+                conn.commit()
+                console.print("[green]done[/green]")
+
+    except psycopg.Error as exc:
+        console.print(f"\n[red]Database error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    console.print("\n[green]All ground-state migrations applied.[/green]")
+
+
+@cli.command("fill")
+@click.option(
+    "--tier",
+    type=click.Choice(["deterministic", "llm-patch"]),
+    required=True,
+    help=(
+        "Fill tier: 'deterministic' uses regex/lookup rules; "
+        "'llm-patch' uses an LLM for targeted field extraction."
+    ),
+)
+@click.option(
+    "--type",
+    "types",
+    multiple=True,
+    help="Type slug(s) to fill (repeatable). Defaults to all supported fill types.",
+)
+@click.option(
+    "--genre",
+    "genres",
+    multiple=True,
+    help="Genre slug(s) to include (repeatable). Defaults to all found.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Report changes without writing any files.",
+)
+def fill(
+    tier: str,
+    types: tuple[str, ...],
+    genres: tuple[str, ...],
+    dry_run: bool,
+) -> None:
+    """Fill null/empty fields in structured JSON files.
+
+    For --tier deterministic: applies rule-based fills (regex patterns,
+    lookup tables) that require no LLM.  Currently supports:
+
+    \b
+      dynamics        → fills spans_scales from source markdown Scale: lines
+      spatial-topology → fills agency from friction.type + directionality.type
+    """
+    if tier == "llm-patch":
+        from rich.console import Console
+        from rich.table import Table
+
+        from narrative_data.config import OLLAMA_BASE_URL, resolve_output_path
+        from narrative_data.ollama import OllamaClient
+        from narrative_data.pipeline.llm_patch import fill_all_llm_patch
+
+        llm_console = Console()
+
+        try:
+            llm_corpus_dir = resolve_output_path()
+        except RuntimeError as exc:
+            llm_console.print(f"[red]Error: {exc}[/red]")
+            raise SystemExit(1) from exc
+
+        llm_type_list = list(types) if types else None
+        llm_genre_list = list(genres) if genres else None
+        llm_client = OllamaClient(base_url=OLLAMA_BASE_URL)
+
+        if dry_run:
+            llm_console.print("[yellow]Dry run — no files will be written.[/yellow]")
+        llm_console.print(f"\n[bold]Running LLM patch fills on:[/bold] {llm_corpus_dir}")
+        if llm_type_list:
+            llm_console.print(f"  Types:  {', '.join(llm_type_list)}")
+        if llm_genre_list:
+            llm_console.print(f"  Genres: {', '.join(llm_genre_list)}")
+        llm_console.print()
+
+        llm_summary = fill_all_llm_patch(
+            corpus_dir=llm_corpus_dir,
+            client=llm_client,
+            types=llm_type_list,
+            genres=llm_genre_list,
+            dry_run=dry_run,
+        )
+
+        llm_table = Table(title="LLM Patch Fill Summary", show_header=True, header_style="bold cyan")
+        llm_table.add_column("Type", style="cyan")
+        llm_table.add_column("Files", justify="right")
+        llm_table.add_column("Updated", justify="right")
+        llm_table.add_column("Skipped", justify="right")
+
+        for type_slug, result in sorted(llm_summary.items()):
+            updated = result["entities_updated"]
+            updated_str = f"[green]{updated}[/green]" if updated > 0 else str(updated)
+            llm_table.add_row(
+                type_slug,
+                str(result["files_processed"]),
+                updated_str,
+                str(result["entities_skipped"]),
+            )
+
+        llm_console.print(llm_table)
+        if dry_run:
+            llm_console.print("\n[yellow]Dry run complete — no files written.[/yellow]")
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from narrative_data.config import resolve_output_path
+    from narrative_data.pipeline.postprocess import fill_all_deterministic
+
+    console = Console()
+
+    try:
+        corpus_dir = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    type_list = list(types) if types else None
+    genre_list = list(genres) if genres else None
+
+    if dry_run:
+        console.print("[yellow]Dry run — no files will be written.[/yellow]")
+    console.print(f"\n[bold]Running deterministic fills on:[/bold] {corpus_dir}")
+    if type_list:
+        console.print(f"  Types:  {', '.join(type_list)}")
+    if genre_list:
+        console.print(f"  Genres: {', '.join(genre_list)}")
+    console.print()
+
+    summary = fill_all_deterministic(
+        corpus_dir=corpus_dir,
+        types=type_list,
+        genres=genre_list,
+        dry_run=dry_run,
+    )
+
+    table = Table(title="Fill Summary", show_header=True, header_style="bold cyan")
+    table.add_column("Type", style="cyan")
+    table.add_column("Files", justify="right")
+    table.add_column("Updated", justify="right")
+    table.add_column("Skipped", justify="right")
+
+    for type_slug, result in sorted(summary.items()):
+        updated = result["entities_updated"]
+        updated_str = f"[green]{updated}[/green]" if updated > 0 else str(updated)
+        table.add_row(
+            type_slug,
+            str(result["files_processed"]),
+            updated_str,
+            str(result["entities_skipped"]),
+        )
+
+    console.print(table)
+    if dry_run:
+        console.print("\n[yellow]Dry run complete — no files written.[/yellow]")

@@ -1,0 +1,130 @@
+[
+  {
+    "canonical_name": "Blood-Line Contract",
+    "genre_slug": "folk-horror",
+    "variant_name": "Orbital",
+    "scale": "orbital",
+    "spans_scales": [],
+    "edge_type": "Information-symmetric within the kin, asymmetric to the outsider.",
+    "directionality": "bidirectional_asymmetric",
+    "currencies": [],
+    "network_position": null,
+    "valence": null,
+    "role_slots": [
+      {
+        "role": "The Lineage",
+        "want": null,
+        "withhold": null,
+        "archetype_ref": null,
+        "is_nonhuman": false
+      },
+      {
+        "role": "The Ancestors",
+        "want": null,
+        "withhold": null,
+        "archetype_ref": null,
+        "is_nonhuman": false
+      }
+    ],
+    "evolution_pattern": "static",
+    "scale_manifestations": {
+      "orbital": "Static. The contract exists regardless of the current generation's will.",
+      "arc": null,
+      "scene": null
+    },
+    "state_variable_interactions": [
+      {
+        "variable_id": "integration-level",
+        "operation": "gates",
+        "description": null
+      }
+    ],
+    "constraints": [
+      "Prevents 'Exit.' A member cannot leave without breaking the contract (and dying)."
+    ],
+    "overlap_signal": "Family Drama: Here, the family is not a support system but a trap.",
+    "flavor_text": "Grounded in the Temporal Orientation (Cyclical/Generational) and Identity (Subsumed)."
+  },
+  {
+    "canonical_name": "The Dissolution of Self",
+    "genre_slug": "folk-horror",
+    "variant_name": "Arc",
+    "scale": "arc",
+    "spans_scales": [],
+    "edge_type": "Eroding/Unstable",
+    "directionality": "internal",
+    "currencies": [],
+    "network_position": null,
+    "valence": null,
+    "role_slots": [
+      {
+        "role": "The Outsider",
+        "want": null,
+        "withhold": null,
+        "archetype_ref": null,
+        "is_nonhuman": false
+      },
+      {
+        "role": "The Land (Internalized)",
+        "want": null,
+        "withhold": null,
+        "archetype_ref": null,
+        "is_nonhuman": true
+      }
+    ],
+    "evolution_pattern": "erosion",
+    "scale_manifestations": {
+      "orbital": null,
+      "arc": "Erosion",
+      "scene": null
+    },
+    "state_variable_interactions": [
+      {
+        "variable_id": "integration-level",
+        "operation": "depletes",
+        "description": "As knowledge rises, agency falls."
+      }
+    ],
+    "constraints": [
+      "Prevents 'Rationality.'"
+    ],
+    "overlap_signal": "Psychological Horror: Here the erosion is real (environmental), not just internal hallucination.",
+    "flavor_text": "Grounded in Epistemological Stance (Unknowable) and Agency (Environmental Determinism)."
+  },
+  {
+    "canonical_name": "The Hearth's Trap",
+    "genre_slug": "folk-horror",
+    "variant_name": "Scene",
+    "scale": "scene",
+    "spans_scales": [],
+    "edge_type": "Warmth-textured, binding.",
+    "directionality": "bidirectional_asymmetric",
+    "currencies": [],
+    "network_position": null,
+    "valence": null,
+    "role_slots": [
+      {
+        "role": "The Host",
+        "want": null,
+        "withhold": null,
+        "archetype_ref": null,
+        "is_nonhuman": false
+      },
+      {
+        "role": "The Guest",
+        "want": null,
+        "withhold": null,
+        "archetype_ref": null,
+        "is_nonhuman": false
+      }
+    ],
+    "evolution_pattern": null,
+    "scale_manifestations": null,
+    "state_variable_interactions": [],
+    "constraints": [
+      "The Guest cannot leave the Host's domain without violating the Blood-Line Contract."
+    ],
+    "overlap_signal": "Gothic Horror: Similar hospitality, but Gothic is often haunted by ghosts; Folk Horror is haunted by the Land's laws.",
+    "flavor_text": "Grounded in Surface Sincerity and Intimacy."
+  }
+]

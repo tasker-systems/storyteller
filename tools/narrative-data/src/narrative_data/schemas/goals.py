@@ -11,7 +11,7 @@ conflict with existential ones.
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from narrative_data.schemas.shared import GenreVariant, StateVariableInteraction
 
@@ -27,35 +27,35 @@ CrossScaleTensionTypeLiteral = Literal[
 class CrossScaleTension(BaseModel):
     """A tension between goals operating at different narrative scales."""
 
-    tension_type: CrossScaleTensionTypeLiteral
-    description: str | None = None
+    tension_type: CrossScaleTensionTypeLiteral = Field(..., json_schema_extra={"tier": "core"})
+    description: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class Goal(BaseModel):
     """Per-genre goal model capturing motivational patterns and cross-scale tensions."""
 
-    canonical_name: str
-    genre_slug: str
-    variant_name: str
-    scale: ScaleLiteral
-    description: str | None = None
-    cross_scale_tension: CrossScaleTension | None = None
-    archetype_refs: list[str] = []
-    state_variable_interactions: list[StateVariableInteraction] = []
-    genre_variants: list[GenreVariant] = []
-    uniqueness: UniquenessLiteral | None = None
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_slug: str = Field(..., json_schema_extra={"tier": "core"})
+    variant_name: str = Field(..., json_schema_extra={"tier": "core"})
+    scale: ScaleLiteral = Field(..., json_schema_extra={"tier": "core"})
+    description: str | None = Field(None, json_schema_extra={"tier": "core"})
+    cross_scale_tension: CrossScaleTension | None = Field(None, json_schema_extra={"tier": "extended"})
+    archetype_refs: list[str] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    state_variable_interactions: list[StateVariableInteraction] = Field(default_factory=list, json_schema_extra={"tier": "core"})
+    genre_variants: list[GenreVariant] = Field(default_factory=list, json_schema_extra={"tier": "extended"})
+    uniqueness: UniquenessLiteral | None = Field(None, json_schema_extra={"tier": "core"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 class ClusterGoal(BaseModel):
     """Cluster-level goal capturing canonical identity and genre variants."""
 
-    canonical_name: str
-    cluster_name: str
-    core_identity: str
-    genre_variants: list[GenreVariant]
-    uniqueness: UniquenessLiteral
-    flavor_text: str | None = None
+    canonical_name: str = Field(..., json_schema_extra={"tier": "core"})
+    cluster_name: str = Field(..., json_schema_extra={"tier": "core"})
+    core_identity: str = Field(..., json_schema_extra={"tier": "core"})
+    genre_variants: list[GenreVariant] = Field(..., json_schema_extra={"tier": "extended"})
+    uniqueness: UniquenessLiteral = Field(..., json_schema_extra={"tier": "core"})
+    flavor_text: str | None = Field(None, json_schema_extra={"tier": "extended"})
 
 
 __all__ = [
