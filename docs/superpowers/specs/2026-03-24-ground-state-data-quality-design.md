@@ -74,8 +74,11 @@ Edit existing primitive table definitions in-place:
 
 Update `genre_context()` SQL function:
 
-- Join tropes through `trope_families` to include family name/slug in returned JSONB
-- Optionally include state variable interaction summaries per entity where available
+- Join tropes through `trope_families` to include family name/slug in each trope's JSONB object:
+  ```json
+  {"slug": "the-dark-mirror", "data": {...}, "family_slug": "thematic-dimension", "family_name": "Thematic Dimension"}
+  ```
+- State variable interactions are **not** inlined into `genre_context()` output — they're queried separately via the join table when needed. The polymorphic table supports direct queries like `SELECT * FROM ground_state.primitive_state_variable_interactions WHERE primitive_table = 'tropes' AND primitive_id = ?` without complicating the genre-level context assembly.
 
 ## Loader Changes
 
@@ -96,7 +99,7 @@ def _is_valid_value(val: Any) -> bool:
 ```
 
 Applied in:
-- `_entity_slug()`: entities with sentinel slugs are skipped with a warning log
+- `_entity_slug()`: when the primary slug candidate (e.g., `default_subject`) is a sentinel, attempt fallback derivation from other payload fields (`canonical_name`, `name`, `pairing_name`). If all candidates are sentinels, skip the entity with a warning log. The 22 affected ontological posture entities have rich payloads — most should be rescuable from alternative fields.
 - `_promoted_columns()`: sentinel values in promoted fields yield `None`
 
 ### Promoted Column Fixes
@@ -123,7 +126,7 @@ New module: `tools/narrative-data/src/narrative_data/persistence/trope_families.
 - Each entry: `{"slug": str, "name": str, "description": str | None}`
 - Unclassifiable raw values flagged in loader output for manual review
 
-**Integration**: loader calls `extract_trope_families()` in Phase 1 (alongside genres, clusters, dimensions, state variables), builds a `slug -> UUID` lookup map. Phase 2 trope loading uses this map to resolve `trope_family_id`.
+**Integration**: `build_normalization_map()` and `extract_trope_families()` are called at the start of `load_reference_entities()`, before genre upserts. A new `_upsert_trope_families()` step runs after state variables. This builds a `slug -> UUID` lookup map that Phase 2 trope loading uses to resolve `trope_family_id`.
 
 ### State Variable Interaction Extraction
 
@@ -135,10 +138,17 @@ New second pass added to Phase 2, after all primitive entities are loaded:
 4. Bulk insert into `primitive_state_variable_interactions` with `primitive_table`, `primitive_id`, `state_variable_id`, `operation`
 5. Unmatched variable slugs logged as warnings (do not fail the load)
 
-Schema fields that contain state variable references (from exploration):
-- `shared.py`: `StateVariableInteraction` — used by multiple types
-- `place_entities.py`: `StateVariableExpression` — place-specific variant
-- `tropes.py`: `state_variable_interactions: list[StateVariableInteraction]`
+Schema fields that contain state variable references (complete inventory):
+
+| Type | Field | Shape | Extraction |
+|------|-------|-------|------------|
+| `tropes` | `state_variable_interactions` | `list[StateVariableInteraction]` | `variable_id` → slug lookup, `operation` → operation column |
+| `dynamics` | `state_variable_interactions` | `list[StateVariableInteraction]` | Same as tropes |
+| `goals` | `state_variable_interactions` | `list[StateVariableInteraction]` | Same as tropes |
+| `place_entities` | `state_variable_expression` | `list[StateVariableExpression]` | `variable_id` → slug lookup, `physical_manifestation` → context JSONB |
+| `archetypes` | `state_variables` | `list[str]` | Bare slugs → slug lookup, operation is NULL |
+
+Note: `StateVariableInteraction` (shared.py) has `variable_id` + `operation` + `description`. `StateVariableExpression` (place_entities.py) has `variable_id` + `physical_manifestation` + `default_range`. Archetypes use bare string slugs with no operation metadata. The extraction logic must handle all three shapes.
 
 ## Testing Strategy
 
