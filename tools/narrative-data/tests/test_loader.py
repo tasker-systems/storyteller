@@ -27,6 +27,11 @@ from narrative_data.persistence.reference_data import (
     extract_genres,
     extract_state_variables,
 )
+from narrative_data.persistence.trope_families import (
+    build_normalization_map,
+    extract_trope_families,
+    normalize_family_name,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -584,6 +589,75 @@ class TestSentinelValidation:
 
     def test_accepts_list(self) -> None:
         assert _is_valid_value(["a", "b"]) is True
+
+
+# ---------------------------------------------------------------------------
+# Trope family normalization tests
+# ---------------------------------------------------------------------------
+
+
+class TestTropeFamilyNormalization:
+    def test_normalize_strips_plural_dimensions(self) -> None:
+        assert normalize_family_name("Temporal Dimensions") == "temporal-dimension"
+
+    def test_normalize_strips_plural_affordances(self) -> None:
+        assert normalize_family_name("World Affordances") == "world-affordance"
+
+    def test_normalize_handles_casing(self) -> None:
+        assert normalize_family_name("epistemological stance") == "epistemological-stance"
+
+    def test_normalize_collapses_agency_variants(self) -> None:
+        assert normalize_family_name("Agency Dimension") == "agency-dimension"
+        assert normalize_family_name("Agency Dimensions") == "agency-dimension"
+
+    def test_normalize_takes_part_before_colon(self) -> None:
+        assert normalize_family_name("Temporal Dimensions: Seasonal") == "temporal-dimension"
+
+    def test_normalize_locus_of_power(self) -> None:
+        assert normalize_family_name("Locus of Power: Community") == "locus-of-power"
+
+    def test_long_derivation_maps_to_unclassified(self) -> None:
+        long_text = (
+            "Directly addresses the Agency Dimensions and Boundary Conditions"
+            " (Melodrama vs. Tragedy). The hero must be competent to fall from greatness."
+        )
+        assert normalize_family_name(long_text) == "unclassified"
+
+    def test_build_normalization_map_from_corpus(self, tmp_path: Path) -> None:
+        corpus_dir = tmp_path / "corpus"
+        tropes_dir = corpus_dir / "genres" / "folk-horror"
+        tropes_dir.mkdir(parents=True)
+        tropes = [
+            {"name": "T1", "genre_derivation": "Temporal Dimensions: Seasonal"},
+            {"name": "T2", "genre_derivation": "Temporal Dimension: Cyclical"},
+            {"name": "T3", "genre_derivation": "Locus of Power: Community"},
+        ]
+        (tropes_dir / "tropes.json").write_text(json.dumps(tropes))
+
+        nmap = build_normalization_map(corpus_dir)
+        assert nmap["Temporal Dimensions: Seasonal"] == "temporal-dimension"
+        assert nmap["Temporal Dimension: Cyclical"] == "temporal-dimension"
+        assert nmap["Locus of Power: Community"] == "locus-of-power"
+
+    def test_extract_trope_families_deduplicates(self) -> None:
+        nmap = {
+            "Temporal Dimensions: Seasonal": "temporal-dimension",
+            "Temporal Dimension: Cyclical": "temporal-dimension",
+            "Locus of Power: Community": "locus-of-power",
+        }
+        families = extract_trope_families(nmap)
+        slugs = [f["slug"] for f in families]
+        assert len(slugs) == 2
+        assert "temporal-dimension" in slugs
+        assert "locus-of-power" in slugs
+
+    def test_extract_trope_families_have_names(self) -> None:
+        nmap = {"Locus of Power: X": "locus-of-power"}
+        families = extract_trope_families(nmap)
+        f = families[0]
+        assert f["slug"] == "locus-of-power"
+        assert f["name"] == "Locus of Power"
+        assert "description" in f
 
 
 # ---------------------------------------------------------------------------
