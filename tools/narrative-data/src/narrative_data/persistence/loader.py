@@ -146,7 +146,7 @@ def _promoted_columns(type_name: str, entity: dict) -> dict:
     if type_name == "goals":
         return {"goal_scale": entity.get("scale")}
     if type_name == "profiles":
-        return {"archetype_ref": entity.get("provenance")}
+        return {}
     if type_name == "tropes":
         # trope_family: from genre_derivation or narrative_function list
         derivation = entity.get("genre_derivation")
@@ -164,6 +164,8 @@ def _promoted_columns(type_name: str, entity: dict) -> dict:
     if type_name == "ontological-posture":
         boundary = entity.get("self_other_boundary") or {}
         stability = boundary.get("stability") if isinstance(boundary, dict) else None
+        if not _is_valid_value(stability):
+            stability = None
         return {"boundary_stability": stability}
     if type_name == "spatial-topology":
         friction = entity.get("friction") or {}
@@ -175,8 +177,10 @@ def _promoted_columns(type_name: str, entity: dict) -> dict:
         return {"friction_type": friction_type, "directionality_type": directionality_type}
     if type_name == "place-entities":
         entity_props = entity.get("entity_properties") or {}
-        place_type = entity_props.get("type") if isinstance(entity_props, dict) else None
-        return {"place_type": place_type}
+        topological_role = (
+            entity_props.get("topological_role") if isinstance(entity_props, dict) else None
+        )
+        return {"topological_role": topological_role}
     if type_name == "archetype-dynamics":
         return {
             "archetype_a": entity.get("archetype_a"),

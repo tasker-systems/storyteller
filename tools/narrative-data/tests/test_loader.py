@@ -524,6 +524,30 @@ class TestLoaderHelpers:
         entity = {"default_subject": "null", "name": "None"}
         assert _entity_slug(entity) is None
 
+    def test_promoted_columns_ontological_posture_sentinel(self) -> None:
+        """Sentinel 'null' in stability yields None."""
+        entity = {"self_other_boundary": {"stability": "null"}}
+        cols = _promoted_columns("ontological-posture", entity)
+        assert cols["boundary_stability"] is None
+
+    def test_promoted_columns_place_entities_topological_role(self) -> None:
+        """Place entities extract topological_role, not type."""
+        entity = {"entity_properties": {"topological_role": "hub", "has_agency": True}}
+        cols = _promoted_columns("place-entities", entity)
+        assert cols == {"topological_role": "hub"}
+
+    def test_promoted_columns_place_entities_missing_role(self) -> None:
+        """Place entities with no topological_role get None."""
+        entity = {"entity_properties": {"has_agency": False}}
+        cols = _promoted_columns("place-entities", entity)
+        assert cols == {"topological_role": None}
+
+    def test_promoted_columns_profiles_empty(self) -> None:
+        """Profiles have no promoted columns (archetype_ref removed)."""
+        entity = {"provenance": ["Tarot-derived"], "name": "Foo"}
+        cols = _promoted_columns("profiles", entity)
+        assert cols == {}
+
 
 # ---------------------------------------------------------------------------
 # Sentinel validation tests
