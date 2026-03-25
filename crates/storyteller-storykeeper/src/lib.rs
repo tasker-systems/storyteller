@@ -9,12 +9,14 @@
 //!
 //! Two implementations:
 //! - [`InMemoryStorykeeper`] — in-process state for tests and prototype
-//! - `PostgresStorykeeper` — sqlx queries against the real schema (future)
+//! - [`PostgresBedrock`] — sqlx queries against the `bedrock` schema
 //!
 //! See: `docs/technical/storykeeper-api-contract.md`
 //! See: `docs/technical/postgresql-schema-design.md`
 
+pub mod bedrock;
 pub mod database;
 pub mod in_memory;
 
+pub use bedrock::PostgresBedrock;
 pub use in_memory::InMemoryStorykeeper;
