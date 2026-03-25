@@ -10,8 +10,13 @@ from unittest.mock import MagicMock
 
 from narrative_data.pipeline.llm_patch import (
     _VALID_VALENCE,
+    extract_crossing_rules,
     extract_currencies,
+    extract_directionality_description,
+    extract_friction_description,
+    extract_obligations_across,
     extract_scale_manifestations,
+    extract_state_shift,
     extract_valence,
     fill_all_llm_patch,
 )
@@ -439,3 +444,213 @@ class TestFillAllLlmPatch:
         fill_all_llm_patch(corpus, mock_client, types=["dynamics"], genres=None, dry_run=False)
         mock_client.generate.assert_not_called()
         mock_client.generate_structured.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# extract_state_shift (spatial-topology)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractStateShift:
+    def test_returns_state_shift_from_llm(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "The hero transforms from mortal to marked."
+        entity = {"source_setting": "A", "target_setting": "B", "state_shift": None}
+        result = extract_state_shift(entity, "source markdown", mock_client)
+        assert result["state_shift"] == "The hero transforms from mortal to marked."
+
+    def test_skips_populated(self):
+        mock_client = MagicMock()
+        entity = {"state_shift": "Already filled."}
+        result = extract_state_shift(entity, "irrelevant", mock_client)
+        mock_client.generate.assert_not_called()
+        assert result["state_shift"] == "Already filled."
+
+    def test_does_not_mutate_original(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Shift description."
+        entity = {"source_setting": "A", "target_setting": "B", "state_shift": None}
+        result = extract_state_shift(entity, "md", mock_client)
+        assert entity["state_shift"] is None
+        assert result["state_shift"] == "Shift description."
+
+    def test_null_response_no_update(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "null"
+        entity = {"source_setting": "A", "target_setting": "B", "state_shift": None}
+        result = extract_state_shift(entity, "md", mock_client)
+        assert result["state_shift"] is None
+
+    def test_handles_exception_gracefully(self):
+        mock_client = MagicMock()
+        mock_client.generate.side_effect = TimeoutError("Ollama timeout")
+        entity = {"source_setting": "A", "target_setting": "B", "state_shift": None}
+        result = extract_state_shift(entity, "md", mock_client)
+        assert result["state_shift"] is None
+
+
+# ---------------------------------------------------------------------------
+# extract_directionality_description (spatial-topology)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractDirectionalityDescription:
+    def test_returns_description_from_llm(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "One-way passage, no return."
+        entity = {
+            "source_setting": "A",
+            "target_setting": "B",
+            "directionality": {"type": "one_way", "description": None},
+        }
+        result = extract_directionality_description(entity, "source md", mock_client)
+        assert result["directionality"]["description"] == "One-way passage, no return."
+
+    def test_skips_populated(self):
+        mock_client = MagicMock()
+        entity = {"directionality": {"type": "one_way", "description": "Already here."}}
+        extract_directionality_description(entity, "md", mock_client)
+        mock_client.generate.assert_not_called()
+
+    def test_handles_missing_directionality_dict(self):
+        mock_client = MagicMock()
+        entity = {"source_setting": "A", "target_setting": "B"}
+        result = extract_directionality_description(entity, "md", mock_client)
+        mock_client.generate.assert_not_called()
+        assert result == entity
+
+    def test_does_not_mutate_nested_dict(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Direction desc."
+        original_dir = {"type": "one_way", "description": None}
+        entity = {"source_setting": "A", "target_setting": "B", "directionality": original_dir}
+        result = extract_directionality_description(entity, "md", mock_client)
+        assert original_dir["description"] is None  # original unchanged
+        assert result["directionality"]["description"] == "Direction desc."
+
+
+# ---------------------------------------------------------------------------
+# extract_friction_description (spatial-topology)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractFrictionDescription:
+    def test_returns_description_from_llm(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Environmental resistance, dense fog."
+        entity = {
+            "source_setting": "A",
+            "target_setting": "B",
+            "friction": {"type": "environmental", "level": "high", "description": None},
+        }
+        result = extract_friction_description(entity, "source md", mock_client)
+        assert result["friction"]["description"] == "Environmental resistance, dense fog."
+
+    def test_skips_populated(self):
+        mock_client = MagicMock()
+        entity = {"friction": {"type": "x", "level": "low", "description": "Filled."}}
+        extract_friction_description(entity, "md", mock_client)
+        mock_client.generate.assert_not_called()
+
+    def test_handles_missing_friction_dict(self):
+        mock_client = MagicMock()
+        entity = {"source_setting": "A", "target_setting": "B"}
+        extract_friction_description(entity, "md", mock_client)
+        mock_client.generate.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# extract_crossing_rules (ontological-posture)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCrossingRules:
+    def test_returns_crossing_rules_from_llm(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Crossing requires sacrifice of innocence."
+        entity = {
+            "default_subject": "The Community",
+            "self_other_boundary": {
+                "stability": "rigid",
+                "crossing_rules": None,
+                "obligations_across": None,
+            },
+        }
+        result = extract_crossing_rules(entity, "source md", mock_client)
+        assert (
+            result["self_other_boundary"]["crossing_rules"]
+            == "Crossing requires sacrifice of innocence."
+        )
+
+    def test_skips_populated(self):
+        mock_client = MagicMock()
+        entity = {
+            "self_other_boundary": {"crossing_rules": "Already set.", "obligations_across": None}
+        }
+        extract_crossing_rules(entity, "md", mock_client)
+        mock_client.generate.assert_not_called()
+
+    def test_handles_missing_boundary_dict(self):
+        mock_client = MagicMock()
+        entity = {"default_subject": "X"}
+        extract_crossing_rules(entity, "md", mock_client)
+        mock_client.generate.assert_not_called()
+
+    def test_does_not_mutate_nested_dict(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Rules desc."
+        original_boundary = {
+            "stability": "rigid",
+            "crossing_rules": None,
+            "obligations_across": None,
+        }
+        entity = {"default_subject": "X", "self_other_boundary": original_boundary}
+        result = extract_crossing_rules(entity, "md", mock_client)
+        assert original_boundary["crossing_rules"] is None
+        assert result["self_other_boundary"]["crossing_rules"] == "Rules desc."
+
+
+# ---------------------------------------------------------------------------
+# extract_obligations_across (ontological-posture)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractObligationsAcross:
+    def test_returns_obligations_from_llm(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Reciprocal truth and safety."
+        entity = {
+            "default_subject": "The Lovers",
+            "self_other_boundary": {
+                "stability": "fluid",
+                "crossing_rules": None,
+                "obligations_across": None,
+            },
+        }
+        result = extract_obligations_across(entity, "source md", mock_client)
+        assert (
+            result["self_other_boundary"]["obligations_across"]
+            == "Reciprocal truth and safety."
+        )
+
+    def test_skips_populated(self):
+        mock_client = MagicMock()
+        entity = {
+            "self_other_boundary": {"obligations_across": "Set.", "crossing_rules": None}
+        }
+        extract_obligations_across(entity, "md", mock_client)
+        mock_client.generate.assert_not_called()
+
+    def test_null_response_no_update(self):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "null"
+        entity = {
+            "default_subject": "X",
+            "self_other_boundary": {
+                "stability": "fluid",
+                "crossing_rules": None,
+                "obligations_across": None,
+            },
+        }
+        result = extract_obligations_across(entity, "md", mock_client)
+        assert result["self_other_boundary"]["obligations_across"] is None
