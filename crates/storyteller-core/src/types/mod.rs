@@ -7,6 +7,7 @@
 //! Each submodule corresponds to a technical specification document
 //! in `docs/technical/`.
 
+pub mod bedrock;
 pub mod capability_lexicon;
 pub mod character;
 pub mod entity;
