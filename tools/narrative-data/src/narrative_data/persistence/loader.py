@@ -22,6 +22,12 @@ import psycopg
 from psycopg.rows import dict_row
 
 from narrative_data.config import GENRE_NATIVE_TYPES, PRIMITIVE_TYPES
+from narrative_data.persistence.dimension_extraction import (
+    extract_dimensions as extract_dim_values,
+)
+from narrative_data.persistence.dimension_extraction import (
+    upsert_dimension_values,
+)
 from narrative_data.persistence.reference_data import (
     extract_cluster_metadata,
     extract_dimensions,
@@ -760,6 +766,11 @@ def load_primitive_type(
             try:
                 outcome, _ = _upsert_genre_dimensions_row(conn, genre_id, data, h, dry_run=dry_run)
                 _tally(report, outcome)
+                # Extract dimension values from genre_dimensions payload
+                if not dry_run:
+                    _extract_and_upsert_dimensions(
+                        conn, "genre_dimensions", genre_id, genre_id, data
+                    )
             except Exception as exc:
                 log.error("Error upserting genre_dimensions for %s: %s", genre_slug, exc)
                 report.errors += 1
@@ -814,6 +825,11 @@ def load_primitive_type(
                     dry_run=dry_run,
                 )
                 _tally(report, outcome)
+                # Extract dimension values for types with extraction rules
+                if not dry_run and type_name in _DIM_TYPES:
+                    _extract_and_upsert_dimensions(
+                        conn, table, effective_genre_id, entity, slug, cluster_id
+                    )
             except Exception as exc:
                 source = genre_slug or cluster_slug
                 log.error("Error upserting %s/%s entity %s: %s", type_name, source, slug, exc)
@@ -833,6 +849,62 @@ def _tally(report: LoadReport, outcome: str) -> None:
         report.updated += 1
     else:
         report.skipped += 1
+
+
+_DIM_TYPES = frozenset({"archetypes", "dynamics", "profiles", "place-entities", "spatial-topology"})
+
+
+def _extract_and_upsert_dimensions(
+    conn: psycopg.Connection,
+    table: str,
+    genre_id: str,
+    *args: Any,
+) -> None:
+    """Extract and upsert dimension values for a primitive entity.
+
+    Overloaded call signatures:
+      - genre_dimensions: (conn, "genre_dimensions", genre_id, genre_id, payload)
+      - primitive types: (conn, table, genre_id, entity_payload, entity_slug, cluster_id)
+    """
+    from uuid import UUID as _UUID
+
+    if table == "genre_dimensions":
+        # args = (genre_id_duplicate, payload)
+        _, payload = args[0], args[1]
+        # Fetch the genre_dimensions row id
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT id FROM bedrock.genre_dimensions WHERE genre_id = %s LIMIT 1",
+                (genre_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return
+            primitive_id = _UUID(str(row["id"]))
+        rows = extract_dim_values("genre_dimensions", primitive_id, _UUID(genre_id), payload)
+        if rows:
+            upsert_dimension_values(conn, rows)
+        return
+
+    # Primitive type: look up the row id
+    entity_payload, entity_slug, cluster_id = args[0], args[1], args[2]
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"SELECT id FROM bedrock.{table} "
+            f"WHERE genre_id = %s AND entity_slug = %s "
+            f"AND COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID) = "
+            f"COALESCE(%s::UUID, '00000000-0000-0000-0000-000000000000'::UUID) "
+            f"LIMIT 1",
+            (genre_id, entity_slug, cluster_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return
+        primitive_id = _UUID(str(row["id"]))
+
+    rows = extract_dim_values(table, primitive_id, _UUID(genre_id), entity_payload)
+    if rows:
+        upsert_dimension_values(conn, rows)
 
 
 _SV_TYPES = frozenset({"archetypes", "dynamics", "goals", "tropes", "place-entities"})
