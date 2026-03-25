@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Tasker Systems. All rights reserved.
 # See LICENSING.md for details.
 
-"""Tests for database connection management, reference data extraction, and ground-state loader."""
+"""Tests for database connection management, reference data extraction, and bedrock loader."""
 
 import json
 import os
@@ -18,7 +18,7 @@ from narrative_data.persistence.loader import (
     _is_valid_value,
     _promoted_columns,
     _source_hash,
-    load_ground_state,
+    load_bedrock,
     load_primitive_type,
     load_reference_entities,
 )
@@ -786,7 +786,7 @@ class TestTropeFamilyLoading:
         assert len(tf_keys) >= 1
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.trope_families")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.trope_families")
             row = cur.fetchone()
         assert row["n"] >= 1
 
@@ -806,7 +806,7 @@ class TestLoadReferenceEntities:
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT slug, name FROM ground_state.genres WHERE slug = %s", ("folk-horror",)
+                "SELECT slug, name FROM bedrock.genres WHERE slug = %s", ("folk-horror",)
             )
             row = cur.fetchone()
         assert row is not None
@@ -822,7 +822,7 @@ class TestLoadReferenceEntities:
         db_conn.commit()
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.genre_cluster_members")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.genre_cluster_members")
             row = cur.fetchone()
         assert row["n"] > 0
 
@@ -837,7 +837,7 @@ class TestLoadReferenceEntities:
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT slug, name FROM ground_state.state_variables WHERE slug = %s", ("trust",)
+                "SELECT slug, name FROM bedrock.state_variables WHERE slug = %s", ("trust",)
             )
             row = cur.fetchone()
         assert row is not None
@@ -853,7 +853,7 @@ class TestLoadReferenceEntities:
         db_conn.commit()
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.dimensions")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.dimensions")
             row = cur.fetchone()
         assert row["n"] >= 34
 
@@ -870,7 +870,7 @@ class TestLoadReferenceEntities:
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT COUNT(*) AS n FROM ground_state.genres"
+                "SELECT COUNT(*) AS n FROM bedrock.genres"
                 " WHERE slug IN ('folk-horror', 'cozy-fantasy')"
             )
             row = cur.fetchone()
@@ -895,7 +895,7 @@ class TestLoadPrimitiveType:
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT entity_slug, name FROM ground_state.archetypes "
+                "SELECT entity_slug, name FROM bedrock.archetypes "
                 "WHERE entity_slug = 'the-complicit-neighbor'"
             )
             row = cur.fetchone()
@@ -917,7 +917,7 @@ class TestLoadPrimitiveType:
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT entity_slug FROM ground_state.tropes"
+                "SELECT entity_slug FROM bedrock.tropes"
                 " WHERE entity_slug = 'the-calendar-trope'"
             )
             row = cur.fetchone()
@@ -935,13 +935,13 @@ class TestLoadPrimitiveType:
         load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             n1 = cur.fetchone()["n"]
 
         load_primitive_type(db_conn, "archetypes", corpus_dir, slug_map)
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             n2 = cur.fetchone()["n"]
 
         # Second load must not increase the count — upsert is idempotent
@@ -972,7 +972,7 @@ class TestLoadPrimitiveType:
         assert report.skipped >= 1
 
 
-class TestLoadGroundState:
+class TestLoadBedrock:
     @_skip_db
     def test_dry_run_does_not_write(self, db_conn, tmp_path: Path) -> None:
         """dry_run=True reports counts without inserting rows."""
@@ -982,18 +982,18 @@ class TestLoadGroundState:
 
         # Capture baseline counts before dry-run
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.genres")
             genres_before = cur.fetchone()["n"]
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             archetypes_before = cur.fetchone()["n"]
 
-        load_ground_state(db_conn, corpus_dir, dry_run=True)
+        load_bedrock(db_conn, corpus_dir, dry_run=True)
 
         # Row counts must be unchanged — dry_run writes nothing
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.genres")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.genres")
             genres_after = cur.fetchone()["n"]
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             archetypes_after = cur.fetchone()["n"]
 
         assert genres_after == genres_before
@@ -1008,20 +1008,20 @@ class TestLoadGroundState:
 
         # Capture archetype count before load
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             archetypes_before = cur.fetchone()["n"]
 
-        report = load_ground_state(db_conn, corpus_dir, refs_only=True)
+        report = load_bedrock(db_conn, corpus_dir, refs_only=True)
 
         # Genres should be present (upserted by refs_only load)
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT slug FROM ground_state.genres WHERE slug = 'folk-horror'")
+            cur.execute("SELECT slug FROM bedrock.genres WHERE slug = 'folk-horror'")
             row = cur.fetchone()
         assert row is not None
 
         # Primitive tables must be untouched — refs_only skips all primitive types
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             archetypes_after = cur.fetchone()["n"]
         assert archetypes_after == archetypes_before
 
@@ -1034,18 +1034,18 @@ class TestLoadGroundState:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus(tmp_path)
-        load_ground_state(db_conn, corpus_dir)
+        load_bedrock(db_conn, corpus_dir)
         db_conn.commit()
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             n1 = cur.fetchone()["n"]
 
-        load_ground_state(db_conn, corpus_dir)
+        load_bedrock(db_conn, corpus_dir)
         db_conn.commit()
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             n2 = cur.fetchone()["n"]
 
         assert n1 == n2
@@ -1059,16 +1059,16 @@ class TestLoadGroundState:
 
         # Capture trope count before the filtered load
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.tropes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.tropes")
             tropes_before = cur.fetchone()["n"]
 
-        load_ground_state(db_conn, corpus_dir, types=["archetypes"])
+        load_bedrock(db_conn, corpus_dir, types=["archetypes"])
         db_conn.commit()
 
         with db_conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.archetypes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.archetypes")
             na = cur.fetchone()["n"]
-            cur.execute("SELECT COUNT(*) AS n FROM ground_state.tropes")
+            cur.execute("SELECT COUNT(*) AS n FROM bedrock.tropes")
             nt = cur.fetchone()["n"]
 
         # archetypes must be present (at least the minimal corpus archetype or pre-existing)
@@ -1205,12 +1205,12 @@ class TestStateVariableInteractionDB:
         from psycopg.rows import dict_row
 
         corpus_dir = _minimal_corpus_with_sv_interactions(tmp_path)
-        load_ground_state(db_conn, corpus_dir)
+        load_bedrock(db_conn, corpus_dir)
         db_conn.commit()
 
         with db_conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT COUNT(*) AS n FROM ground_state.primitive_state_variable_interactions "
+                "SELECT COUNT(*) AS n FROM bedrock.primitive_state_variable_interactions "
                 "WHERE primitive_table = 'tropes'"
             )
             row = cur.fetchone()
@@ -1221,7 +1221,7 @@ class TestQueryFunctions:
     @_skip_db
     def test_genre_context_returns_all_types(self, db_conn) -> None:
         """genre_context('folk-horror') returns non-null result with genre_slug and archetypes."""
-        cur = db_conn.execute("SELECT ground_state.genre_context('folk-horror')")
+        cur = db_conn.execute("SELECT bedrock.genre_context('folk-horror')")
         result = cur.fetchone()[0]
         assert result is not None
         assert result["genre_slug"] == "folk-horror"
@@ -1232,14 +1232,14 @@ class TestQueryFunctions:
     @_skip_db
     def test_genre_context_returns_null_for_unknown(self, db_conn) -> None:
         """genre_context returns NULL for a genre slug that does not exist."""
-        cur = db_conn.execute("SELECT ground_state.genre_context('nonexistent')")
+        cur = db_conn.execute("SELECT bedrock.genre_context('nonexistent')")
         result = cur.fetchone()[0]
         assert result is None
 
     @_skip_db
     def test_genre_context_wraps_with_slug(self, db_conn) -> None:
         """Each element in the archetypes array has 'slug' and 'data' keys."""
-        cur = db_conn.execute("SELECT ground_state.genre_context('folk-horror')")
+        cur = db_conn.execute("SELECT bedrock.genre_context('folk-horror')")
         result = cur.fetchone()[0]
         first = result["archetypes"][0]
         assert "slug" in first
@@ -1249,10 +1249,10 @@ class TestQueryFunctions:
     def test_genre_context_tropes_include_family(self, db_conn, tmp_path: Path) -> None:
         """genre_context returns tropes with family_slug and family_name."""
         corpus_dir = _minimal_corpus(tmp_path)
-        load_ground_state(db_conn, corpus_dir)
+        load_bedrock(db_conn, corpus_dir)
         db_conn.commit()
 
-        cur = db_conn.execute("SELECT ground_state.genre_context('folk-horror')")
+        cur = db_conn.execute("SELECT bedrock.genre_context('folk-horror')")
         result = cur.fetchone()[0]
         tropes = result.get("tropes") or []
         if tropes:

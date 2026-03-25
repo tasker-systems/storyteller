@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Tasker Systems. All rights reserved.
 # See LICENSING.md for details.
 
-"""Ground-state loader: populates PostgreSQL ground_state tables from the narrative corpus.
+"""Bedrock loader: populates PostgreSQL bedrock tables from the narrative corpus.
 
 Two-phase load:
   Phase 1 — Reference entities: genres, clusters, cluster members, state variables,
@@ -38,7 +38,7 @@ from narrative_data.persistence.trope_families import (
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Table map: type slug → ground_state table name
+# Table map: type slug → bedrock table name
 # ---------------------------------------------------------------------------
 
 TABLE_MAP: dict[str, str] = {
@@ -329,7 +329,7 @@ def _upsert_genres(
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO ground_state.genres (slug, name, description, payload, source_hash)
+                INSERT INTO bedrock.genres (slug, name, description, payload, source_hash)
                 VALUES (%s, %s, %s, %s::jsonb, %s)
                 ON CONFLICT (slug) DO UPDATE
                   SET name = EXCLUDED.name,
@@ -337,14 +337,14 @@ def _upsert_genres(
                       payload = EXCLUDED.payload,
                       source_hash = EXCLUDED.source_hash,
                       updated_at = now()
-                  WHERE ground_state.genres.source_hash != EXCLUDED.source_hash
+                  WHERE bedrock.genres.source_hash != EXCLUDED.source_hash
                 RETURNING id
                 """,
                 (slug, genre["name"], genre["description"], json.dumps(genre["payload"]), h),
             )
             # Even if no update occurred, fetch the existing id
             if cur.rowcount == 0:
-                cur.execute("SELECT id FROM ground_state.genres WHERE slug = %s", (slug,))
+                cur.execute("SELECT id FROM bedrock.genres WHERE slug = %s", (slug,))
             row = cur.fetchone()
             slug_map[slug] = str(row["id"])
     return slug_map
@@ -369,7 +369,7 @@ def _upsert_clusters(
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO ground_state.genre_clusters
+                INSERT INTO bedrock.genre_clusters
                     (slug, name, description, payload, source_hash)
                 VALUES (%s, %s, NULL, %s::jsonb, %s)
                 ON CONFLICT (slug) DO UPDATE
@@ -377,13 +377,13 @@ def _upsert_clusters(
                       payload = EXCLUDED.payload,
                       source_hash = EXCLUDED.source_hash,
                       updated_at = now()
-                  WHERE ground_state.genre_clusters.source_hash != EXCLUDED.source_hash
+                  WHERE bedrock.genre_clusters.source_hash != EXCLUDED.source_hash
                 RETURNING id
                 """,
                 (slug, cluster["name"], json.dumps(payload), h),
             )
             if cur.rowcount == 0:
-                cur.execute("SELECT id FROM ground_state.genre_clusters WHERE slug = %s", (slug,))
+                cur.execute("SELECT id FROM bedrock.genre_clusters WHERE slug = %s", (slug,))
             row = cur.fetchone()
             cluster_id = str(row["id"])
             slug_map[slug] = cluster_id
@@ -396,7 +396,7 @@ def _upsert_clusters(
                     continue
                 cur.execute(
                     """
-                    INSERT INTO ground_state.genre_cluster_members (genre_id, cluster_id)
+                    INSERT INTO bedrock.genre_cluster_members (genre_id, cluster_id)
                     VALUES (%s, %s)
                     ON CONFLICT DO NOTHING
                     """,
@@ -417,7 +417,7 @@ def _upsert_state_variables(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO ground_state.state_variables
+                INSERT INTO bedrock.state_variables
                     (slug, name, description, default_range, payload)
                 VALUES (%s, %s, %s, %s::jsonb, %s::jsonb)
                 ON CONFLICT (slug) DO UPDATE
@@ -452,7 +452,7 @@ def _upsert_trope_families(
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO ground_state.trope_families (slug, name, description)
+                INSERT INTO bedrock.trope_families (slug, name, description)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (slug) DO UPDATE
                   SET name = EXCLUDED.name,
@@ -463,7 +463,7 @@ def _upsert_trope_families(
                 (slug, fam["name"], fam.get("description")),
             )
             if cur.rowcount == 0:
-                cur.execute("SELECT id FROM ground_state.trope_families WHERE slug = %s", (slug,))
+                cur.execute("SELECT id FROM bedrock.trope_families WHERE slug = %s", (slug,))
             row = cur.fetchone()
             slug_map[f"tf:{slug}"] = str(row["id"])
     return slug_map
@@ -489,10 +489,10 @@ def _prune_stale_trope_families(
         # Nullify FK references on tropes pointing to stale families
         cur.execute(
             f"""
-            UPDATE ground_state.tropes
+            UPDATE bedrock.tropes
             SET trope_family_id = NULL
             WHERE trope_family_id IN (
-                SELECT id FROM ground_state.trope_families
+                SELECT id FROM bedrock.trope_families
                 WHERE slug NOT IN ({placeholders})
             )
             """,
@@ -500,7 +500,7 @@ def _prune_stale_trope_families(
         )
         # Delete stale families
         cur.execute(
-            f"DELETE FROM ground_state.trope_families WHERE slug NOT IN ({placeholders})",
+            f"DELETE FROM bedrock.trope_families WHERE slug NOT IN ({placeholders})",
             tuple(canonical_slugs),
         )
         pruned = cur.rowcount
@@ -522,7 +522,7 @@ def _upsert_dimensions(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO ground_state.dimensions
+                INSERT INTO bedrock.dimensions
                     (slug, name, dimension_group, description, payload)
                 VALUES (%s, %s, %s, %s, NULL)
                 ON CONFLICT (slug) DO UPDATE
@@ -621,20 +621,20 @@ def _upsert_genre_dimensions_row(
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            INSERT INTO ground_state.genre_dimensions (genre_id, payload, source_hash)
+            INSERT INTO bedrock.genre_dimensions (genre_id, payload, source_hash)
             VALUES (%s, %s::jsonb, %s)
             ON CONFLICT (genre_id) DO UPDATE
               SET payload = EXCLUDED.payload,
                   source_hash = EXCLUDED.source_hash,
                   updated_at = now()
-              WHERE ground_state.genre_dimensions.source_hash != EXCLUDED.source_hash
+              WHERE bedrock.genre_dimensions.source_hash != EXCLUDED.source_hash
             """,
             (genre_id, json.dumps(payload), h),
         )
         if cur.rowcount > 0:
             # Check if it was an insert or update by checking if created_at ≈ updated_at
             cur.execute(
-                "SELECT (created_at = updated_at) AS is_new FROM ground_state.genre_dimensions "
+                "SELECT (created_at = updated_at) AS is_new FROM bedrock.genre_dimensions "
                 "WHERE genre_id = %s",
                 (genre_id,),
             )
@@ -683,12 +683,12 @@ def _upsert_primitive_row(
     )
 
     sql = f"""
-        INSERT INTO ground_state.{table} ({col_list})
+        INSERT INTO bedrock.{table} ({col_list})
         VALUES ({placeholders_casted})
         ON CONFLICT (genre_id, entity_slug,
             COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID))
         DO UPDATE SET {update_sets}
-        WHERE ground_state.{table}.source_hash != EXCLUDED.source_hash
+        WHERE bedrock.{table}.source_hash != EXCLUDED.source_hash
     """
 
     with conn.cursor(row_factory=dict_row) as cur:
@@ -696,7 +696,7 @@ def _upsert_primitive_row(
         if cur.rowcount > 0:
             cur.execute(
                 f"SELECT (created_at = updated_at) AS is_new "
-                f"FROM ground_state.{table} "
+                f"FROM bedrock.{table} "
                 f"WHERE genre_id = %s AND entity_slug = %s "
                 f"AND COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID) = "
                 f"COALESCE(%s::UUID, '00000000-0000-0000-0000-000000000000'::UUID)",
@@ -856,7 +856,7 @@ def _load_state_variable_interactions(
     sv_map: dict[str, str] = {}
     if not dry_run:
         with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT slug, id FROM ground_state.state_variables")
+            cur.execute("SELECT slug, id FROM bedrock.state_variables")
             for row in cur.fetchall():
                 sv_map[row["slug"]] = str(row["id"])
 
@@ -892,7 +892,7 @@ def _load_state_variable_interactions(
 
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
-                    f"SELECT id FROM ground_state.{table} "
+                    f"SELECT id FROM bedrock.{table} "
                     f"WHERE genre_id = %s AND entity_slug = %s LIMIT 1",
                     (genre_id, slug),
                 )
@@ -917,7 +917,7 @@ def _load_state_variable_interactions(
 
                     cur.execute(
                         """
-                        INSERT INTO ground_state.primitive_state_variable_interactions
+                        INSERT INTO bedrock.primitive_state_variable_interactions
                             (primitive_table, primitive_id, state_variable_id, operation, context)
                         VALUES (%s, %s, %s, %s, %s::jsonb)
                         """,
@@ -942,7 +942,7 @@ def _load_state_variable_interactions(
 # ---------------------------------------------------------------------------
 
 
-def load_ground_state(
+def load_bedrock(
     conn: psycopg.Connection,
     corpus_dir: Path,
     types: list[str] | None = None,
@@ -951,7 +951,7 @@ def load_ground_state(
     skip_prune: bool = True,
     dry_run: bool = False,
 ) -> LoadReport:
-    """Orchestrate the full ground-state load.
+    """Orchestrate the full bedrock load.
 
     Phase 1: reference entities (genres, clusters, state_variables, dimensions)
     Phase 2: primitive types (one or all, filtered by genre if given)

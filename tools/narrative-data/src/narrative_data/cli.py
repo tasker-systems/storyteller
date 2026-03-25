@@ -592,11 +592,11 @@ def pipeline_status(primitive_type: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# load-ground-state command
+# load-bedrock command
 # ---------------------------------------------------------------------------
 
 
-@cli.command("load-ground-state")
+@cli.command("load-bedrock")
 @click.option(
     "--dry-run",
     is_flag=True,
@@ -627,14 +627,14 @@ def pipeline_status(primitive_type: str | None) -> None:
     default=False,
     help="Load only reference entities (genres, clusters, state variables, dimensions).",
 )
-def load_ground_state_cmd(
+def load_bedrock_cmd(
     dry_run: bool,
     type_filter: str | None,
     genre_filter: str | None,
     skip_prune: bool,
     refs_only: bool,
 ) -> None:
-    """Load narrative corpus into ground_state PostgreSQL tables.
+    """Load narrative corpus into bedrock PostgreSQL tables.
 
     Phase 1 loads reference entities (genres, clusters, state variables, dimensions).
     Phase 2 loads primitive types from the corpus into type-specific tables.
@@ -646,7 +646,7 @@ def load_ground_state_cmd(
 
     from narrative_data.config import resolve_output_path
     from narrative_data.persistence.connection import get_connection_string
-    from narrative_data.persistence.loader import load_ground_state
+    from narrative_data.persistence.loader import load_bedrock
 
     console = Console()
 
@@ -670,7 +670,7 @@ def load_ground_state_cmd(
 
     try:
         with psycopg.connect(dsn) as conn:
-            report = load_ground_state(
+            report = load_bedrock(
                 conn=conn,
                 corpus_dir=corpus_dir,
                 types=types,
@@ -1090,23 +1090,23 @@ def migrate_cmd(dry_run: bool) -> None:
 
     try:
         with psycopg.connect(conn_str) as conn:
-            # Check whether ground_state schema already exists
+            # Check whether bedrock schema already exists
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT schema_name FROM information_schema.schemata "
-                    "WHERE schema_name = 'ground_state'"
+                    "WHERE schema_name = 'bedrock'"
                 )
                 schema_exists = cur.fetchone() is not None
 
             if schema_exists:
                 console.print(
-                    "[yellow]Schema 'ground_state' already exists — "
+                    "[yellow]Schema 'bedrock' already exists — "
                     "migrations are idempotent via CREATE IF NOT EXISTS, "
                     "but duplicate table creation will raise errors.[/yellow]"
                 )
                 console.print(
                     "  To re-run: drop the schema first with "
-                    "[dim]DROP SCHEMA ground_state CASCADE;[/dim]\n"
+                    "[dim]DROP SCHEMA bedrock CASCADE;[/dim]\n"
                 )
 
             for migration_path in migration_files:

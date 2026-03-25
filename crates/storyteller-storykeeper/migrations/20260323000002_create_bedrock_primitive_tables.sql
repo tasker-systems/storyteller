@@ -1,5 +1,5 @@
 -- =============================================================================
--- Ground-State Primitive Type Tables
+-- Bedrock Primitive Type Tables
 -- =============================================================================
 -- One table per primitive type produced by the narrative-data Tier B pipeline.
 -- All tables share the same structural pattern:
@@ -22,10 +22,10 @@
 -- ---------------------------------------------------------------------------
 -- archetypes
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.archetypes (
+CREATE TABLE bedrock.archetypes (
     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id          UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id        UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id          UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id        UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug       TEXT        NOT NULL,
     name              TEXT        NOT NULL,
     archetype_family  TEXT,
@@ -37,18 +37,18 @@ CREATE TABLE ground_state.archetypes (
 );
 
 CREATE UNIQUE INDEX idx_archetypes_natural_key
-    ON ground_state.archetypes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_archetypes_genre   ON ground_state.archetypes (genre_id);
-CREATE INDEX idx_archetypes_cluster ON ground_state.archetypes (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_archetypes_payload ON ground_state.archetypes USING gin (payload);
+    ON bedrock.archetypes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_archetypes_genre   ON bedrock.archetypes (genre_id);
+CREATE INDEX idx_archetypes_cluster ON bedrock.archetypes (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_archetypes_payload ON bedrock.archetypes USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- settings
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.settings (
+CREATE TABLE bedrock.settings (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id    UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id      UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id    UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug   TEXT        NOT NULL,
     name          TEXT        NOT NULL,
     setting_type  TEXT,
@@ -59,18 +59,18 @@ CREATE TABLE ground_state.settings (
 );
 
 CREATE UNIQUE INDEX idx_settings_natural_key
-    ON ground_state.settings (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_settings_genre   ON ground_state.settings (genre_id);
-CREATE INDEX idx_settings_cluster ON ground_state.settings (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_settings_payload ON ground_state.settings USING gin (payload);
+    ON bedrock.settings (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_settings_genre   ON bedrock.settings (genre_id);
+CREATE INDEX idx_settings_cluster ON bedrock.settings (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_settings_payload ON bedrock.settings USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- dynamics
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.dynamics (
+CREATE TABLE bedrock.dynamics (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id    UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id      UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id    UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug   TEXT        NOT NULL,
     name          TEXT        NOT NULL,
     edge_type     TEXT,
@@ -82,18 +82,18 @@ CREATE TABLE ground_state.dynamics (
 );
 
 CREATE UNIQUE INDEX idx_dynamics_natural_key
-    ON ground_state.dynamics (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_dynamics_genre   ON ground_state.dynamics (genre_id);
-CREATE INDEX idx_dynamics_cluster ON ground_state.dynamics (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_dynamics_payload ON ground_state.dynamics USING gin (payload);
+    ON bedrock.dynamics (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_dynamics_genre   ON bedrock.dynamics (genre_id);
+CREATE INDEX idx_dynamics_cluster ON bedrock.dynamics (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_dynamics_payload ON bedrock.dynamics USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- goals
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.goals (
+CREATE TABLE bedrock.goals (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id    UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id      UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id    UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug   TEXT        NOT NULL,
     name          TEXT        NOT NULL,
     goal_scale    TEXT,
@@ -104,18 +104,18 @@ CREATE TABLE ground_state.goals (
 );
 
 CREATE UNIQUE INDEX idx_goals_natural_key
-    ON ground_state.goals (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_goals_genre   ON ground_state.goals (genre_id);
-CREATE INDEX idx_goals_cluster ON ground_state.goals (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_goals_payload ON ground_state.goals USING gin (payload);
+    ON bedrock.goals (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_goals_genre   ON bedrock.goals (genre_id);
+CREATE INDEX idx_goals_cluster ON bedrock.goals (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_goals_payload ON bedrock.goals USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- profiles
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.profiles (
+CREATE TABLE bedrock.profiles (
     id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id       UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id     UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id       UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id     UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug    TEXT        NOT NULL,
     name           TEXT        NOT NULL,
     payload        JSONB       NOT NULL,
@@ -125,21 +125,21 @@ CREATE TABLE ground_state.profiles (
 );
 
 CREATE UNIQUE INDEX idx_profiles_natural_key
-    ON ground_state.profiles (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_profiles_genre   ON ground_state.profiles (genre_id);
-CREATE INDEX idx_profiles_cluster ON ground_state.profiles (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_profiles_payload ON ground_state.profiles USING gin (payload);
+    ON bedrock.profiles (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_profiles_genre   ON bedrock.profiles (genre_id);
+CREATE INDEX idx_profiles_cluster ON bedrock.profiles (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_profiles_payload ON bedrock.profiles USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- tropes
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.tropes (
+CREATE TABLE bedrock.tropes (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id    UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id      UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id    UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug   TEXT        NOT NULL,
     name          TEXT        NOT NULL,
-    trope_family_id UUID        REFERENCES ground_state.trope_families(id),
+    trope_family_id UUID        REFERENCES bedrock.trope_families(id),
     payload       JSONB       NOT NULL,
     source_hash   TEXT        NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -147,18 +147,18 @@ CREATE TABLE ground_state.tropes (
 );
 
 CREATE UNIQUE INDEX idx_tropes_natural_key
-    ON ground_state.tropes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_tropes_genre   ON ground_state.tropes (genre_id);
-CREATE INDEX idx_tropes_cluster ON ground_state.tropes (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_tropes_payload ON ground_state.tropes USING gin (payload);
+    ON bedrock.tropes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_tropes_genre   ON bedrock.tropes (genre_id);
+CREATE INDEX idx_tropes_cluster ON bedrock.tropes (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_tropes_payload ON bedrock.tropes USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- narrative_shapes
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.narrative_shapes (
+CREATE TABLE bedrock.narrative_shapes (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id    UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id      UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id    UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug   TEXT        NOT NULL,
     name          TEXT        NOT NULL,
     shape_type    TEXT,
@@ -170,18 +170,18 @@ CREATE TABLE ground_state.narrative_shapes (
 );
 
 CREATE UNIQUE INDEX idx_narrative_shapes_natural_key
-    ON ground_state.narrative_shapes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_narrative_shapes_genre   ON ground_state.narrative_shapes (genre_id);
-CREATE INDEX idx_narrative_shapes_cluster ON ground_state.narrative_shapes (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_narrative_shapes_payload ON ground_state.narrative_shapes USING gin (payload);
+    ON bedrock.narrative_shapes (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_narrative_shapes_genre   ON bedrock.narrative_shapes (genre_id);
+CREATE INDEX idx_narrative_shapes_cluster ON bedrock.narrative_shapes (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_narrative_shapes_payload ON bedrock.narrative_shapes USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- ontological_posture
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.ontological_posture (
+CREATE TABLE bedrock.ontological_posture (
     id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id             UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id           UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id             UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id           UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug          TEXT        NOT NULL,
     name                 TEXT        NOT NULL,
     boundary_stability   TEXT,
@@ -192,18 +192,18 @@ CREATE TABLE ground_state.ontological_posture (
 );
 
 CREATE UNIQUE INDEX idx_ontological_posture_natural_key
-    ON ground_state.ontological_posture (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_ontological_posture_genre   ON ground_state.ontological_posture (genre_id);
-CREATE INDEX idx_ontological_posture_cluster ON ground_state.ontological_posture (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_ontological_posture_payload ON ground_state.ontological_posture USING gin (payload);
+    ON bedrock.ontological_posture (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_ontological_posture_genre   ON bedrock.ontological_posture (genre_id);
+CREATE INDEX idx_ontological_posture_cluster ON bedrock.ontological_posture (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_ontological_posture_payload ON bedrock.ontological_posture USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- spatial_topology
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.spatial_topology (
+CREATE TABLE bedrock.spatial_topology (
     id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id             UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id           UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id             UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id           UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug          TEXT        NOT NULL,
     name                 TEXT        NOT NULL,
     friction_type        TEXT,
@@ -215,18 +215,18 @@ CREATE TABLE ground_state.spatial_topology (
 );
 
 CREATE UNIQUE INDEX idx_spatial_topology_natural_key
-    ON ground_state.spatial_topology (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_spatial_topology_genre   ON ground_state.spatial_topology (genre_id);
-CREATE INDEX idx_spatial_topology_cluster ON ground_state.spatial_topology (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_spatial_topology_payload ON ground_state.spatial_topology USING gin (payload);
+    ON bedrock.spatial_topology (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_spatial_topology_genre   ON bedrock.spatial_topology (genre_id);
+CREATE INDEX idx_spatial_topology_cluster ON bedrock.spatial_topology (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_spatial_topology_payload ON bedrock.spatial_topology USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- place_entities
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.place_entities (
+CREATE TABLE bedrock.place_entities (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id    UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id      UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id    UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug   TEXT        NOT NULL,
     name          TEXT        NOT NULL,
     topological_role VARCHAR,
@@ -237,10 +237,10 @@ CREATE TABLE ground_state.place_entities (
 );
 
 CREATE UNIQUE INDEX idx_place_entities_natural_key
-    ON ground_state.place_entities (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_place_entities_genre   ON ground_state.place_entities (genre_id);
-CREATE INDEX idx_place_entities_cluster ON ground_state.place_entities (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_place_entities_payload ON ground_state.place_entities USING gin (payload);
+    ON bedrock.place_entities (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_place_entities_genre   ON bedrock.place_entities (genre_id);
+CREATE INDEX idx_place_entities_cluster ON bedrock.place_entities (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_place_entities_payload ON bedrock.place_entities USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- archetype_dynamics
@@ -248,10 +248,10 @@ CREATE INDEX idx_place_entities_payload ON ground_state.place_entities USING gin
 -- Cross-archetype relational dynamics. archetype_a and archetype_b are slugs
 -- referencing archetypes within the same genre context.
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.archetype_dynamics (
+CREATE TABLE bedrock.archetype_dynamics (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL REFERENCES ground_state.genres(id),
-    cluster_id    UUID        REFERENCES ground_state.genre_clusters(id),
+    genre_id      UUID        NOT NULL REFERENCES bedrock.genres(id),
+    cluster_id    UUID        REFERENCES bedrock.genre_clusters(id),
     entity_slug   TEXT        NOT NULL,
     name          TEXT        NOT NULL,
     archetype_a   TEXT,
@@ -263,10 +263,10 @@ CREATE TABLE ground_state.archetype_dynamics (
 );
 
 CREATE UNIQUE INDEX idx_archetype_dynamics_natural_key
-    ON ground_state.archetype_dynamics (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
-CREATE INDEX idx_archetype_dynamics_genre   ON ground_state.archetype_dynamics (genre_id);
-CREATE INDEX idx_archetype_dynamics_cluster ON ground_state.archetype_dynamics (cluster_id) WHERE cluster_id IS NOT NULL;
-CREATE INDEX idx_archetype_dynamics_payload ON ground_state.archetype_dynamics USING gin (payload);
+    ON bedrock.archetype_dynamics (genre_id, entity_slug, COALESCE(cluster_id, '00000000-0000-0000-0000-000000000000'::UUID));
+CREATE INDEX idx_archetype_dynamics_genre   ON bedrock.archetype_dynamics (genre_id);
+CREATE INDEX idx_archetype_dynamics_cluster ON bedrock.archetype_dynamics (cluster_id) WHERE cluster_id IS NOT NULL;
+CREATE INDEX idx_archetype_dynamics_payload ON bedrock.archetype_dynamics USING gin (payload);
 
 -- ---------------------------------------------------------------------------
 -- genre_dimensions
@@ -274,13 +274,13 @@ CREATE INDEX idx_archetype_dynamics_payload ON ground_state.archetype_dynamics U
 -- SPECIAL: one row per genre, no entity_slug, no cluster_id.
 -- Stores the complete dimensional analysis for a genre (all 34 dimensions).
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.genre_dimensions (
+CREATE TABLE bedrock.genre_dimensions (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    genre_id      UUID        NOT NULL UNIQUE REFERENCES ground_state.genres(id),
+    genre_id      UUID        NOT NULL UNIQUE REFERENCES bedrock.genres(id),
     payload       JSONB       NOT NULL,
     source_hash   TEXT        NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_genre_dimensions_payload ON ground_state.genre_dimensions USING gin (payload);
+CREATE INDEX idx_genre_dimensions_payload ON bedrock.genre_dimensions USING gin (payload);

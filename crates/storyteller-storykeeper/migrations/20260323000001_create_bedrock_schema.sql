@@ -1,11 +1,11 @@
 -- =============================================================================
--- Ground-State Reference Data Schema
+-- Bedrock Reference Data Schema
 -- =============================================================================
 -- Managed by sqlx, populated by narrative-data Python tooling.
 --
--- NOTE: ground_state.settings (genre-level setting archetypes from Tier B)
+-- NOTE: bedrock.settings (genre-level setting archetypes from Tier B)
 -- is distinct from public.settings (per-story authored locations). The schema
--- separation enforces that boundary — ground-state rows are read-only reference
+-- separation enforces that boundary — bedrock rows are read-only reference
 -- data; public-schema rows are per-story runtime data.
 --
 -- All tables use UUID primary keys (gen_random_uuid()) and JSONB payload
@@ -13,7 +13,7 @@
 -- are searchable without JSONB operators; payload carries everything else.
 -- =============================================================================
 
-CREATE SCHEMA IF NOT EXISTS ground_state;
+CREATE SCHEMA IF NOT EXISTS bedrock;
 
 -- ---------------------------------------------------------------------------
 -- genres
@@ -21,7 +21,7 @@ CREATE SCHEMA IF NOT EXISTS ground_state;
 -- One row per genre region (e.g. "folk-horror", "cozy-fantasy"). The slug
 -- matches the directory names used throughout the narrative-data pipeline.
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.genres (
+CREATE TABLE bedrock.genres (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     slug          TEXT        NOT NULL UNIQUE,
     name          TEXT        NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE ground_state.genres (
 -- Cluster groupings (e.g. "horror", "fantasy", "sci-fi"). Genres belong to
 -- one or more clusters via genre_cluster_members.
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.genre_clusters (
+CREATE TABLE bedrock.genre_clusters (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     slug          TEXT        NOT NULL UNIQUE,
     name          TEXT        NOT NULL,
@@ -54,9 +54,9 @@ CREATE TABLE ground_state.genre_clusters (
 -- ---------------------------------------------------------------------------
 -- Many-to-many join between genres and clusters.
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.genre_cluster_members (
-    genre_id      UUID NOT NULL REFERENCES ground_state.genres(id)         ON DELETE CASCADE,
-    cluster_id    UUID NOT NULL REFERENCES ground_state.genre_clusters(id) ON DELETE CASCADE,
+CREATE TABLE bedrock.genre_cluster_members (
+    genre_id      UUID NOT NULL REFERENCES bedrock.genres(id)         ON DELETE CASCADE,
+    cluster_id    UUID NOT NULL REFERENCES bedrock.genre_clusters(id) ON DELETE CASCADE,
     PRIMARY KEY (genre_id, cluster_id)
 );
 
@@ -66,7 +66,7 @@ CREATE TABLE ground_state.genre_cluster_members (
 -- Canonical registry of the 12 state variables (e.g. "social_standing",
 -- "bodily_integrity"). Each has a default_range for validation.
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.state_variables (
+CREATE TABLE bedrock.state_variables (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     slug          TEXT        NOT NULL UNIQUE,
     name          TEXT        NOT NULL,
@@ -83,7 +83,7 @@ CREATE TABLE ground_state.state_variables (
 -- Canonical registry of the 34 narrative dimensions, grouped by
 -- dimension_group (e.g. "personality", "relational", "contextual").
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.dimensions (
+CREATE TABLE bedrock.dimensions (
     id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     slug             TEXT        NOT NULL UNIQUE,
     name             TEXT        NOT NULL,
@@ -94,7 +94,7 @@ CREATE TABLE ground_state.dimensions (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_dimensions_group ON ground_state.dimensions (dimension_group);
+CREATE INDEX idx_dimensions_group ON bedrock.dimensions (dimension_group);
 
 -- ---------------------------------------------------------------------------
 -- trope_families
@@ -102,7 +102,7 @@ CREATE INDEX idx_dimensions_group ON ground_state.dimensions (dimension_group);
 -- Normalized lookup for trope family classification. Each family maps to
 -- a canonical narrative dimension (e.g. "Locus of Power", "Thematic Dimension").
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.trope_families (
+CREATE TABLE bedrock.trope_families (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     slug            VARCHAR     NOT NULL UNIQUE,
     name            VARCHAR     NOT NULL,
@@ -118,17 +118,17 @@ CREATE TABLE ground_state.trope_families (
 -- interacts with. primitive_table is the discriminator (e.g. 'tropes',
 -- 'dynamics'). No FK on primitive_id (can't FK to multiple tables).
 -- ---------------------------------------------------------------------------
-CREATE TABLE ground_state.primitive_state_variable_interactions (
+CREATE TABLE bedrock.primitive_state_variable_interactions (
     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     primitive_table   VARCHAR     NOT NULL,
     primitive_id      UUID        NOT NULL,
-    state_variable_id UUID        NOT NULL REFERENCES ground_state.state_variables(id),
+    state_variable_id UUID        NOT NULL REFERENCES bedrock.state_variables(id),
     operation         VARCHAR,
     context           JSONB,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_psvi_primitive
-    ON ground_state.primitive_state_variable_interactions(primitive_table, primitive_id);
+    ON bedrock.primitive_state_variable_interactions(primitive_table, primitive_id);
 CREATE INDEX idx_psvi_state_variable
-    ON ground_state.primitive_state_variable_interactions(state_variable_id);
+    ON bedrock.primitive_state_variable_interactions(state_variable_id);
