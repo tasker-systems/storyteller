@@ -24,6 +24,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from narrative_data.ollama import OllamaClient
 
+
+def _is_null_response(value: str) -> bool:
+    """Check if an LLM response is a null/empty sentinel.
+
+    Catches variants like "null", "Null.", "NULL", "null.", "N/A".
+    """
+    cleaned = value.strip().rstrip(".").strip().lower()
+    return cleaned in ("null", "n/a", "none", "")
+
 # Valid valence values from the dynamics schema ValenceLiteral
 _VALID_VALENCE: frozenset[str] = frozenset(
     ["sacred", "hostile", "nurturing", "indifferent", "parasitic", "transactional", "protective"]
@@ -306,7 +315,7 @@ def extract_state_shift(entity: dict, md_content: str, client: OllamaClient) -> 
     try:
         raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
         value = raw.strip() if raw.strip() else ""
-        if value and value.lower() != "null":
+        if value and not _is_null_response(value):
             result = dict(result)
             result["state_shift"] = value
     except Exception:
@@ -359,7 +368,7 @@ def extract_directionality_description(entity: dict, md_content: str, client: Ol
     try:
         raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
         value = raw.strip() if raw.strip() else ""
-        if value and value.lower() != "null":
+        if value and not _is_null_response(value):
             result = dict(result)
             result["directionality"] = dict(directionality)
             result["directionality"]["description"] = value
@@ -415,7 +424,7 @@ def extract_friction_description(entity: dict, md_content: str, client: OllamaCl
     try:
         raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
         value = raw.strip() if raw.strip() else ""
-        if value and value.lower() != "null":
+        if value and not _is_null_response(value):
             result = dict(result)
             result["friction"] = dict(friction)
             result["friction"]["description"] = value
@@ -477,7 +486,7 @@ def extract_crossing_rules(entity: dict, md_content: str, client: OllamaClient) 
     try:
         raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
         value = raw.strip() if raw.strip() else ""
-        if value and value.lower() != "null":
+        if value and not _is_null_response(value):
             result = dict(result)
             result["self_other_boundary"] = dict(boundary)
             result["self_other_boundary"]["crossing_rules"] = value
@@ -534,7 +543,7 @@ def extract_obligations_across(entity: dict, md_content: str, client: OllamaClie
     try:
         raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
         value = raw.strip() if raw.strip() else ""
-        if value and value.lower() != "null":
+        if value and not _is_null_response(value):
             result = dict(result)
             result["self_other_boundary"] = dict(boundary)
             result["self_other_boundary"]["obligations_across"] = value
