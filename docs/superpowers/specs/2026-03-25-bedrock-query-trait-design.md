@@ -27,12 +27,13 @@ This rename replaces all `ground_state` references across SQL, Python, and Rust.
 
 ```
 storyteller-core (owns contracts)
-├── src/types/bedrock.rs        → BedrockEntity<T>, GenreContext
-└── src/traits/bedrock.rs       → BedrockQuery trait
+├── src/types/bedrock.rs        → BedrockEntity<T>
+└── src/traits/bedrock.rs       → BedrockQuery trait (returns serde_json::Value for genre_context)
 
-storyteller-storykeeper (owns implementations)
+storyteller-storykeeper (owns implementations + concrete types)
 ├── src/bedrock/mod.rs          → PostgresBedrock struct + trait impl
 ├── src/bedrock/records.rs      → Record structs (sqlx::FromRow + serde)
+├── src/bedrock/genre_context.rs → GenreContext composite struct
 └── src/bedrock/queries/        → Query functions organized by pattern
     ├── genre_context.rs        → Bulk genre_context() via SQL function
     ├── by_genre.rs             → All *_by_genre() queries
@@ -42,7 +43,7 @@ storyteller-storykeeper (owns implementations)
     └── reference.rs            → genres(), trope_families()
 ```
 
-**Why this split**: Core owns trait contracts (no sqlx dependency) so any crate can reference the promise. Storykeeper owns implementations with sqlx-backed Record structs. Consumers that only need the contract import from core; consumers that need concrete types import from storykeeper.
+**Why this split**: Core owns trait contracts (no sqlx dependency) so any crate can reference the promise. Storykeeper owns implementations, concrete Record structs, and the `GenreContext` composite (which references Record types). `GenreContext` lives in storykeeper because it names concrete Record types that depend on sqlx — core cannot depend on storykeeper. The `BedrockQuery` trait in core returns `serde_json::Value` for `genre_context()` and the storykeeper module provides the typed `GenreContext` struct plus a `parse_genre_context()` helper for consumers that want typed access. Alternatively, the trait returns an opaque `GenreContext` type defined in core with no sqlx dependency (using serde_json::Value fields) and storykeeper provides accessor methods that return typed Records. The implementation will determine which pattern is cleanest.
 
 ### Type System
 
@@ -218,6 +219,8 @@ The trait impl delegates to free functions in `queries/` modules, keeping the im
 | `*_by_slug` | Same join + `AND t.entity_slug = $2` | `Option<Record>` via `fetch_optional` |
 | `dimensions_for_entity` | `SELECT * FROM bedrock.dimension_values WHERE primitive_table = $1 AND primitive_id = (subquery)` | `Vec<DimensionValueRecord>` |
 | `entities_by_dimension` | `SELECT * FROM bedrock.dimension_values dv JOIN bedrock.genres g ON dv.genre_id = g.id WHERE g.slug = $1 AND dv.dimension_slug = $2` | `Vec<DimensionValueRecord>` |
+| `dimensional_intersection` | `SELECT dv.* FROM bedrock.dimension_values dv JOIN bedrock.genres g ON dv.genre_id = g.id WHERE g.slug = $1 AND dv.dimension_slug = ANY($2) GROUP BY dv.primitive_table, dv.primitive_id HAVING COUNT(DISTINCT dv.dimension_slug) = $3` — entities sharing all requested dimensions | `Vec<DimensionValueRecord>` |
+| `state_variable_interactions` | Joins through `primitive_table`/`primitive_id` to resolve genre: `SELECT sv.slug, sv.name, psvi.operation, psvi.context FROM bedrock.primitive_state_variable_interactions psvi JOIN bedrock.state_variables sv ON psvi.state_variable_id = sv.id WHERE psvi.primitive_id IN (SELECT id FROM bedrock.{table} WHERE genre_id = (SELECT id FROM bedrock.genres WHERE slug = $1)) AND sv.slug = $2` — note: requires iterating primitive tables or a UNION approach | `Vec<StateVariableInteractionRecord>` |
 | reference | `SELECT * FROM bedrock.{table}` | `Vec<Record>` |
 
 All by-genre and by-slug queries filter `cluster_id IS NULL` by default — genre-specific entities only. Cluster-scoped queries are future direction.
