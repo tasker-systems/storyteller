@@ -28,6 +28,7 @@ from narrative_data.persistence.reference_data import (
     extract_genres,
     extract_state_variables,
 )
+from narrative_data.persistence.sv_normalization import resolve_sv_slug
 from narrative_data.persistence.trope_families import (
     build_normalization_map,
     extract_trope_families,
@@ -856,7 +857,9 @@ def _load_state_variable_interactions(
                 primitive_id = str(row["id"])
 
                 for ix in interactions:
-                    sv_id = sv_map.get(ix["variable_slug"])
+                    raw_slug = ix["variable_slug"]
+                    _kind, resolved = resolve_sv_slug(raw_slug, set(sv_map.keys()))
+                    sv_id = sv_map.get(resolved) if resolved else None
                     if not sv_id:
                         log.warning(
                             "Unknown state variable '%s' in %s/%s — skipping",

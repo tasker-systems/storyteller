@@ -6,40 +6,68 @@
 
 import json
 import logging
-import re
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-_MAX_FAMILY_LENGTH = 100
+_DIMENSION_KEYWORDS: list[tuple[str, str]] = [
+    # Multi-word matches first (most specific)
+    ("world affordance", "world-affordance"),
+    ("world-affordance", "world-affordance"),
+    ("locus of power", "locus-of-power"),
+    ("locus-of-power", "locus-of-power"),
+    ("state variable", "state-variable"),
+    ("state-variable", "state-variable"),
+    # Single-word matches (ordered by specificity)
+    ("epistemological", "epistemological-stance"),
+    ("ontological", "ontological-posture"),
+    ("aesthetic", "aesthetic-dimension"),
+    ("tonal", "tonal-dimension"),
+    ("temporal", "temporal-dimension"),
+    ("thematic", "thematic-dimension"),
+    ("agency", "agency-dimension"),
+    ("structural", "structural-dimension"),
+]
+
+_SECONDARY_KEYWORDS: list[tuple[str, str]] = [
+    ("identity", "thematic-dimension"),
+    ("belonging", "thematic-dimension"),
+    ("social capital", "thematic-dimension"),
+    ("collective", "thematic-dimension"),
+    ("solidarity", "thematic-dimension"),
+    ("materiality", "thematic-dimension"),
+    ("memory", "thematic-dimension"),
+    ("mystery", "structural-dimension"),
+    ("tragedy", "structural-dimension"),
+    ("magic", "world-affordance"),
+    ("medical", "world-affordance"),
+    ("violence", "world-affordance"),
+    ("antagonistic", "locus-of-power"),
+    ("power", "locus-of-power"),
+]
 
 
 def normalize_family_name(raw: str) -> str:
     """Normalize a genre_derivation string to a canonical family slug.
 
-    1. Reject strings > _MAX_FAMILY_LENGTH as 'unclassified'
-    2. Take part before first colon
-    3. Lowercase
-    4. Collapse plurals (dimensions→dimension, affordances→affordance, stances→stance)
-    5. Slugify (spaces → hyphens)
+    Scans for dimension keywords (primary then secondary) to classify
+    the derivation into one of ~11 canonical trope families.
     """
     text = raw.strip()
-    if len(text) > _MAX_FAMILY_LENGTH:
-        return "unclassified"
+    if not text:
+        return "genre-specific"
 
-    if ":" in text:
-        text = text.split(":")[0].strip()
+    lower = text.lower()
 
-    text = text.lower()
+    for keyword, family in _DIMENSION_KEYWORDS:
+        if keyword in lower:
+            return family
 
-    text = re.sub(r"\bdimensions\b", "dimension", text)
-    text = re.sub(r"\baffordances\b", "affordance", text)
-    text = re.sub(r"\bstances\b", "stance", text)
+    for keyword, family in _SECONDARY_KEYWORDS:
+        if keyword in lower:
+            return family
 
-    slug = text.replace(" ", "-").replace("_", "-")
-    slug = re.sub(r"-+", "-", slug).strip("-")
-
-    return slug if slug else "unclassified"
+    return "genre-specific"
 
 
 def _slug_to_display_name(slug: str) -> str:

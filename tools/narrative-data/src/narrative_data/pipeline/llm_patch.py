@@ -167,7 +167,8 @@ def extract_currencies(entity: dict, md_content: str, client: OllamaClient) -> d
     prompt = (
         f"You are extracting relational currencies from a narrative dynamic description.\n\n"
         f"Relational currencies are things exchanged, withheld, or leveraged between characters "
-        f"in this dynamic — for example: loyalty, secrets, safety, obligation, shame, love, debt.\n\n"
+        f"in this dynamic — for example: loyalty, secrets, safety, obligation, "
+        f"shame, love, debt.\n\n"
         f"Dynamic name: {entity_name}\n"
         f"Edge type: {edge_type}\n\n"
         f"Source description:\n{section_snippet}\n\n"
@@ -261,6 +262,288 @@ def extract_scale_manifestations(entity: dict, md_content: str, client: OllamaCl
     return result
 
 
+# ---------------------------------------------------------------------------
+# Spatial-topology extraction functions
+# ---------------------------------------------------------------------------
+
+
+def extract_state_shift(entity: dict, md_content: str, client: OllamaClient) -> dict:
+    """Fill the ``state_shift`` field of a spatial-topology entity using LLM extraction.
+
+    Skips silently if ``state_shift`` is already a non-None, non-empty value.
+
+    Args:
+        entity: A spatial-topology entity dict (will not be mutated).
+        md_content: Full source markdown for the genre file.
+        client: An ``OllamaClient`` instance for LLM calls.
+
+    Returns:
+        A new dict with ``state_shift`` populated (or unchanged if already set
+        or LLM response is empty / ``"null"``).
+    """
+    from narrative_data.config import STRUCTURING_MODEL
+
+    result = dict(entity)
+    existing = result.get("state_shift")
+    if existing is not None and (not isinstance(existing, str) or existing.strip() != ""):
+        return result
+
+    source = str(result.get("source_setting", ""))
+    target = str(result.get("target_setting", ""))
+
+    section = _find_entity_section(md_content, source) if source else ""
+    section_snippet = section[:600] if section else "(no source section found)"
+
+    prompt = (
+        f"You are extracting the state shift that occurs when a character traverses "
+        f"a spatial transition in a narrative.\n\n"
+        f"Transition: {source} → {target}\n\n"
+        f"Source description:\n{section_snippet}\n\n"
+        f"Describe in 1-2 sentences what changes for a character making this transition. "
+        f"If the source doesn't describe a meaningful shift, respond with just 'null'."
+    )
+
+    try:
+        raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
+        value = raw.strip() if raw.strip() else ""
+        if value and value.lower() != "null":
+            result = dict(result)
+            result["state_shift"] = value
+    except Exception:
+        pass
+
+    return result
+
+
+def extract_directionality_description(entity: dict, md_content: str, client: OllamaClient) -> dict:
+    """Fill ``entity["directionality"]["description"]`` using LLM extraction.
+
+    Skips silently if ``directionality`` is not a dict or ``description`` is
+    already populated.
+
+    Args:
+        entity: A spatial-topology entity dict (will not be mutated).
+        md_content: Full source markdown for the genre file.
+        client: An ``OllamaClient`` instance for LLM calls.
+
+    Returns:
+        A new dict with the nested description populated (or unchanged).
+    """
+    from narrative_data.config import STRUCTURING_MODEL
+
+    result = dict(entity)
+    directionality = result.get("directionality")
+    if not isinstance(directionality, dict):
+        return result
+
+    existing = directionality.get("description")
+    if existing is not None and (not isinstance(existing, str) or existing.strip() != ""):
+        return result
+
+    source = str(result.get("source_setting", ""))
+    target = str(result.get("target_setting", ""))
+    dir_type = str(directionality.get("type", ""))
+
+    section = _find_entity_section(md_content, source) if source else ""
+    section_snippet = section[:600] if section else "(no source section found)"
+
+    prompt = (
+        f"You are describing the directionality of a spatial transition in a narrative.\n\n"
+        f"Transition: {source} → {target}\n"
+        f"Directionality type: {dir_type}\n\n"
+        f"Source description:\n{section_snippet}\n\n"
+        f"Describe in 1-2 sentences how the directionality manifests in this transition. "
+        f"If the source doesn't describe directionality, respond with just 'null'."
+    )
+
+    try:
+        raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
+        value = raw.strip() if raw.strip() else ""
+        if value and value.lower() != "null":
+            result = dict(result)
+            result["directionality"] = dict(directionality)
+            result["directionality"]["description"] = value
+    except Exception:
+        pass
+
+    return result
+
+
+def extract_friction_description(entity: dict, md_content: str, client: OllamaClient) -> dict:
+    """Fill ``entity["friction"]["description"]`` using LLM extraction.
+
+    Skips silently if ``friction`` is not a dict or ``description`` is already
+    populated.
+
+    Args:
+        entity: A spatial-topology entity dict (will not be mutated).
+        md_content: Full source markdown for the genre file.
+        client: An ``OllamaClient`` instance for LLM calls.
+
+    Returns:
+        A new dict with the nested description populated (or unchanged).
+    """
+    from narrative_data.config import STRUCTURING_MODEL
+
+    result = dict(entity)
+    friction = result.get("friction")
+    if not isinstance(friction, dict):
+        return result
+
+    existing = friction.get("description")
+    if existing is not None and (not isinstance(existing, str) or existing.strip() != ""):
+        return result
+
+    source = str(result.get("source_setting", ""))
+    target = str(result.get("target_setting", ""))
+    friction_type = str(friction.get("type", ""))
+    friction_level = str(friction.get("level", ""))
+
+    section = _find_entity_section(md_content, source) if source else ""
+    section_snippet = section[:600] if section else "(no source section found)"
+
+    prompt = (
+        f"You are describing the friction of a spatial transition in a narrative.\n\n"
+        f"Transition: {source} → {target}\n"
+        f"Friction type: {friction_type}\n"
+        f"Friction level: {friction_level}\n\n"
+        f"Source description:\n{section_snippet}\n\n"
+        f"Describe in 1-2 sentences what creates friction in this transition. "
+        f"If the source doesn't describe friction, respond with just 'null'."
+    )
+
+    try:
+        raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
+        value = raw.strip() if raw.strip() else ""
+        if value and value.lower() != "null":
+            result = dict(result)
+            result["friction"] = dict(friction)
+            result["friction"]["description"] = value
+    except Exception:
+        pass
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Ontological-posture extraction functions
+# ---------------------------------------------------------------------------
+
+
+def extract_crossing_rules(entity: dict, md_content: str, client: OllamaClient) -> dict:
+    """Fill ``entity["self_other_boundary"]["crossing_rules"]`` using LLM extraction.
+
+    Skips silently if ``self_other_boundary`` is not a dict or ``crossing_rules``
+    is already populated.
+
+    Args:
+        entity: An ontological-posture entity dict (will not be mutated).
+        md_content: Full source markdown for the genre file.
+        client: An ``OllamaClient`` instance for LLM calls.
+
+    Returns:
+        A new dict with the nested crossing_rules populated (or unchanged).
+    """
+    from narrative_data.config import STRUCTURING_MODEL
+
+    result = dict(entity)
+    boundary = result.get("self_other_boundary")
+    if not isinstance(boundary, dict):
+        return result
+
+    existing = boundary.get("crossing_rules")
+    if existing is not None and (not isinstance(existing, str) or existing.strip() != ""):
+        return result
+
+    subject = str(result.get("default_subject", ""))
+    stability = str(boundary.get("stability", ""))
+
+    # Try finding section by keyword first, fall back to subject
+    section = _find_entity_section(md_content, "crossing")
+    if not section and subject:
+        section = _find_entity_section(md_content, subject)
+    section_snippet = section[:600] if section else "(no source section found)"
+
+    prompt = (
+        f"You are extracting the rules for crossing the self/other boundary "
+        f"in a narrative ontological posture.\n\n"
+        f"Subject: {subject}\n"
+        f"Boundary stability: {stability}\n\n"
+        f"Source description:\n{section_snippet}\n\n"
+        f"Describe in 2-3 sentences the rules or conditions for crossing this boundary. "
+        f"If the source doesn't describe crossing rules, respond with just 'null'."
+    )
+
+    try:
+        raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
+        value = raw.strip() if raw.strip() else ""
+        if value and value.lower() != "null":
+            result = dict(result)
+            result["self_other_boundary"] = dict(boundary)
+            result["self_other_boundary"]["crossing_rules"] = value
+    except Exception:
+        pass
+
+    return result
+
+
+def extract_obligations_across(entity: dict, md_content: str, client: OllamaClient) -> dict:
+    """Fill ``entity["self_other_boundary"]["obligations_across"]`` using LLM extraction.
+
+    Skips silently if ``self_other_boundary`` is not a dict or
+    ``obligations_across`` is already populated.
+
+    Args:
+        entity: An ontological-posture entity dict (will not be mutated).
+        md_content: Full source markdown for the genre file.
+        client: An ``OllamaClient`` instance for LLM calls.
+
+    Returns:
+        A new dict with the nested obligations_across populated (or unchanged).
+    """
+    from narrative_data.config import STRUCTURING_MODEL
+
+    result = dict(entity)
+    boundary = result.get("self_other_boundary")
+    if not isinstance(boundary, dict):
+        return result
+
+    existing = boundary.get("obligations_across")
+    if existing is not None and (not isinstance(existing, str) or existing.strip() != ""):
+        return result
+
+    subject = str(result.get("default_subject", ""))
+    stability = str(boundary.get("stability", ""))
+
+    # Try finding section by keyword first, fall back to subject
+    section = _find_entity_section(md_content, "obligation")
+    if not section and subject:
+        section = _find_entity_section(md_content, subject)
+    section_snippet = section[:600] if section else "(no source section found)"
+
+    prompt = (
+        f"You are extracting the obligations that exist across the self/other boundary "
+        f"in a narrative ontological posture.\n\n"
+        f"Subject: {subject}\n"
+        f"Boundary stability: {stability}\n\n"
+        f"Source description:\n{section_snippet}\n\n"
+        f"Describe in 2-3 sentences what obligations exist across this boundary. "
+        f"If the source doesn't describe obligations, respond with just 'null'."
+    )
+
+    try:
+        raw = client.generate(model=STRUCTURING_MODEL, prompt=prompt, temperature=0.1)
+        value = raw.strip() if raw.strip() else ""
+        if value and value.lower() != "null":
+            result = dict(result)
+            result["self_other_boundary"] = dict(boundary)
+            result["self_other_boundary"]["obligations_across"] = value
+    except Exception:
+        pass
+
+    return result
+
+
 def fill_all_llm_patch(
     corpus_dir: Path,
     client: OllamaClient,
@@ -288,7 +571,7 @@ def fill_all_llm_patch(
         Dict mapping type slug → summary dict with keys:
         ``files_processed``, ``entities_updated``, ``entities_skipped``.
     """
-    supported_patch_types = ["dynamics"]
+    supported_patch_types = ["dynamics", "spatial-topology", "ontological-posture"]
     type_list = types if types is not None else supported_patch_types
 
     summary: dict[str, dict] = {}
@@ -344,9 +627,17 @@ def fill_all_llm_patch(
 
             for entity in entities:
                 filled = entity
-                filled = extract_valence(filled, md_content, client)
-                filled = extract_currencies(filled, md_content, client)
-                filled = extract_scale_manifestations(filled, md_content, client)
+                if type_slug == "dynamics":
+                    filled = extract_valence(filled, md_content, client)
+                    filled = extract_currencies(filled, md_content, client)
+                    filled = extract_scale_manifestations(filled, md_content, client)
+                elif type_slug == "spatial-topology":
+                    filled = extract_state_shift(filled, md_content, client)
+                    filled = extract_directionality_description(filled, md_content, client)
+                    filled = extract_friction_description(filled, md_content, client)
+                elif type_slug == "ontological-posture":
+                    filled = extract_crossing_rules(filled, md_content, client)
+                    filled = extract_obligations_across(filled, md_content, client)
 
                 if filled != entity:
                     entities_updated += 1

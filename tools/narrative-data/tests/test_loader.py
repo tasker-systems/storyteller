@@ -649,31 +649,76 @@ class TestSentinelValidation:
 
 
 class TestTropeFamilyNormalization:
-    def test_normalize_strips_plural_dimensions(self) -> None:
-        assert normalize_family_name("Temporal Dimensions") == "temporal-dimension"
+    # -- Primary dimension keywords --
 
-    def test_normalize_strips_plural_affordances(self) -> None:
-        assert normalize_family_name("World Affordances") == "world-affordance"
-
-    def test_normalize_handles_casing(self) -> None:
-        assert normalize_family_name("epistemological stance") == "epistemological-stance"
-
-    def test_normalize_collapses_agency_variants(self) -> None:
-        assert normalize_family_name("Agency Dimension") == "agency-dimension"
-        assert normalize_family_name("Agency Dimensions") == "agency-dimension"
-
-    def test_normalize_takes_part_before_colon(self) -> None:
+    def test_temporal_dimension_keyword(self) -> None:
         assert normalize_family_name("Temporal Dimensions: Seasonal") == "temporal-dimension"
 
-    def test_normalize_locus_of_power(self) -> None:
+    def test_agency_dimension_keyword(self) -> None:
+        assert normalize_family_name("Agency Dimension") == "agency-dimension"
+
+    def test_locus_of_power_keyword(self) -> None:
         assert normalize_family_name("Locus of Power: Community") == "locus-of-power"
 
-    def test_long_derivation_maps_to_unclassified(self) -> None:
+    def test_world_affordance_with_hyphen(self) -> None:
+        assert normalize_family_name("World-Affordance (violence)") == "world-affordance"
+
+    def test_epistemological_stance_keyword(self) -> None:
+        assert normalize_family_name("epistemological stance") == "epistemological-stance"
+
+    def test_ontological_posture_keyword(self) -> None:
+        assert (
+            normalize_family_name("Ontological dimension and agency dimension")
+            == "ontological-posture"
+        )
+
+    def test_state_variable_keyword(self) -> None:
+        assert normalize_family_name("State Variables (trauma, morale)") == "state-variable"
+
+    # -- Long derivation now classified (not unclassified) --
+
+    def test_long_derivation_classified_by_keyword(self) -> None:
         long_text = (
             "Directly addresses the Agency Dimensions and Boundary Conditions"
             " (Melodrama vs. Tragedy). The hero must be competent to fall from greatness."
         )
-        assert normalize_family_name(long_text) == "unclassified"
+        assert normalize_family_name(long_text) == "agency-dimension"
+
+    # -- Compound picks first match --
+
+    def test_compound_picks_first_primary_match(self) -> None:
+        text = "Aesthetic dimension (gritty realism) and structural dimension (mystery)"
+        assert normalize_family_name(text) == "aesthetic-dimension"
+
+    # -- Secondary keywords --
+
+    def test_secondary_identity_and_belonging(self) -> None:
+        assert normalize_family_name("Identity and Belonging") == "thematic-dimension"
+
+    def test_secondary_mystery_tragedy(self) -> None:
+        assert normalize_family_name("Mystery + Tragedy") == "structural-dimension"
+
+    def test_secondary_magic_domesticated(self) -> None:
+        assert normalize_family_name("Magic is Domesticated / Rule-Bound") == "world-affordance"
+
+    def test_secondary_social_capital(self) -> None:
+        result = normalize_family_name("Social Capital and Collective Success")
+        assert result == "thematic-dimension"
+
+    # -- Primary takes precedence over secondary --
+
+    def test_primary_takes_precedence_over_secondary(self) -> None:
+        assert normalize_family_name("power and its corruption, high agency") == "agency-dimension"
+
+    # -- Edge cases --
+
+    def test_empty_string_returns_genre_specific(self) -> None:
+        assert normalize_family_name("") == "genre-specific"
+
+    def test_whitespace_only_returns_genre_specific(self) -> None:
+        assert normalize_family_name("   ") == "genre-specific"
+
+    # -- Corpus-level helpers --
 
     def test_build_normalization_map_from_corpus(self, tmp_path: Path) -> None:
         corpus_dir = tmp_path / "corpus"
@@ -726,7 +771,7 @@ class TestTropeFamilyLoading:
         assert len(families) >= 1
         # _minimal_corpus has genre_derivation "Temporal: Seasonal"
         slugs = [f["slug"] for f in families]
-        assert "temporal" in slugs
+        assert "temporal-dimension" in slugs
 
     @_skip_db
     def test_load_reference_entities_includes_trope_families(self, db_conn, tmp_path: Path) -> None:
