@@ -207,47 +207,58 @@ impl BedrockQuery for PostgresBedrock {
 
     async fn genre_dimensions(
         &self,
-        _genre_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Option<GenreDimensionRecord>> {
-        todo!("genre_dimensions: implement in Task 12")
+        queries::dimensions::genre_dimensions(&self.pool, genre_slug).await
     }
 
     async fn dimensions_for_entity(
         &self,
-        _primitive_table: &str,
-        _entity_slug: &str,
-        _genre_slug: &str,
+        primitive_table: &str,
+        entity_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<DimensionValueRecord>> {
-        todo!("dimensions_for_entity: implement in Task 12")
+        queries::dimensions::dimensions_for_entity(
+            &self.pool,
+            primitive_table,
+            entity_slug,
+            genre_slug,
+        )
+        .await
     }
 
     async fn entities_by_dimension(
         &self,
-        _dimension_slug: &str,
-        _genre_slug: &str,
+        dimension_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<DimensionValueRecord>> {
-        todo!("entities_by_dimension: implement in Task 12")
+        queries::dimensions::entities_by_dimension(&self.pool, dimension_slug, genre_slug).await
     }
 
     async fn dimensional_intersection(
         &self,
-        _dimension_slugs: &[&str],
-        _genre_slug: &str,
+        dimension_slugs: &[&str],
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<DimensionValueRecord>> {
-        todo!("dimensional_intersection: implement in Task 12")
+        queries::dimensions::dimensional_intersection(&self.pool, dimension_slugs, genre_slug).await
     }
 
     // ── State variables ───────────────────────────────────────────────────────
 
     async fn state_variables(&self) -> StorytellerResult<Vec<StateVariableRecord>> {
-        todo!("state_variables: implement in Task 12")
+        queries::state_variables::state_variables(&self.pool).await
     }
 
     async fn state_variable_interactions(
         &self,
-        _genre_slug: &str,
-        _state_variable_slug: &str,
+        genre_slug: &str,
+        state_variable_slug: &str,
     ) -> StorytellerResult<Vec<StateVariableInteractionRecord>> {
-        todo!("state_variable_interactions: implement in Task 12")
+        queries::state_variables::state_variable_interactions(
+            &self.pool,
+            genre_slug,
+            state_variable_slug,
+        )
+        .await
     }
 }
