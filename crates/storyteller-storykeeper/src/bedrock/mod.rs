@@ -53,154 +53,154 @@ impl BedrockQuery for PostgresBedrock {
 
     // ── Bulk ─────────────────────────────────────────────────────────────────
 
-    async fn genre_context(&self, _genre_slug: &str) -> StorytellerResult<GenreContext> {
-        todo!("genre_context: implement in Task 9")
+    async fn genre_context(&self, genre_slug: &str) -> StorytellerResult<GenreContext> {
+        queries::genre_context::genre_context(&self.pool, genre_slug).await
     }
 
     // ── By genre ─────────────────────────────────────────────────────────────
 
     async fn archetypes_by_genre(
         &self,
-        _genre_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<ArchetypeRecord>> {
-        todo!("archetypes_by_genre: implement in Task 10")
+        queries::by_genre::archetypes_by_genre(&self.pool, genre_slug).await
     }
 
-    async fn dynamics_by_genre(&self, _genre_slug: &str) -> StorytellerResult<Vec<DynamicRecord>> {
-        todo!("dynamics_by_genre: implement in Task 10")
+    async fn dynamics_by_genre(&self, genre_slug: &str) -> StorytellerResult<Vec<DynamicRecord>> {
+        queries::by_genre::dynamics_by_genre(&self.pool, genre_slug).await
     }
 
-    async fn settings_by_genre(&self, _genre_slug: &str) -> StorytellerResult<Vec<SettingRecord>> {
-        todo!("settings_by_genre: implement in Task 10")
+    async fn settings_by_genre(&self, genre_slug: &str) -> StorytellerResult<Vec<SettingRecord>> {
+        queries::by_genre::settings_by_genre(&self.pool, genre_slug).await
     }
 
-    async fn goals_by_genre(&self, _genre_slug: &str) -> StorytellerResult<Vec<GoalRecord>> {
-        todo!("goals_by_genre: implement in Task 10")
+    async fn goals_by_genre(&self, genre_slug: &str) -> StorytellerResult<Vec<GoalRecord>> {
+        queries::by_genre::goals_by_genre(&self.pool, genre_slug).await
     }
 
-    async fn profiles_by_genre(&self, _genre_slug: &str) -> StorytellerResult<Vec<ProfileRecord>> {
-        todo!("profiles_by_genre: implement in Task 10")
+    async fn profiles_by_genre(&self, genre_slug: &str) -> StorytellerResult<Vec<ProfileRecord>> {
+        queries::by_genre::profiles_by_genre(&self.pool, genre_slug).await
     }
 
-    async fn tropes_by_genre(&self, _genre_slug: &str) -> StorytellerResult<Vec<TropeRecord>> {
-        todo!("tropes_by_genre: implement in Task 10")
+    async fn tropes_by_genre(&self, genre_slug: &str) -> StorytellerResult<Vec<TropeRecord>> {
+        queries::by_genre::tropes_by_genre(&self.pool, genre_slug).await
     }
 
     async fn narrative_shapes_by_genre(
         &self,
-        _genre_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<NarrativeShapeRecord>> {
-        todo!("narrative_shapes_by_genre: implement in Task 10")
+        queries::by_genre::narrative_shapes_by_genre(&self.pool, genre_slug).await
     }
 
     async fn ontological_posture_by_genre(
         &self,
-        _genre_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<OntologicalPostureRecord>> {
-        todo!("ontological_posture_by_genre: implement in Task 10")
+        queries::by_genre::ontological_posture_by_genre(&self.pool, genre_slug).await
     }
 
     async fn spatial_topology_by_genre(
         &self,
-        _genre_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<SpatialTopologyRecord>> {
-        todo!("spatial_topology_by_genre: implement in Task 10")
+        queries::by_genre::spatial_topology_by_genre(&self.pool, genre_slug).await
     }
 
     async fn place_entities_by_genre(
         &self,
-        _genre_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<PlaceEntityRecord>> {
-        todo!("place_entities_by_genre: implement in Task 10")
+        queries::by_genre::place_entities_by_genre(&self.pool, genre_slug).await
     }
 
     async fn archetype_dynamics_by_genre(
         &self,
-        _genre_slug: &str,
+        genre_slug: &str,
     ) -> StorytellerResult<Vec<ArchetypeDynamicRecord>> {
-        todo!("archetype_dynamics_by_genre: implement in Task 10")
+        queries::by_genre::archetype_dynamics_by_genre(&self.pool, genre_slug).await
     }
 
     // ── By slug ──────────────────────────────────────────────────────────────
 
     async fn archetype_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<ArchetypeRecord>> {
-        todo!("archetype_by_slug: implement in Task 11")
+        queries::by_slug::archetype_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn dynamic_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<DynamicRecord>> {
-        todo!("dynamic_by_slug: implement in Task 11")
+        queries::by_slug::dynamic_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn setting_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<SettingRecord>> {
-        todo!("setting_by_slug: implement in Task 11")
+        queries::by_slug::setting_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn goal_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<GoalRecord>> {
-        todo!("goal_by_slug: implement in Task 11")
+        queries::by_slug::goal_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn profile_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<ProfileRecord>> {
-        todo!("profile_by_slug: implement in Task 11")
+        queries::by_slug::profile_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn trope_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<TropeRecord>> {
-        todo!("trope_by_slug: implement in Task 11")
+        queries::by_slug::trope_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn narrative_shape_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<NarrativeShapeRecord>> {
-        todo!("narrative_shape_by_slug: implement in Task 11")
+        queries::by_slug::narrative_shape_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn ontological_posture_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<OntologicalPostureRecord>> {
-        todo!("ontological_posture_by_slug: implement in Task 11")
+        queries::by_slug::ontological_posture_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn spatial_topology_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<SpatialTopologyRecord>> {
-        todo!("spatial_topology_by_slug: implement in Task 11")
+        queries::by_slug::spatial_topology_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     async fn place_entity_by_slug(
         &self,
-        _genre_slug: &str,
-        _entity_slug: &str,
+        genre_slug: &str,
+        entity_slug: &str,
     ) -> StorytellerResult<Option<PlaceEntityRecord>> {
-        todo!("place_entity_by_slug: implement in Task 11")
+        queries::by_slug::place_entity_by_slug(&self.pool, genre_slug, entity_slug).await
     }
 
     // ── Dimensional ───────────────────────────────────────────────────────────
