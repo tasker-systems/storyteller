@@ -363,3 +363,19 @@ Test setup connects to `DATABASE_URL` or falls back to the development default.
 8. **Dimensional extraction as infrastructure** — structure dimensions now, defer compositional semantics to consumers
 9. **Bedrock/sediment/topsoil naming** — unifies geological metaphor across entity modeling and data architecture
 10. **Read-only from Rust** — Python loader owns the write path; no C-UD concern in the storykeeper crate for bedrock data
+11. **Payload is deprecated** — the `payload JSONB` column on primitive tables is retained for this session as a safety net, but is architecturally deprecated. A follow-on ticket will audit all payload fields, validate that dimensional extraction captures everything meaningful, and remove the payload column entirely. Record structs should treat `payload` as an optional legacy field, not a primary data source. The target state is fully relational: promoted columns + `bedrock.dimension_values` + any additional join tables replace the opaque JSONB blob.
+
+## Implementation Sequencing
+
+1. **Rename to bedrock** — rename `ground_state` → `bedrock` across all migrations, SQL functions, Python loader, and any Rust references. Edit migrations in place, drop and reload.
+2. **Dimensional extraction** — define `bedrock.dimension_values` table, implement per-type extraction rules in the Python loader, rebuild importers to populate dimensional rows alongside the (deprecated) payload. Remove concept of payload as the primary data representation.
+3. **Core types and traits** — implement Record structs, `BedrockEntity<T>`, `GenreContext`, and `BedrockQuery` trait in `storyteller-core`, including `DimensionValueRecord` and dimensional query methods.
+4. **Storykeeper query logic** — implement `PostgresBedrock` in `storyteller-storykeeper` with query functions organized by pattern, integration tests against real database.
+
+## Follow-On Work
+
+- **Payload removal** — audit all payload fields across 12 primitive types, validate dimensional coverage, remove `payload JSONB` column and `source_hash` from primitive tables. Separate ticket.
+- **Cross-genre queries** — `archetype_across_genres()`, `dynamics_for_archetype()`. Shape TBD.
+- **Compositional semantics** — how shared dimensions combine mathematically across types. Belongs to Dramaturge / context assembly / `TomeLoreQuery`.
+- **Extended-tier dimensions** — extraction rules for extended-tier fields once core dimensions are validated.
+- **Candidate dimensions N1-N10** — new dimensions identified in terrain analysis, not yet integrated into schemas.
