@@ -290,6 +290,10 @@ def load_reference_entities(
     tf_map = _upsert_trope_families(conn, families, dry_run=dry_run)
     slug_map.update(tf_map)
 
+    # Prune stale trope families not in the canonical set
+    canonical_slugs = {fam["slug"] for fam in families}
+    _prune_stale_trope_families(conn, canonical_slugs, dry_run=dry_run)
+
     dimensions = extract_dimensions()
     _upsert_dimensions(conn, dimensions, dry_run=dry_run)
 
@@ -463,6 +467,47 @@ def _upsert_trope_families(
             row = cur.fetchone()
             slug_map[f"tf:{slug}"] = str(row["id"])
     return slug_map
+
+
+def _prune_stale_trope_families(
+    conn: psycopg.Connection,
+    canonical_slugs: set[str],
+    dry_run: bool = False,
+) -> int:
+    """Delete trope families whose slugs are no longer in the canonical set.
+
+    First nullifies trope_family_id FKs on any tropes referencing stale families,
+    then deletes the stale family rows.
+
+    Returns the number of families pruned.
+    """
+    if dry_run or not canonical_slugs:
+        return 0
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        placeholders = ",".join(["%s"] * len(canonical_slugs))
+        # Nullify FK references on tropes pointing to stale families
+        cur.execute(
+            f"""
+            UPDATE ground_state.tropes
+            SET trope_family_id = NULL
+            WHERE trope_family_id IN (
+                SELECT id FROM ground_state.trope_families
+                WHERE slug NOT IN ({placeholders})
+            )
+            """,
+            tuple(canonical_slugs),
+        )
+        # Delete stale families
+        cur.execute(
+            f"DELETE FROM ground_state.trope_families WHERE slug NOT IN ({placeholders})",
+            tuple(canonical_slugs),
+        )
+        pruned = cur.rowcount
+        if pruned > 0:
+            log.info("Pruned %d stale trope families", pruned)
+        conn.commit()
+        return pruned
 
 
 def _upsert_dimensions(
