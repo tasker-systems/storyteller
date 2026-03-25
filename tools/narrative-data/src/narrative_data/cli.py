@@ -863,6 +863,84 @@ def audit(
         console.print(f"[dim]JSON report saved to {output_path}[/dim]")
 
 
+# ---------------------------------------------------------------------------
+# sv-audit command
+# ---------------------------------------------------------------------------
+
+
+@cli.command("sv-audit")
+def sv_audit() -> None:
+    """Audit state variable references against canonical set and report resolution rates."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from narrative_data.config import resolve_output_path
+    from narrative_data.persistence.reference_data import extract_state_variables
+    from narrative_data.persistence.sv_normalization import audit_sv_resolution
+
+    console = Console()
+    try:
+        corpus_dir = resolve_output_path()
+    except RuntimeError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1) from exc
+
+    # Build canonical set from region.json files
+    sv_list = extract_state_variables(corpus_dir)
+    canonical = {sv["slug"] for sv in sv_list}
+    console.print(f"Canonical state variables: {len(canonical)}")
+
+    results = audit_sv_resolution(corpus_dir, canonical)
+
+    exact_n = len(results["exact"])
+    prefix_n = len(results["prefix"])
+    unresolved_n = len(results["unresolved"])
+    total = exact_n + prefix_n + unresolved_n
+
+    if total:
+        console.print(f"\nTotal references scanned: {total}")
+        console.print(f"  [green]Exact match:[/green]  {exact_n} ({100 * exact_n / total:.1f}%)")
+        console.print(
+            f"  [yellow]Prefix match:[/yellow] {prefix_n} ({100 * prefix_n / total:.1f}%)"
+        )
+        console.print(
+            f"  [red]Unresolved:[/red]   {unresolved_n} ({100 * unresolved_n / total:.1f}%)"
+        )
+    else:
+        console.print("\nNo state variable references found.")
+
+    if results["unresolved"]:
+        console.print(f"\n[bold]Unresolved references ({unresolved_n}):[/bold]")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Raw", style="red")
+        table.add_column("Normalized")
+        table.add_column("Type")
+        table.add_column("Genre")
+        table.add_column("Entity")
+        seen: set[tuple[str, str, str]] = set()
+        for ref in sorted(results["unresolved"], key=lambda r: r["normalized"]):
+            key = (ref["normalized"], ref["type"], ref["genre"])
+            if key in seen:
+                continue
+            seen.add(key)
+            table.add_row(ref["raw"], ref["normalized"], ref["type"], ref["genre"], ref["entity"])
+        console.print(table)
+
+    if results["prefix"]:
+        console.print(f"\n[bold]Prefix matches ({prefix_n}):[/bold]")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Raw", style="yellow")
+        table.add_column("Resolved")
+        seen_prefix: set[str] = set()
+        for ref in sorted(results["prefix"], key=lambda r: r["normalized"]):
+            key = ref["normalized"]
+            if key in seen_prefix:
+                continue
+            seen_prefix.add(key)
+            table.add_row(ref["raw"], ref["resolved"])
+        console.print(table)
+
+
 @structure.command("run")
 @click.argument("type_slug")
 @click.option("--genre", default=None, help="Single genre slug to structure.")
@@ -983,14 +1061,10 @@ def migrate_cmd(dry_run: bool) -> None:
         raise SystemExit(1)
 
     # Collect ground-state migration files (date prefix 20260323)
-    migration_files = sorted(
-        f for f in migrations_dir.glob("20260323*.sql") if f.is_file()
-    )
+    migration_files = sorted(f for f in migrations_dir.glob("20260323*.sql") if f.is_file())
 
     if not migration_files:
-        console.print(
-            f"[yellow]No ground-state migration files found in {migrations_dir}[/yellow]"
-        )
+        console.print(f"[yellow]No ground-state migration files found in {migrations_dir}[/yellow]")
         return
 
     console.print(f"\n[bold]Ground-state migrations:[/bold] {migrations_dir}")
@@ -1130,7 +1204,9 @@ def fill(
             dry_run=dry_run,
         )
 
-        llm_table = Table(title="LLM Patch Fill Summary", show_header=True, header_style="bold cyan")
+        llm_table = Table(
+            title="LLM Patch Fill Summary", show_header=True, header_style="bold cyan"
+        )
         llm_table.add_column("Type", style="cyan")
         llm_table.add_column("Files", justify="right")
         llm_table.add_column("Updated", justify="right")
