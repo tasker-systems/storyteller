@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 from narrative_data.pipeline.llm_patch import (
     _VALID_VALENCE,
+    _is_null_response,
     extract_crossing_rules,
     extract_currencies,
     extract_directionality_description,
@@ -22,6 +23,40 @@ from narrative_data.pipeline.llm_patch import (
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+# ---------------------------------------------------------------------------
+# _is_null_response
+# ---------------------------------------------------------------------------
+
+
+class TestIsNullResponse:
+    def test_plain_null(self):
+        assert _is_null_response("null") is True
+
+    def test_null_with_period(self):
+        assert _is_null_response("Null.") is True
+
+    def test_null_uppercase(self):
+        assert _is_null_response("NULL") is True
+
+    def test_null_with_whitespace(self):
+        assert _is_null_response("  null  ") is True
+
+    def test_na(self):
+        assert _is_null_response("N/A") is True
+
+    def test_none_string(self):
+        assert _is_null_response("None") is True
+
+    def test_empty_string(self):
+        assert _is_null_response("") is True
+
+    def test_real_content(self):
+        assert _is_null_response("The hero transforms.") is False
+
+    def test_null_within_content(self):
+        assert _is_null_response("This is not null at all.") is False
 FOLK_HORROR_MD = (FIXTURES_DIR / "dynamics_folk_horror.md").read_text()
 
 
