@@ -32,9 +32,18 @@ Four workstreams that enrich the ground-state narrative corpus using existing in
 7. Verify: `narrative-data audit --type dynamics` to confirm null rate reduction
 
 **Shell script pattern** (matches existing `run-discovery-extract.sh`):
+
+Note: The `fill` CLI uses Click `multiple=True` for `--genre`, requiring repeated flags (not comma-separated). The script expands genres into repeated `--genre` flags via a helper function.
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Helper: expand comma-separated genres to repeated --genre flags
+genre_flags() {
+    IFS=',' read -ra GENRES <<< "$1"
+    for g in "${GENRES[@]}"; do echo -n "--genre $g "; done
+}
 
 BATCH1="folk-horror,cosmic-horror,horror-comedy,high-epic-fantasy,dark-fantasy"
 BATCH2="cozy-fantasy,fairy-tale-mythic,urban-fantasy,quiet-contemplative-fantasy,hard-sci-fi"
@@ -47,7 +56,7 @@ for i in 1 2 3 4 5 6; do
     BATCH_VAR="BATCH$i"
     GENRES="${!BATCH_VAR}"
     echo "=== Batch $i: $GENRES ==="
-    uv run narrative-data fill --tier llm-patch --type dynamics --genre "$GENRES"
+    eval uv run narrative-data fill --tier llm-patch --type dynamics $(genre_flags "$GENRES")
     if [ "$i" -lt 6 ]; then
         sleep 30
     fi
@@ -148,7 +157,15 @@ def normalize_sv_slug(raw: str) -> str:
 - Count: resolved via exact match after normalization
 - Count: resolved via prefix/fuzzy match
 - Count: unresolved (with full list of raw values and their normalized forms)
-- Decision gate: if unresolved < ~30, hand-build mapping table; if larger, document for next session
+- Decision gate: if unresolved < ~30, hand-build mapping table as `_MANUAL_SV_MAP` dict in `sv_normalization.py`; if larger, document for next session
+
+**Test cases** for `test_sv_normalization.py`:
+- Title case normalization: `"Community Trust"` → `"community-trust"` → exact match
+- Underscore normalization: `"moral_stance"` → `"moral-stance"` → exact match
+- Parenthetical stripping: `"Knowledge (Secrets Known)"` → `"knowledge"` → prefix match to `"knowledge-*"`
+- Prefix match: `"sanctuary"` → prefix match to `"sanctuary-integrity"`
+- Already canonical: `"community-trust"` → exact match (no-op)
+- Unresolved: fabricated slug with no canonical match → logged as unresolved
 
 **Integration**: Wire `normalize_sv_slug()` into `_load_state_variable_interactions()` as a pre-lookup step:
 ```python
@@ -177,6 +194,12 @@ sv_id = sv_map.get(variable_slug)
 | `crossing_rules` | `str \| None` | Explicit section in source markdown | Section heading detection + extraction |
 | `obligations_across` | `str \| None` | Explicit section "Obligations Across the Boundary" | Section heading detection + extraction |
 
+**Nested field paths**: Unlike dynamics where `valence`, `currencies`, and `scale_manifestations` are top-level entity fields, these targets are nested:
+- spatial-topology: `entity["directionality"]["description"]`, `entity["friction"]["description"]`, `entity["state_shift"]` (top-level)
+- ontological-posture: `entity["self_other_boundary"]["crossing_rules"]`, `entity["self_other_boundary"]["obligations_across"]`
+
+Extraction functions must read/write nested dict paths, not just top-level keys. The skip-if-populated check must also navigate the nesting.
+
 **Implementation** (extends `llm_patch.py`):
 1. Add `"spatial-topology"` and `"ontological-posture"` to `supported_patch_types`
 2. Implement extraction functions per field:
@@ -185,9 +208,9 @@ sv_id = sv_map.get(variable_slug)
    - `extract_friction_description(entity, md_content, client) -> str | None`
    - `extract_crossing_rules(entity, md_content, client) -> str | None`
    - `extract_obligations_across(entity, md_content, client) -> str | None`
-3. Each function follows the dynamics pattern: skip if already populated, extract relevant markdown section, focused prompt, validate output
+3. Each function follows the dynamics pattern: skip if already populated, extract relevant markdown section, focused prompt, validate output — but navigates nested dict paths as noted above
 4. Wire into `fill_all_llm_patch()` entity processing loop with type dispatch
-5. Add unit tests following `test_llm_patch.py` patterns (mock Ollama, test skip logic, test prompt content)
+5. Add unit tests following `test_llm_patch.py` patterns (mock Ollama, test skip logic, test prompt content, test nested dict updates)
 
 **Execution** (same workflow as A):
 1. Smoke test one genre per type
@@ -196,7 +219,7 @@ sv_id = sv_map.get(variable_slug)
 4. Background execution
 5. Final reload
 
-**Companion `.md` file discovery**: spatial-topology source files are at `genres/{genre}/spatial-topology.md`; ontological-posture at `genres/{genre}/ontological-posture.md`. The existing `fill_all_llm_patch()` already handles this path pattern for genre-native types.
+**Companion `.md` file discovery**: spatial-topology and ontological-posture are genre-native types — their source markdown lives at `genres/{genre}/spatial-topology.md` and `genres/{genre}/ontological-posture.md`. The current `fill_all_llm_patch()` discovers companion files at `discovery/{type}/{genre}.md` (the discovery path pattern). This needs modification: add a path resolution branch for genre-native types that looks under `genres/{genre}/{type}.md` instead. The `GENRE_NATIVE_TYPES` constant from the config module already distinguishes these types.
 
 **Decision gate**: If smoke test reveals the source markdown doesn't contain extractable content for a field (information genuinely absent, not just unextracted), we skip that field and document the finding.
 
@@ -220,7 +243,7 @@ B (trope families)  →  A (dynamics fills)  →  C (SV audit)  →  D (spatial/
 
 **Modified**:
 - `tools/narrative-data/src/narrative_data/persistence/trope_families.py` — rewrite normalization logic (B)
-- `tools/narrative-data/src/narrative_data/pipeline/llm_patch.py` — add spatial-topology + ontological-posture support (D)
+- `tools/narrative-data/src/narrative_data/pipeline/llm_patch.py` — add spatial-topology + ontological-posture support, fix companion `.md` path resolution for genre-native types (D)
 - `tools/narrative-data/src/narrative_data/persistence/loader.py` — wire SV normalization into interaction loading (C)
 - `tools/narrative-data/src/narrative_data/cli.py` — add `sv-audit` command (C)
 - `tools/narrative-data/tests/test_loader.py` — update trope family assertions (B)
