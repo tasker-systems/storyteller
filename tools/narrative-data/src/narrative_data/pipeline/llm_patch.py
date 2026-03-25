@@ -167,7 +167,8 @@ def extract_currencies(entity: dict, md_content: str, client: OllamaClient) -> d
     prompt = (
         f"You are extracting relational currencies from a narrative dynamic description.\n\n"
         f"Relational currencies are things exchanged, withheld, or leveraged between characters "
-        f"in this dynamic — for example: loyalty, secrets, safety, obligation, shame, love, debt.\n\n"
+        f"in this dynamic — for example: loyalty, secrets, safety, obligation, "
+        f"shame, love, debt.\n\n"
         f"Dynamic name: {entity_name}\n"
         f"Edge type: {edge_type}\n\n"
         f"Source description:\n{section_snippet}\n\n"
@@ -314,9 +315,7 @@ def extract_state_shift(entity: dict, md_content: str, client: OllamaClient) -> 
     return result
 
 
-def extract_directionality_description(
-    entity: dict, md_content: str, client: OllamaClient
-) -> dict:
+def extract_directionality_description(entity: dict, md_content: str, client: OllamaClient) -> dict:
     """Fill ``entity["directionality"]["description"]`` using LLM extraction.
 
     Skips silently if ``directionality`` is not a dict or ``description`` is
@@ -572,7 +571,7 @@ def fill_all_llm_patch(
         Dict mapping type slug → summary dict with keys:
         ``files_processed``, ``entities_updated``, ``entities_skipped``.
     """
-    supported_patch_types = ["dynamics"]
+    supported_patch_types = ["dynamics", "spatial-topology", "ontological-posture"]
     type_list = types if types is not None else supported_patch_types
 
     summary: dict[str, dict] = {}
@@ -628,9 +627,17 @@ def fill_all_llm_patch(
 
             for entity in entities:
                 filled = entity
-                filled = extract_valence(filled, md_content, client)
-                filled = extract_currencies(filled, md_content, client)
-                filled = extract_scale_manifestations(filled, md_content, client)
+                if type_slug == "dynamics":
+                    filled = extract_valence(filled, md_content, client)
+                    filled = extract_currencies(filled, md_content, client)
+                    filled = extract_scale_manifestations(filled, md_content, client)
+                elif type_slug == "spatial-topology":
+                    filled = extract_state_shift(filled, md_content, client)
+                    filled = extract_directionality_description(filled, md_content, client)
+                    filled = extract_friction_description(filled, md_content, client)
+                elif type_slug == "ontological-posture":
+                    filled = extract_crossing_rules(filled, md_content, client)
+                    filled = extract_obligations_across(filled, md_content, client)
 
                 if filled != entity:
                     entities_updated += 1

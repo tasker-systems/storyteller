@@ -181,7 +181,11 @@ class TestExtractCurrencies:
     def test_prompt_includes_entity_name(self):
         mock_client = MagicMock()
         mock_client.generate_structured.return_value = {"currencies": ["debt"]}
-        entity = {"canonical_name": "The Great Bargain", "edge_type": "transactional", "currencies": []}
+        entity = {
+            "canonical_name": "The Great Bargain",
+            "edge_type": "transactional",
+            "currencies": [],
+        }
         extract_currencies(entity, "md", mock_client)
         call_args = mock_client.generate_structured.call_args
         prompt = call_args.kwargs.get("prompt") or call_args.args[1]
@@ -340,14 +344,18 @@ class TestFillAllLlmPatch:
     def test_processes_dynamics_files(self, tmp_path: Path):
         corpus = self._make_corpus(tmp_path)
         mock_client = self._make_mock_client()
-        summary = fill_all_llm_patch(corpus, mock_client, types=["dynamics"], genres=None, dry_run=False)
+        summary = fill_all_llm_patch(
+            corpus, mock_client, types=["dynamics"], genres=None, dry_run=False
+        )
         assert "dynamics" in summary
         assert summary["dynamics"]["files_processed"] == 1
 
     def test_entities_updated_reported(self, tmp_path: Path):
         corpus = self._make_corpus(tmp_path)
         mock_client = self._make_mock_client()
-        summary = fill_all_llm_patch(corpus, mock_client, types=["dynamics"], genres=None, dry_run=False)
+        summary = fill_all_llm_patch(
+            corpus, mock_client, types=["dynamics"], genres=None, dry_run=False
+        )
         assert summary["dynamics"]["entities_updated"] >= 1
 
     def test_dry_run_does_not_write(self, tmp_path: Path):
@@ -363,7 +371,9 @@ class TestFillAllLlmPatch:
     def test_dry_run_still_reports_changes(self, tmp_path: Path):
         corpus = self._make_corpus(tmp_path)
         mock_client = self._make_mock_client()
-        summary = fill_all_llm_patch(corpus, mock_client, types=["dynamics"], genres=None, dry_run=True)
+        summary = fill_all_llm_patch(
+            corpus, mock_client, types=["dynamics"], genres=None, dry_run=True
+        )
         assert summary["dynamics"]["entities_updated"] >= 1
 
     def test_writes_updated_json(self, tmp_path: Path):
@@ -385,7 +395,9 @@ class TestFillAllLlmPatch:
     def test_genre_filter_limits_files(self, tmp_path: Path):
         corpus = self._make_corpus(tmp_path)
         # Add a second genre file that should be excluded
-        extra = [{"canonical_name": "X", "valence": None, "currencies": [], "scale_manifestations": None}]
+        extra = [
+            {"canonical_name": "X", "valence": None, "currencies": [], "scale_manifestations": None}
+        ]
         (corpus / "discovery" / "dynamics" / "cosmic-horror.json").write_text(json.dumps(extra))
 
         mock_client = self._make_mock_client()
@@ -398,23 +410,92 @@ class TestFillAllLlmPatch:
         corpus = self._make_corpus(tmp_path)
         mock_client = MagicMock()
         summary = fill_all_llm_patch(
+            corpus, mock_client, types=["profiles"], genres=None, dry_run=False
+        )
+        assert "profiles" not in summary
+
+    def test_processes_spatial_topology(self, tmp_path: Path):
+        corpus = tmp_path / "narrative-data"
+        st_dir = corpus / "discovery" / "spatial-topology"
+        st_dir.mkdir(parents=True)
+        (st_dir / "folk-horror.md").write_text("Source markdown for spatial topology.")
+        entities = [
+            {
+                "source_setting": "Village",
+                "target_setting": "Forest",
+                "state_shift": None,
+                "directionality": {"type": "one_way", "description": None},
+                "friction": {"type": "environmental", "level": "high", "description": None},
+            }
+        ]
+        (st_dir / "folk-horror.json").write_text(json.dumps(entities))
+
+        mock_client = MagicMock()
+        mock_client.generate.side_effect = ["Shift desc.", "Dir desc.", "Friction desc."]
+
+        summary = fill_all_llm_patch(
             corpus, mock_client, types=["spatial-topology"], genres=None, dry_run=False
         )
-        # spatial-topology not supported in llm_patch — should not appear
-        assert "spatial-topology" not in summary
+        assert "spatial-topology" in summary
+        assert summary["spatial-topology"]["entities_updated"] >= 1
+
+        written = json.loads((st_dir / "folk-horror.json").read_text())
+        assert written[0]["state_shift"] == "Shift desc."
+
+    def test_processes_ontological_posture(self, tmp_path: Path):
+        corpus = tmp_path / "narrative-data"
+        op_dir = corpus / "discovery" / "ontological-posture"
+        op_dir.mkdir(parents=True)
+        (op_dir / "folk-horror.md").write_text("Source markdown for ontological posture.")
+        entities = [
+            {
+                "default_subject": "The Community",
+                "self_other_boundary": {
+                    "stability": "rigid",
+                    "crossing_rules": None,
+                    "obligations_across": None,
+                },
+            }
+        ]
+        (op_dir / "folk-horror.json").write_text(json.dumps(entities))
+
+        mock_client = MagicMock()
+        mock_client.generate.side_effect = ["Crossing rules desc.", "Obligations desc."]
+
+        summary = fill_all_llm_patch(
+            corpus, mock_client, types=["ontological-posture"], genres=None, dry_run=False
+        )
+        assert "ontological-posture" in summary
+        assert summary["ontological-posture"]["entities_updated"] >= 1
+
+    def test_spatial_topology_now_supported(self, tmp_path: Path):
+        corpus = tmp_path / "narrative-data"
+        st_dir = corpus / "discovery" / "spatial-topology"
+        st_dir.mkdir(parents=True)
+        (st_dir / "folk-horror.md").write_text("")
+        (st_dir / "folk-horror.json").write_text("[]")
+        mock_client = MagicMock()
+        summary = fill_all_llm_patch(
+            corpus, mock_client, types=["spatial-topology"], genres=None, dry_run=False
+        )
+        assert "spatial-topology" in summary
 
     def test_missing_type_dir_returns_zero_summary(self, tmp_path: Path):
         corpus = tmp_path / "narrative-data"
         corpus.mkdir(parents=True)
         mock_client = MagicMock()
-        summary = fill_all_llm_patch(corpus, mock_client, types=["dynamics"], genres=None, dry_run=False)
+        summary = fill_all_llm_patch(
+            corpus, mock_client, types=["dynamics"], genres=None, dry_run=False
+        )
         assert summary["dynamics"]["files_processed"] == 0
         assert summary["dynamics"]["entities_updated"] == 0
 
     def test_summary_keys_present(self, tmp_path: Path):
         corpus = self._make_corpus(tmp_path)
         mock_client = self._make_mock_client()
-        summary = fill_all_llm_patch(corpus, mock_client, types=["dynamics"], genres=None, dry_run=False)
+        summary = fill_all_llm_patch(
+            corpus, mock_client, types=["dynamics"], genres=None, dry_run=False
+        )
         result = summary["dynamics"]
         assert "files_processed" in result
         assert "entities_updated" in result
@@ -628,16 +709,11 @@ class TestExtractObligationsAcross:
             },
         }
         result = extract_obligations_across(entity, "source md", mock_client)
-        assert (
-            result["self_other_boundary"]["obligations_across"]
-            == "Reciprocal truth and safety."
-        )
+        assert result["self_other_boundary"]["obligations_across"] == "Reciprocal truth and safety."
 
     def test_skips_populated(self):
         mock_client = MagicMock()
-        entity = {
-            "self_other_boundary": {"obligations_across": "Set.", "crossing_rules": None}
-        }
+        entity = {"self_other_boundary": {"obligations_across": "Set.", "crossing_rules": None}}
         extract_obligations_across(entity, "md", mock_client)
         mock_client.generate.assert_not_called()
 
