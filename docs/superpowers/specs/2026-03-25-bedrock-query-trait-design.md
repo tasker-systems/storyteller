@@ -26,14 +26,12 @@ This rename replaces all `ground_state` references across SQL, Python, and Rust.
 ### Crate Ownership
 
 ```
-storyteller-core (owns contracts)
-├── src/types/bedrock.rs        → BedrockEntity<T>
-└── src/traits/bedrock.rs       → BedrockQuery trait (returns serde_json::Value for genre_context)
+storyteller-core (owns contracts + types)
+├── src/types/bedrock.rs        → BedrockEntity<T>, GenreContext, all Record structs
+└── src/traits/bedrock.rs       → BedrockQuery trait
 
-storyteller-storykeeper (owns implementations + concrete types)
+storyteller-storykeeper (owns implementations)
 ├── src/bedrock/mod.rs          → PostgresBedrock struct + trait impl
-├── src/bedrock/records.rs      → Record structs (sqlx::FromRow + serde)
-├── src/bedrock/genre_context.rs → GenreContext composite struct
 └── src/bedrock/queries/        → Query functions organized by pattern
     ├── genre_context.rs        → Bulk genre_context() via SQL function
     ├── by_genre.rs             → All *_by_genre() queries
@@ -43,13 +41,15 @@ storyteller-storykeeper (owns implementations + concrete types)
     └── reference.rs            → genres(), trope_families()
 ```
 
-**Why this split**: Core owns trait contracts (no sqlx dependency) so any crate can reference the promise. Storykeeper owns implementations, concrete Record structs, and the `GenreContext` composite (which references Record types). `GenreContext` lives in storykeeper because it names concrete Record types that depend on sqlx — core cannot depend on storykeeper. The `BedrockQuery` trait in core returns `serde_json::Value` for `genre_context()` and the storykeeper module provides the typed `GenreContext` struct plus a `parse_genre_context()` helper for consumers that want typed access. Alternatively, the trait returns an opaque `GenreContext` type defined in core with no sqlx dependency (using serde_json::Value fields) and storykeeper provides accessor methods that return typed Records. The implementation will determine which pattern is cleanest.
+**Why this split**: Core owns all types and trait contracts. Record structs derive `sqlx::FromRow`, which requires sqlx as a dependency in core — but only for the derive macro and Postgres type mappings (`Uuid`, `DateTime<Utc>`, `serde_json::Value`). No runtime, no connection pool, no TLS. Core knows *what shape data takes*; storykeeper knows *how to get it from PostgreSQL*.
+
+This keeps the dependency graph clean: any crate (engine, api, future agents) can reference Record types and the `BedrockQuery` trait through core without depending on storykeeper. `GenreContext` lives in core alongside the Record types it composes, and the trait returns fully typed results with no `serde_json::Value` indirection.
 
 ### Type System
 
-#### Record Structs (storyteller-storykeeper)
+#### Record Structs (storyteller-core)
 
-One `Record` struct per table. Each derives `sqlx::FromRow`, `Debug`, `Clone`, `Serialize`, `Deserialize`. Named `*Record` (not `*Row`) because query results may come from joins or aggregates, not strictly single rows.
+One `Record` struct per table, living in `storyteller-core/src/types/bedrock.rs`. Each derives `sqlx::FromRow`, `Debug`, `Clone`, `Serialize`, `Deserialize`. Named `*Record` (not `*Row`) because query results may come from joins or aggregates, not strictly single rows. Living in core means any crate can reference these types without depending on storykeeper.
 
 ```rust
 /// Archetype entity from bedrock.archetypes.
@@ -91,7 +91,7 @@ pub struct BedrockEntity<T> {
 
 #### GenreContext Composite (storyteller-core)
 
-Bulk result from `genre_context()` — all 12 types for a genre:
+Bulk result from `genre_context()` — all 12 types for a genre. Lives in core alongside the Record types it composes:
 
 ```rust
 /// Complete bedrock context for a single genre.
@@ -353,7 +353,7 @@ Test setup connects to `DATABASE_URL` or falls back to the development default.
 
 ## Key Design Decisions
 
-1. **Trait in core, impl in storykeeper** — consumers depend on the promise, not the mechanism
+1. **Types and trait in core, impl in storykeeper** — Record structs, GenreContext, BedrockEntity, and BedrockQuery all live in core so any crate can reference them. Core adds sqlx as a lightweight dependency (derive macro + type mappings only, no runtime). Storykeeper owns query execution via PostgresBedrock.
 2. **Record not Row** — query results may come from joins/aggregates, not strictly single rows
 3. **WET-first** — explicit per-type methods; extract `AsGenreScopedRecord` / `AsSluggableRecord` when patterns emerge in practice
 4. **SQL function for bulk** — `bedrock.genre_context()` avoids N+1, enables query plan optimization and index tuning
