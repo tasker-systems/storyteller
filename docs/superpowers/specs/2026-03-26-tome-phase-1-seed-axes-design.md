@@ -32,7 +32,7 @@ Each axis carries:
 | `name` | string | Human-readable name (e.g., `"Land Tenure System"`) |
 | `domain` | string | Parent domain slug |
 | `description` | string | What this axis describes and why it matters for world-building |
-| `axis_type` | enum | `numeric`, `categorical`, `ordinal`, `bipolar`, `set` |
+| `axis_type` | enum | `numeric`, `categorical`, `ordinal`, `bipolar`, `set`, `profile` |
 | `values` | polymorphic | See Values section below |
 | `surfacing` | object | Structured surfacing argument (see Surfacing section) |
 | `provenance` | enum | `seed`, `elaborated`, `discovered` |
@@ -47,8 +47,13 @@ Each axis carries:
 - **categorical**: `["communal", "feudal", "freehold", "state-owned", "corporate", "mixed-tenure"]`
 - **ordinal**: `["none", "minimal", "moderate", "substantial", "dominant"]`
 - **set**: `["agriculture", "mining", "fishing", "trade", "manufacturing"]` (multiple can be selected)
+- **profile**: `{"sub_dimensions": ["mineral-deposits", "potable-water", ...], "levels": ["absent", "scarce", "limited", "moderate", "abundant", "dominant"]}` (map of sub-dimension to ordinal level — used when a single axis encompasses multiple related sub-dimensions that each need independent positioning)
 
-These mirror the five types used in bedrock dimensional extraction (`bedrock.dimension_values`).
+The first five mirror bedrock dimensional extraction types (`bedrock.dimension_values`).
+The `profile` type is new to Tome — it emerged because some world properties (resource
+abundance, power distribution) are too coarse as a single value but too tightly coupled
+to split into independent axes. A profile axis defines a fixed vocabulary of
+sub-dimensions and ordinal levels; a world position assigns one level per sub-dimension.
 
 **Cross-domain axes**: Some axes naturally span multiple domains (e.g., infrastructure
 touches material conditions, economic forms, and political structures). Each axis
