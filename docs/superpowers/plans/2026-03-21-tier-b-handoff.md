@@ -1,5 +1,7 @@
 # Tier B Handoff: Data Generation Complete, Analysis Complete, Ready for Structuring
 
+> **Status (2026-03-27):** Partially superseded. Stage 2 JSON Structuring (listed below as "Immediate") is DONE — bedrock schema built, 3,410 entities loaded, BedrockQuery trait with 33 methods (Mar 25). Character Vertex Evolution and Spatial Pipeline Engineering are NOT done. Tier C is NOT started. Note: a "Tier Betwixt" milestone now sits between Tier B completion and Tier C, covering the Tome+Lore data layer (51 axes, mutual production graph with 1,302 edges, Lore elicitation methodology next). See `milestones/storyteller/tier-betwixt-grammar-to-vocabulary.md` for current state.
+
 **Date:** 2026-03-21
 **Branch:** `jcoletaylor/narrative-data-exploratory-research`
 **Session:** The Inflection Session (Mar 18-21 2026)

@@ -1,5 +1,7 @@
 # Tome and Lore: Grammar, Vocabulary, and the Specificity of Worlds
 
+> **Status (2026-03-27):** Foundation concepts remain valid. The Tome axis framework is now implemented: 51 axes across 6 domains (the six seed domains described below), mutual production graph with 1,240 pairwise + 62 compound edges. The grammar/vocabulary distinction, mutual production principle, and agent roles described here are realized in the data layer. Phase 3 (Lore elicitation methodology) is next — the "World-Building as Authoring" section below describes what Phase 3 will design. World-building tools remain Tier C architecture (not started). See `milestones/storyteller/tier-betwixt-grammar-to-vocabulary.md` for implementation status.
+
 ## The Distinction
 
 The narrative data corpus — genres, archetypes, settings, dynamics, goals, tropes, shapes, ontological postures, spatial topologies, place-entities — constitutes a **grammar** of storytelling. It describes how genres work, what character shapes must exist, how places relate, what tensions drive scenes, how knowledge costs and power flows. It is the structural language through which any story in a given genre can be told.

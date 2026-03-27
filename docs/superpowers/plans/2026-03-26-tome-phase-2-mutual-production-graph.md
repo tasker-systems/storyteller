@@ -1,5 +1,7 @@
 # Tome Phase 2: Mutual Production Graph — Implementation Plan
 
+> **Status (2026-03-27):** COMPLETE. All 11 tasks done. 21 edge chunks annotated by qwen3.5:35b, 1,240 pairwise edges + 62 compound edges exported to `edges.json`, coherence tests passed (3 worlds), stress test run. Key finding: aesthetic-cultural domain is a gravity well (highest edge density). See `storyteller-data/narrative-data/tome/edges/` for artifacts.
+
 > **For agentic workers:** This plan mixes Python tooling (Tasks 1-4) with collaborative elicitation (Tasks 5-7) and validation (Tasks 8-10). Tasks 1-4 are code; Tasks 5-7 are LLM-driven pipeline execution; Tasks 8-10 are analysis and export. Use superpowers:executing-plans for inline execution with review checkpoints.
 
 **Goal:** Produce a curated mutual production graph mapping relationships between 51 Tome axes, with pairwise edges, compound edges, and cluster annotations.
