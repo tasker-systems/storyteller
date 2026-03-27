@@ -265,6 +265,26 @@ def status() -> None:
 
 
 # ---------------------------------------------------------------------------
+# tome subgroup
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def tome() -> None:
+    """Tome world-building axis and edge operations."""
+
+
+@tome.command("generate-edges")
+def tome_generate_edges() -> None:
+    """Generate exhaustive edge combinatorics for mutual production graph."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.generate_edges import generate_all
+
+    data_path = resolve_data_path()
+    generate_all(data_path)
+
+
+# ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------
 
