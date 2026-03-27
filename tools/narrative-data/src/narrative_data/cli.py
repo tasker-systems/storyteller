@@ -307,6 +307,23 @@ def tome_export_edges() -> None:
     export_all(data_path)
 
 
+@tome.command("stress-test")
+@click.option("--count", default=20, help="Number of world sketches to generate")
+@click.option("--depth", default=6, help="Maximum chain depth per sketch")
+@click.option(
+    "--seed-domain",
+    default="material-conditions",
+    help="Domain to seed chains from",
+)
+def tome_stress_test(count: int, depth: int, seed_domain: str) -> None:
+    """Run chain generation stress test on the mutual production graph."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.chain_generator import run_stress_test
+
+    data_path = resolve_data_path()
+    run_stress_test(data_path, n_sketches=count, max_depth=depth, seed_domain=seed_domain)
+
+
 # ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------

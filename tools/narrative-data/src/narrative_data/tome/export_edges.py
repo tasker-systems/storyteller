@@ -40,8 +40,8 @@ def _parse_table_row(line: str) -> list[str] | None:
         return None
     # Strip leading/trailing pipes and split
     cells = [c.strip() for c in line.strip("|").split("|")]
-    # Skip separator rows
-    if all(re.match(r"^-+$", c.replace(" ", "")) for c in cells if c):
+    # Skip separator rows (handles both '---' and ':---:' alignment markers)
+    if all(re.match(r"^:?-+:?$", c.replace(" ", "")) for c in cells if c):
         return None
     return cells
 
@@ -135,15 +135,250 @@ def _parse_edge_assessment(content: str) -> tuple[list[dict[str, Any]], list[dic
 # Compound edge parsing
 # ---------------------------------------------------------------------------
 
-# Pattern: COMPOUND: [axis-a, axis-b] -> target | type | description
+# Fallback pattern: COMPOUND: [axis-a, axis-b] -> target | type | description
 _COMPOUND_RE = re.compile(
     r"COMPOUND:\s*\[([^\]]+)\]\s*->\s*([^\|]+)\s*\|\s*([^\|]+)\s*\|\s*(.+)",
     re.IGNORECASE,
 )
 
+# Prose pattern: bold header with arrow (→ or ->), optional backticks and
+# parenthetical values on axis names. Captures:
+#   group 1: source axes (e.g. "axis-a (Val) + axis-b (Val)")
+#   group 2: target axis  (e.g. "target-axis (Val)")
+#   group 3: optional inline description after ** (colon-separated or empty)
+# Handles numbered ("1. **..."), bulleted ("* **..."), or bare ("**...") lines.
+_PROSE_HEADER_RE = re.compile(
+    r"^(?:\d+\.\s*|\*\s*|-\s*)?"          # optional list prefix
+    r"\*\*"                                 # opening bold
+    r"(.+?)"                                # source axes + target (greedy-minimal)
+    r"\*\*"                                 # closing bold
+    r"[:\s]*(.*)?$",                        # optional inline description
+)
+
+# Arrow pattern to split source axes from target within the bold header.
+# Matches → (unicode), -> (ascii), or the rare ⟶.
+_ARROW_RE = re.compile(r"\s*(?:→|->|⟶)\s*")
+
+_DEFAULT_COMPOUND_WEIGHT = 0.7
+
+
+def _strip_backticks(s: str) -> str:
+    """Remove surrounding backticks from an axis name."""
+    return s.strip().strip("`").strip()
+
+
+def _strip_parenthetical(s: str) -> str:
+    """Remove trailing parenthetical value hints like '(Hereditary)'.
+
+    Keeps the bare axis slug: 'authority-legitimation (Hereditary)' -> 'authority-legitimation'
+    """
+    return re.sub(r"\s*\([^)]*\)\s*$", "", s).strip()
+
+
+def _clean_axis_name(raw: str) -> str:
+    """Normalize an axis name: strip parentheticals, backticks, whitespace.
+
+    Order matters: parentheticals are stripped first so that backticks at the
+    boundary (e.g. '`axis-name` (Value)') are exposed for removal.
+    """
+    return _strip_backticks(_strip_parenthetical(raw))
+
+
+def _infer_edge_type(text: str) -> str:
+    """Infer edge type from description text by keyword search.
+
+    Matches verb stems to handle conjugation (e.g. 'constrain' matches
+    'constrains'). Returns the first matching type from _VALID_EDGE_TYPES,
+    or 'produces' as the safest default.
+    """
+    lower = text.lower()
+    # Check in priority order: more specific stems first.
+    # Each tuple is (stem_to_search, canonical_edge_type).
+    for stem, edge_type in (
+        ("transform", "transforms"),
+        ("constrain", "constrains"),
+        ("enabl", "enables"),
+        ("produc", "produces"),
+    ):
+        if stem in lower:
+            return edge_type
+    return "produces"
+
+
+def _parse_compound_table(section: str) -> list[dict[str, Any]]:
+    """Parse compound edges from a markdown table format.
+
+    Handles varying column headers:
+      Source Axes / From | Target Axis / Target / To | Type | Weight | Description
+    Source axes are joined with '+' in the cell.
+    """
+    compounds: list[dict[str, Any]] = []
+    in_table = False
+
+    for line in section.splitlines():
+        stripped = line.strip()
+
+        # Detect table header row — look for a pipe-delimited line with
+        # keywords that indicate a compound table (has "Source", "From", etc.)
+        if not in_table:
+            if stripped.startswith("|") and (
+                "Source" in stripped
+                or "From" in stripped
+                or "Target" in stripped
+                or "To" in stripped
+            ):
+                in_table = True
+            continue
+
+        cells = _parse_table_row(stripped)
+        if cells is None:
+            # Separator row or non-table line
+            if stripped.startswith("|"):
+                continue
+            # Non-table line after table → table ended
+            break
+
+        if len(cells) < 2:
+            continue
+
+        # Columns: SourceAxes | Target | Type | Weight | Description
+        source_raw = cells[0].strip()
+        target_raw = cells[1].strip()
+        edge_type = cells[2].strip().lower() if len(cells) > 2 else ""
+        weight_raw = cells[3].strip() if len(cells) > 3 else ""
+        description = cells[4].strip() if len(cells) > 4 else ""
+
+        if not source_raw or not target_raw:
+            continue
+
+        # Split source axes on '+'
+        from_axes = [_clean_axis_name(a) for a in source_raw.split("+") if a.strip()]
+        to_axis = _clean_axis_name(target_raw)
+
+        if not from_axes or not to_axis:
+            continue
+
+        # Validate or infer edge type
+        if edge_type not in _VALID_EDGE_TYPES:
+            edge_type = _infer_edge_type(description)
+
+        # Parse weight
+        try:
+            weight = float(weight_raw)
+        except (ValueError, TypeError):
+            weight = _DEFAULT_COMPOUND_WEIGHT
+
+        compounds.append(
+            {
+                "type": "compound",
+                "from_axes": from_axes,
+                "to_axis": to_axis,
+                "edge_type": edge_type,
+                "weight": weight,
+                "description": description,
+                "provenance": "systematic",
+            }
+        )
+
+    return compounds
+
+
+def _parse_compound_prose(section: str) -> list[dict[str, Any]]:
+    """Parse compound edges from prose formats (numbered lists or bold paragraphs).
+
+    Handles two sub-formats:
+      - Numbered/bulleted: '1. **axis-a + axis-b → target**: description...'
+      - Bold paragraphs:   '**axis-a + axis-b → target**\\ndescription on next line'
+
+    Continuation lines (starting with whitespace or '*') are appended to the
+    description of the current edge.
+    """
+    compounds: list[dict[str, Any]] = []
+    lines = section.splitlines()
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
+
+        m = _PROSE_HEADER_RE.match(line)
+        if not m:
+            continue
+
+        header_body = m.group(1).strip()
+        inline_desc = (m.group(2) or "").strip()
+
+        # Split header on arrow to get source axes and target
+        arrow_parts = _ARROW_RE.split(header_body)
+        if len(arrow_parts) < 2:
+            continue
+
+        source_part = arrow_parts[0].strip()
+        target_part = arrow_parts[-1].strip()
+
+        # Split source axes on '+'
+        from_axes = [_clean_axis_name(a) for a in source_part.split("+") if a.strip()]
+        to_axis = _clean_axis_name(target_part)
+
+        if not from_axes or not to_axis:
+            continue
+
+        # Gather description: inline portion + continuation lines
+        desc_parts: list[str] = []
+        if inline_desc:
+            desc_parts.append(inline_desc)
+
+        # Collect continuation lines (indented, italic, or plain prose that
+        # isn't a new bold header, list item, or section heading)
+        while i < len(lines):
+            next_line = lines[i]
+            next_stripped = next_line.strip()
+            # Stop at: blank line, new bold header, numbered item, section heading, table row
+            if not next_stripped:
+                break
+            if _PROSE_HEADER_RE.match(next_stripped):
+                break
+            if re.match(r"^\d+\.\s+\*\*", next_stripped):
+                break
+            if next_stripped.startswith("## "):
+                break
+            if next_stripped.startswith("|"):
+                break
+            # Accept italic continuation (*text*) or plain text
+            desc_parts.append(next_stripped.strip("*").strip())
+            i += 1
+
+        description = " ".join(desc_parts).strip()
+
+        edge_type = _infer_edge_type(description)
+
+        compounds.append(
+            {
+                "type": "compound",
+                "from_axes": from_axes,
+                "to_axis": to_axis,
+                "edge_type": edge_type,
+                "weight": _DEFAULT_COMPOUND_WEIGHT,
+                "description": description,
+                "provenance": "systematic",
+            }
+        )
+
+    return compounds
+
 
 def _parse_compound_edges(content: str) -> list[dict[str, Any]]:
-    """Parse COMPOUND: lines from the '## Compound Edges' section."""
+    """Parse compound edges from the '## Compound Edges' section.
+
+    Supports three LLM-produced formats plus the original COMPOUND: fallback:
+      1. Markdown table (pipe-delimited, with Source/From and Target/To columns)
+      2. Numbered/bulleted prose with bold header and arrow
+      3. Bold prose paragraphs with arrow, description on following line(s)
+
+    For formats without explicit type/weight:
+      - Type is inferred from keywords in the description text
+      - Weight defaults to 0.7
+    """
     start_marker = "## Compound Edges"
     end_marker = "## Cluster Annotation"
 
@@ -154,6 +389,8 @@ def _parse_compound_edges(content: str) -> list[dict[str, Any]]:
     section = content[start:end] if end != -1 else content[start:]
 
     compounds: list[dict[str, Any]] = []
+
+    # Strategy 1: Try COMPOUND: lines (original format)
     for line in section.splitlines():
         m = _COMPOUND_RE.match(line.strip())
         if not m:
@@ -170,10 +407,22 @@ def _parse_compound_edges(content: str) -> list[dict[str, Any]]:
                 "from_axes": from_axes,
                 "to_axis": target,
                 "edge_type": edge_type,
+                "weight": _DEFAULT_COMPOUND_WEIGHT,
                 "description": description.strip(),
                 "provenance": "systematic",
             }
         )
+
+    if compounds:
+        return compounds
+
+    # Strategy 2: Try markdown table format
+    compounds = _parse_compound_table(section)
+    if compounds:
+        return compounds
+
+    # Strategy 3: Try prose formats (numbered lists or bold paragraphs)
+    compounds = _parse_compound_prose(section)
     return compounds
 
 
