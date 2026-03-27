@@ -284,6 +284,29 @@ def tome_generate_edges() -> None:
     generate_all(data_path)
 
 
+@tome.command("annotate-edges")
+@click.option("--chunks", default=None, help="Comma-separated chunk keys to annotate")
+@click.option("--force", is_flag=True, default=False, help="Re-annotate even if already done")
+def tome_annotate_edges(chunks: str | None, force: bool) -> None:
+    """Annotate edge files using qwen3.5:35b."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.annotate_edges import annotate_all
+
+    data_path = resolve_data_path()
+    chunk_list = _parse_list(chunks) if chunks else None
+    annotate_all(data_path, chunks=chunk_list, force=force)
+
+
+@tome.command("export-edges")
+def tome_export_edges() -> None:
+    """Export curated edge files to canonical edges.json."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.export_edges import export_all
+
+    data_path = resolve_data_path()
+    export_all(data_path)
+
+
 # ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------
