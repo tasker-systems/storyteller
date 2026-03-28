@@ -87,7 +87,9 @@ Each must have:
 - Structured cluster_membership: primary cluster, boundary_with another cluster,
   boundary_tension specific to this character
 - stated_operative_gap: what they claim vs. what they actually do
-- Relational seeds (4+) including at least one Q1-Q2 character slug
+- Relational seeds (4+) using verb:target-slug format (e.g., "supervises:elda-the-carrier",
+  "fears:the-keepers", "married-into:the-hallodays"). Must include at least one Q1-Q2
+  character slug.
 - Arc-scale goal
 
 ### Q4 — Scene-Driving Characters (1-2)
@@ -102,7 +104,8 @@ material conditions at a specific social position. Everything Q3 has, plus:
   atmospheric_palette (sensory string)
 - Multi-scale goals: existential (what they'd die for), arc (what changes over the story),
   scene (what they want right now)
-- Relational seeds (5+) with multiple references to Q1-Q2 and Q3 characters
+- Relational seeds (5+) using verb:target-slug format, with multiple references to Q1-Q2
+  and Q3 characters
 
 ## Output Schema
 
@@ -134,10 +137,10 @@ No commentary outside the JSON.
     "operative": "What they actually do. Who benefits. What it costs them."
   },
   "relational_seeds": [
-    "relation:target-slug",
-    "relation:target-slug",
-    "relation:target-slug",
-    "relation:target-slug"
+    "supervises:mundane-character-slug",
+    "fears:org-slug",
+    "married-into:cluster-slug",
+    "protects:another-character-slug"
   ],
   "goals": {
     "arc": "What changes over the story for this character."
@@ -179,11 +182,11 @@ No commentary outside the JSON.
     "operative": "What they actually do. The network requires it."
   },
   "relational_seeds": [
-    "relation:target-slug",
-    "relation:target-slug",
-    "relation:target-slug",
-    "relation:target-slug",
-    "relation:target-slug"
+    "controls:org-slug",
+    "answers-to:org-slug",
+    "mother-of:q3-character-slug",
+    "distrusts:mundane-character-slug",
+    "grandmother-of:unnamed-entity"
   ],
   "goals": {
     "existential": "What they would die for or cannot live without.",
@@ -208,8 +211,10 @@ Field notes:
   interaction (0.0 = guarded/opaque, 1.0 = fully expressive)
 - `communicability.translation_friction`: How difficult for the Narrator to render this
   character's inner state (0.0 = immediately legible, 1.0 = deeply alien)
-- `relational_seeds`: Must include at least one Q1-Q2 character slug and at least one
-  organization or social cluster slug. Format: "relation:target-slug"
+- `relational_seeds`: Directional relationships using verb:target-slug format. The verb
+  describes the relationship (supervises, fears, married-into, protects, controls, answers-to,
+  distrusts, depends-on, etc.). Must include at least one Q1-Q2 character slug and at least
+  one organization or social cluster slug.
 - `cluster_membership.boundary_with`: Must reference a different cluster from the social
   substrate. This is where the character's narrative tension lives.
 
