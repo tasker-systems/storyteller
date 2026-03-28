@@ -192,18 +192,19 @@ def _build_genre_profile_summary(genre_profile: dict[str, Any] | None) -> str:
 
 
 def _build_settings_context(data_path: Path, genre_slug: str) -> str:
-    """Load genre settings from the discovery corpus and format for the prompt.
+    """Load genre settings from the discovery corpus and extract abstract spatial functions.
 
     Settings data lives at {data_path}/narrative-data/discovery/settings/{genre_slug}.json
-    and contains structured setting archetypes with communicability dimensions,
-    atmospheric palettes, and narrative functions.
+    and contains structured setting archetypes. Rather than listing canonical setting names
+    (which cause checklist behavior), this function extracts the unique narrative functions
+    and formats them as abstract spatial roles the genre requires.
 
     Args:
         data_path: Root of storyteller-data.
         genre_slug: Genre region slug.
 
     Returns:
-        Markdown-formatted settings context, or empty string if unavailable.
+        Markdown-formatted spatial functions context, or empty string if unavailable.
     """
     settings_path = (
         data_path / "narrative-data" / "discovery" / "settings" / f"{genre_slug}.json"
@@ -219,22 +220,106 @@ def _build_settings_context(data_path: Path, genre_slug: str) -> str:
     if not isinstance(settings, list) or not settings:
         return ""
 
-    lines = ["**Genre Setting Archetypes** (from bedrock — use as spatial inspiration):", ""]
-    for s in settings:
-        name = s.get("canonical_name", "?")
-        func = s.get("narrative_function", "")
-        comm = s.get("communicability", {})
-        palette = s.get("atmospheric_palette", [])
+    # Extract unique narrative functions across all settings.
+    # narrative_function fields are semicolon-separated strings like
+    # "Externalizes History; Imposes Constraints; Enables Scenes"
+    raw_functions: set[str] = set()
+    atmospheric_palettes: list[str] = []
+    communicability_tones: list[str] = []
 
-        lines.append(f"- **{name}**")
-        if func:
-            lines.append(f"  Function: {func}")
-        if comm:
-            comm_parts = [f"{k}: {v}" for k, v in comm.items()]
-            lines.append(f"  Communicability: {', '.join(comm_parts)}")
-        if palette:
-            lines.append(f"  Atmosphere: {', '.join(str(p) for p in palette[:3])}")
+    for s in settings:
+        nf = s.get("narrative_function", "")
+        if nf:
+            for part in nf.split(";"):
+                part = part.strip()
+                if part:
+                    raw_functions.add(part)
+
+        palette = s.get("atmospheric_palette", [])
+        if isinstance(palette, list):
+            atmospheric_palettes.extend(str(p) for p in palette[:2])
+
+        comm = s.get("communicability", {})
+        if isinstance(comm, dict):
+            for v in comm.values():
+                if v and isinstance(v, str):
+                    communicability_tones.append(v)
+
+    if not raw_functions:
+        return ""
+
+    # Map canonical function labels to abstract spatial role descriptions.
+    _FUNCTION_MAP: dict[str, str] = {
+        "Externalizes History": (
+            "a space where history is made visible, contested, or inescapable"
+        ),
+        "Externalizes Conflict": (
+            "a space that makes latent conflict legible and unavoidable"
+        ),
+        "Externalizes Secrets": (
+            "a space that conceals — where something hidden and its hiding matters"
+        ),
+        "Externalizes Failure": (
+            "a space where failure accumulates and cannot be easily escaped"
+        ),
+        "Externalizes the Climax": (
+            "a space where the central tension reaches its breaking point"
+        ),
+        "externalizes vulnerability": (
+            "a space where characters are exposed and unprotected"
+        ),
+        "Imposes Constraints": (
+            "a space whose physical or social rules restrict what characters can do"
+        ),
+        "imposes constraints": (
+            "a space whose physical or social rules restrict what characters can do"
+        ),
+        "Enables Scenes": (
+            "a space that creates conditions for encounter, negotiation, or revelation"
+        ),
+        "enables scenes": (
+            "a space that creates conditions for encounter, negotiation, or revelation"
+        ),
+        "Generates Events": (
+            "a space with its own agency — produces incidents independent of character intent"
+        ),
+        "generates events": (
+            "a space with its own agency — produces incidents independent of character intent"
+        ),
+    }
+
+    spatial_role_lines: list[str] = []
+    seen_descriptions: set[str] = set()
+    for func in sorted(raw_functions):
+        # Use the map if available; otherwise generate a generic description from the raw text
+        description = _FUNCTION_MAP.get(func)
+        if description is None:
+            # Raw function text used as-is (may contain full sentences from some genres)
+            description = func.lower() if len(func) < 80 else func[:80].lower()  # noqa: PLR2004
+        if description not in seen_descriptions:
+            seen_descriptions.add(description)
+            spatial_role_lines.append(f"- {description}")
+
+    lines = [
+        "**Genre Spatial Functions** (what this genre needs — not what it typically looks like):",
+        "",
+        "The genre typically requires spaces that serve these narrative roles:",
+        "",
+    ]
+    lines.extend(spatial_role_lines)
+
+    # Add tonal guidance from atmospheric palettes and communicability tones —
+    # this informs register, not shape.
+    unique_tones = list(dict.fromkeys(communicability_tones))[:4]
+    unique_atmosphere = list(dict.fromkeys(atmospheric_palettes))[:3]
+
+    if unique_tones or unique_atmosphere:
         lines.append("")
+        lines.append("**Tonal register** (how this genre's spaces feel — not what they are):")
+        if unique_atmosphere:
+            lines.append(f"- Atmospheric quality: {', '.join(unique_atmosphere)}")
+        if unique_tones:
+            lines.append(f"- Communicability tones: {', '.join(unique_tones)}")
 
     return "\n".join(lines).rstrip()
 
