@@ -388,6 +388,39 @@ def tome_elicit_orgs(world_slug: str) -> None:
     elicit_orgs(data_path, world_slug)
 
 
+@tome.command("elicit-social-substrate")
+@click.option("--world-slug", required=True, help="World identifier")
+def tome_elicit_social_substrate(world_slug: str) -> None:
+    """Elicit social substrate (lineages, factions, kinship groups) for a composed world."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.elicit_social_substrate import elicit_social_substrate
+
+    data_path = resolve_data_path()
+    elicit_social_substrate(data_path, world_slug)
+
+
+@tome.command("elicit-characters-mundane")
+@click.option("--world-slug", required=True, help="World identifier")
+def tome_elicit_characters_mundane(world_slug: str) -> None:
+    """Elicit mundane characters (Q1 background + Q2 community) for a composed world."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.elicit_characters_mundane import elicit_characters_mundane
+
+    data_path = resolve_data_path()
+    elicit_characters_mundane(data_path, world_slug)
+
+
+@tome.command("elicit-characters-significant")
+@click.option("--world-slug", required=True, help="World identifier")
+def tome_elicit_characters_significant(world_slug: str) -> None:
+    """Elicit significant characters (Q3 tension-bearing + Q4 scene-driving) for a composed world."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.elicit_characters_significant import elicit_characters_significant
+
+    data_path = resolve_data_path()
+    elicit_characters_significant(data_path, world_slug)
+
+
 # ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------
