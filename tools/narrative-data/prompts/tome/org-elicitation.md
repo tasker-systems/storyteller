@@ -36,23 +36,45 @@ in this list.
 
 ## Task
 
-Generate 4-6 organizations or institutions that structure power, labor, belief, or
-social life in this world.
+Generate organizations in two tiers, in this order:
 
-Each organization must be:
-- **Grounded in political/economic/social axes**: anchored in specific axis values from
-  the world position above
-- **Connected to at least one place**: the organization must have a named relationship
-  to a place from the places context
-- **Specific to this world**: it should not be a generic institution that could exist
-  in any world — it must be shaped by this world's particular axis positions
-- **Narratively productive**: the organization must carry tension that generates story
+### Tier 2 — Mundane Institutions (3-5)
 
-## Critical: Stated vs. Operative Reality
+Generate these FIRST. These are organizations that must exist and function as advertised
+given the world's political, economic, and social axis positions. The parish church, the
+market guild, the village militia, the grain assessor's office. They work roughly as they
+claim to. Their value is presence and texture — they make the world legible — not narrative
+tension.
 
-For organizations where the world's authority-legitimation or social-stratification axes
-carry stated/operative duality, surface the gap between the stated function and the
-operative reality. This gap is where narrative tension lives.
+Tier 2 organizations use a simpler schema: slug, name, org_type, one-sentence description,
+stated purpose, and one place association. No stated/operative gap — these function as
+described. No authority_basis field. No relational_seeds required.
+
+### Tier 1 — Narratively Significant Organizations (1-3)
+
+Generate these SECOND. These are organizations where the gap between stated function and
+operative reality creates narrative tension. They must emerge FROM the Tier 2 institutional
+landscape — they exploit, corrupt, subvert, or parasitize the mundane institutions. A
+Tier 1 organization that has no relationship to any Tier 2 institution is probably floating
+free of the world.
+
+One load-bearing organization with a genuine stated/operative gap is more compelling than
+three shallow cabals. Use the full schema including authority_basis, membership,
+stated_vs_operative, relational_seeds, and at least one explicit relationship to a Tier 2
+institution.
+
+## Anti-Proliferation
+
+One organization with a genuine stated/operative gap is sufficient if it's load-bearing.
+Three secret cabals strains credulity. Reserve the gap for where axis positions genuinely
+produce tension between appearance and reality — not every institution needs a hidden agenda.
+If you find yourself writing multiple Tier 1 organizations with similar gap structures, collapse
+them into one.
+
+## Critical: Stated vs. Operative Reality (Tier 1 Only)
+
+For Tier 1 organizations, surface the gap between the stated function and the operative
+reality. This gap is where narrative tension lives.
 
 The stated function is what the organization claims to do or what members believe it does.
 The operative reality is what it actually does — who benefits, what it enforces, what it
@@ -62,12 +84,28 @@ protector or a pure exploiter.
 
 ## Output Schema
 
-Output valid JSON: an array of organization objects. No commentary outside the JSON.
+Output valid JSON: an array of organization objects, Tier 2 objects first, then Tier 1.
+No commentary outside the JSON.
 
-Each organization object must have exactly this structure:
+### Tier 2 object structure:
 
 ```json
 {
+  "tier": 2,
+  "slug": "kebab-case-identifier",
+  "name": "Human-readable organization name",
+  "org_type": "<one of: governance, economic, religious, military, social, labor, educational>",
+  "description": "One sentence. Grounded in an axis value or active edge.",
+  "stated_purpose": "What this institution does and why it exists.",
+  "place_associations": ["place-slug:role"]
+}
+```
+
+### Tier 1 object structure:
+
+```json
+{
+  "tier": 1,
   "slug": "kebab-case-identifier",
   "name": "Human-readable organization name",
   "org_type": "<one of: governance, economic, religious, military, social, labor, educational>",
@@ -103,10 +141,11 @@ Field notes:
 - `place_associations`: List of place slugs with the organization's role at that place,
   e.g. "market-district:headquartered-in", "threshold-gate:controls-access-to",
   "production-hall:oversees-labor-at"
-- `stated_vs_operative`: Both fields required. If there is genuinely no gap (unusual),
-  state that explicitly in operative — do not leave it as a copy of stated
+- `stated_vs_operative`: Both fields required for Tier 1. If there is genuinely no gap
+  (unusual), state that explicitly in operative — do not leave it as a copy of stated
 - `relational_seeds`: Directional relationships to other organizations by slug,
   e.g. "competes-with:merchant-guild", "absorbs-into:temple-authority",
-  "nominally-subordinate-to:crown-administration"
+  "nominally-subordinate-to:crown-administration". At least one seed should reference
+  a Tier 2 institution slug.
 
 Output the JSON array only. No preamble, no explanation, no markdown fences around the outer array.
