@@ -362,6 +362,17 @@ def tome_compose_world(genre: str, setting: str, seed: tuple[str, ...], world_sl
         raise click.ClickException(str(exc)) from exc
 
 
+@tome.command("elicit-places")
+@click.option("--world-slug", required=True, help="World identifier")
+def tome_elicit_places(world_slug: str) -> None:
+    """Elicit named places for a composed world using qwen3.5:35b."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.elicit_places import elicit_places
+
+    data_path = resolve_data_path()
+    elicit_places(data_path, world_slug)
+
+
 # ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------
