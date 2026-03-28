@@ -26,6 +26,7 @@ def compose_world(
     setting_slug: str,
     seeds: dict[str, str],
     world_slug: str,
+    enriched: bool = False,
 ) -> WorldPosition:
     """Compose a fully-propagated WorldPosition for a genre + setting combination.
 
@@ -38,6 +39,8 @@ def compose_world(
         seeds: Mapping of axis slug → value provided by the caller.
         world_slug: Identifier used as the output directory name under
             ``{data_path}/narrative-data/tome/worlds/``.
+        enriched: When ``True``, use LLM-enriched value selection during
+            graph propagation (calls qwen2.5:7b-instruct via Ollama).
 
     Returns:
         The fully-propagated :class:`~narrative_data.tome.world_position.WorldPosition`.
@@ -98,8 +101,18 @@ def compose_world(
     # ------------------------------------------------------------------
     # 4. Propagate
     # ------------------------------------------------------------------
-    console.print("[bold]Running propagation…[/bold]")
-    propagate(wp, data_path)
+    if enriched:
+        from narrative_data.ollama import OllamaClient
+
+        ollama_client: OllamaClient | None = OllamaClient()
+        console.print(
+            "[bold]Running propagation[/bold] [yellow](LLM-enriched value selection active)[/yellow]…"
+        )
+    else:
+        ollama_client = None
+        console.print("[bold]Running propagation…[/bold]")
+
+    propagate(wp, data_path, enriched=enriched, client=ollama_client)
     console.print(
         f"[green]Propagation complete.[/green] "
         f"seeds={wp.seed_count}  inferred={wp.inferred_count}  "

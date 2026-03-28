@@ -333,7 +333,10 @@ def tome_stress_test(count: int, depth: int, seed_domain: str) -> None:
     help="Seed axis as axis-slug=value (repeatable)",
 )
 @click.option("--world-slug", required=True, help="World identifier")
-def tome_compose_world(genre: str, setting: str, seed: tuple[str, ...], world_slug: str) -> None:
+@click.option("--enriched", is_flag=True, default=False, help="Use LLM-enriched value selection")
+def tome_compose_world(
+    genre: str, setting: str, seed: tuple[str, ...], world_slug: str, enriched: bool
+) -> None:
     """Compose a fully-propagated world position for a genre + setting combination."""
     from narrative_data.config import resolve_data_path
     from narrative_data.tome.compose_world import compose_world
@@ -357,6 +360,7 @@ def tome_compose_world(genre: str, setting: str, seed: tuple[str, ...], world_sl
             setting_slug=setting,
             seeds=seeds,
             world_slug=world_slug,
+            enriched=enriched,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc

@@ -12,11 +12,17 @@ axes) is filled at each step, iterating until all axes are positioned.
 
 from __future__ import annotations
 
+import logging
 import random
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from narrative_data.tome.world_position import WorldPosition, load_all_axes, load_graph
+
+if TYPE_CHECKING:
+    from narrative_data.ollama import OllamaClient
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +144,160 @@ def _select_value(axis: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _get_valid_values(axis: dict[str, Any]) -> list[str]:
+    """Return the list of valid string values for an axis (all types).
+
+    For bipolar axes returns ``["low", "mid", "high"]``.
+    For profile axes returns ``"dim:level"`` combinations.
+    For all others returns the ``values`` list directly.
+    """
+    axis_type: str = axis.get("axis_type", "categorical")
+    values = axis.get("values", [])
+
+    if axis_type in ("categorical", "ordinal", "set"):
+        if isinstance(values, list) and values:
+            return list(values)
+        return []
+
+    if axis_type == "bipolar":
+        return ["low", "mid", "high"]
+
+    if axis_type == "profile":
+        if isinstance(values, dict):
+            sub_dims: list[str] = values.get("sub_dimensions", [])
+            levels: list[str] = values.get("levels", ["low", "moderate", "high"])
+            return [f"{d}:{l}" for d in sub_dims for l in levels]
+        return []
+
+    if isinstance(values, list) and values:
+        return list(values)
+    return []
+
+
+def _select_value_enriched(
+    axis: dict[str, Any],
+    incoming_edges: list[dict[str, Any]],
+    set_positions: dict[str, str],
+    genre_slug: str,
+    setting_slug: str,
+    client: "OllamaClient",
+) -> str:
+    """Select a value using LLM-ranked weighting, falling back to random.
+
+    Builds a concise prompt asking qwen2.5:7b-instruct to rank valid values
+    for the axis given genre, setting, and already-established world context.
+    Uses the returned weights to sample via :func:`random.choices`, then falls
+    back to :func:`_select_value` if the LLM call fails or returns unparseable
+    results.
+
+    Args:
+        axis: The axis definition dict (slug, name, axis_type, values, …).
+        incoming_edges: Active incoming edges whose source axes are already set.
+        set_positions: Mapping of already-set axis slugs to their current values.
+        genre_slug: Genre identifier for contextual framing.
+        setting_slug: Setting identifier for contextual framing.
+        client: An :class:`~narrative_data.ollama.OllamaClient` instance.
+
+    Returns:
+        A string value chosen from the axis's valid values.
+    """
+    from narrative_data.config import STRUCTURING_MODEL, STRUCTURING_TIMEOUT
+
+    valid_values = _get_valid_values(axis)
+    if not valid_values:
+        return _select_value(axis)
+
+    axis_slug: str = axis.get("slug", "unknown")
+    axis_description: str = axis.get("description", axis.get("name", axis_slug))
+
+    # Pick the 2-3 most relevant set positions for context (by incoming edge proximity)
+    edge_sources = {e.get("from_axis") for e in incoming_edges if e.get("from_axis")}
+    relevant_positions: dict[str, str] = {}
+    for src in edge_sources:
+        if src in set_positions:
+            relevant_positions[src] = set_positions[src]
+    # Pad with a few more set positions if we have fewer than 2
+    if len(relevant_positions) < 2:
+        for slug, val in set_positions.items():
+            if slug not in relevant_positions:
+                relevant_positions[slug] = val
+            if len(relevant_positions) >= 3:
+                break
+
+    established_text = ", ".join(f"{k}={v}" for k, v in list(relevant_positions.items())[:3])
+
+    edge_descriptions: list[str] = []
+    for edge in incoming_edges:
+        from_ax = edge.get("from_axis", "?")
+        edge_type = edge.get("edge_type", "?")
+        desc = edge.get("description", "")
+        weight = edge.get("weight", 0.0)
+        edge_descriptions.append(f"{from_ax} →{edge_type}→ {axis_slug} (w={weight}): {desc}")
+    edges_text = "; ".join(edge_descriptions) if edge_descriptions else "none"
+
+    values_list = ", ".join(f'"{v}"' for v in valid_values)
+
+    prompt = (
+        f'Given a {genre_slug} world with setting "{setting_slug}":\n'
+        f"Already established: {established_text}\n"
+        f"Active edges for {axis_slug}: {edges_text}\n\n"
+        f"Rank these values for {axis_slug} ({axis_description}) from most to least plausible:\n"
+        f"{values_list}\n\n"
+        f'Return JSON: [{{"value": "...", "weight": 0.0-1.0}}]'
+    )
+
+    schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "value": {"type": "string"},
+                "weight": {"type": "number"},
+            },
+            "required": ["value", "weight"],
+        },
+    }
+
+    try:
+        result = client.generate_structured(
+            model=STRUCTURING_MODEL,
+            prompt=prompt,
+            schema=schema,
+            timeout=STRUCTURING_TIMEOUT,
+            temperature=0.1,
+        )
+
+        if not isinstance(result, list) or not result:
+            log.warning("_select_value_enriched: LLM returned empty/non-list result; falling back")
+            return _select_value(axis)
+
+        valid_set = set(valid_values)
+        weighted_pairs: list[tuple[str, float]] = []
+        for entry in result:
+            if not isinstance(entry, dict):
+                continue
+            value = entry.get("value")
+            weight = entry.get("weight")
+            if value in valid_set and isinstance(weight, (int, float)) and weight >= 0:
+                weighted_pairs.append((value, float(weight)))
+
+        if not weighted_pairs:
+            log.warning(
+                "_select_value_enriched: no valid (value, weight) pairs from LLM; falling back"
+            )
+            return _select_value(axis)
+
+        chosen_values, chosen_weights = zip(*weighted_pairs)
+        return random.choices(list(chosen_values), weights=list(chosen_weights), k=1)[0]
+
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "_select_value_enriched: LLM call failed (%s); falling back to random selection",
+            exc,
+        )
+        return _select_value(axis)
+
+
 def _build_justification(
     active_edges: list[dict[str, Any]],
 ) -> str:
@@ -169,7 +329,12 @@ def _build_justification(
 # ---------------------------------------------------------------------------
 
 
-def propagate(world_position: WorldPosition, data_path: Path) -> WorldPosition:
+def propagate(
+    world_position: WorldPosition,
+    data_path: Path,
+    enriched: bool = False,
+    client: "OllamaClient | None" = None,
+) -> WorldPosition:
     """Fill all axis positions in *world_position* via graph propagation.
 
     Algorithm:
@@ -177,10 +342,13 @@ def propagate(world_position: WorldPosition, data_path: Path) -> WorldPosition:
     1. Load all axes and the edge graph from *data_path*.
     2. Build an incoming-edge index.
     3. Iteratively find the unset axis with the highest determination score
-       (score > 0), fill it with a random valid value, and record the
-       justification.
+       (score > 0), fill it with a valid value, and record the justification.
     4. Once no more axes can be reached via graph edges, fill remaining unset
        axes with a random value at confidence 0.1 ("unreachable" fill).
+
+    When *enriched* is ``True`` and a *client* is provided, value selection
+    uses :func:`_select_value_enriched` (LLM-ranked weighting) instead of
+    pure random sampling.  Falls back gracefully if the LLM call fails.
 
     Seed positions (source == "seed") are never overwritten.
 
@@ -188,6 +356,9 @@ def propagate(world_position: WorldPosition, data_path: Path) -> WorldPosition:
         world_position: A :class:`~narrative_data.tome.world_position.WorldPosition`
             with at least one seed position set.
         data_path: Root of the storyteller-data checkout.
+        enriched: When ``True``, use LLM-enriched value selection.
+        client: An :class:`~narrative_data.ollama.OllamaClient` instance.
+            Required when *enriched* is ``True``; ignored otherwise.
 
     Returns:
         The same *world_position* object, now fully populated.
@@ -196,6 +367,9 @@ def propagate(world_position: WorldPosition, data_path: Path) -> WorldPosition:
     graph_data = load_graph(data_path)
     incoming_index = build_incoming_index(graph_data)
     all_slugs: set[str] = set(all_axes.keys())
+
+    genre_slug = world_position.genre_slug
+    setting_slug = world_position.setting_slug
 
     # Phase 1: iterative propagation — fill axes reachable from set positions
     while True:
@@ -230,7 +404,17 @@ def propagate(world_position: WorldPosition, data_path: Path) -> WorldPosition:
             break
 
         axis_def = all_axes.get(best_slug, {})
-        value = _select_value(axis_def)
+        if enriched and client is not None:
+            value = _select_value_enriched(
+                axis_def,
+                best_active_edges,
+                set_positions,
+                genre_slug,
+                setting_slug,
+                client,
+            )
+        else:
+            value = _select_value(axis_def)
         confidence = min(best_score, 1.0)
         justification = _build_justification(best_active_edges)
 

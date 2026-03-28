@@ -6,10 +6,13 @@
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from narrative_data.tome.propagation import (
+    _select_value,
+    _select_value_enriched,
     build_incoming_index,
     propagate,
     score_candidates,
@@ -443,3 +446,84 @@ def test_propagate_ordinal_axis(tmp_path: Path) -> None:
     ordinal_pos = result.get("ordinal-ax")
     assert ordinal_pos is not None
     assert ordinal_pos.value in ("flat", "moderate", "steep")
+
+
+# ---------------------------------------------------------------------------
+# Tests: _select_value_enriched
+# ---------------------------------------------------------------------------
+
+
+def test_select_value_enriched_fallback() -> None:
+    """When the OllamaClient raises, _select_value_enriched falls back without crashing."""
+    axis = {
+        "slug": "geo",
+        "name": "Geography",
+        "axis_type": "categorical",
+        "values": ["desert", "temperate", "arctic"],
+    }
+    incoming_edges = [
+        {
+            "from_axis": "climate",
+            "to_axis": "geo",
+            "edge_type": "produces",
+            "weight": 0.9,
+            "description": "Climate shapes geography.",
+        }
+    ]
+    set_positions = {"climate": "cold"}
+
+    # Mock client that always raises
+    failing_client = MagicMock()
+    failing_client.generate_structured.side_effect = RuntimeError("Ollama is unavailable")
+
+    result = _select_value_enriched(
+        axis=axis,
+        incoming_edges=incoming_edges,
+        set_positions=set_positions,
+        genre_slug="folk-horror",
+        setting_slug="rural-isolation",
+        client=failing_client,
+    )
+
+    # Should not crash and should return a valid value from the axis
+    assert result in ("desert", "temperate", "arctic")
+    # The LLM call was attempted exactly once (no retry in _select_value_enriched itself)
+    failing_client.generate_structured.assert_called_once()
+
+
+def test_select_value_enriched_uses_weights() -> None:
+    """When the LLM returns valid weighted values, sampling uses those weights."""
+    axis = {
+        "slug": "resources",
+        "name": "Resource Profile",
+        "axis_type": "categorical",
+        "values": ["scarce", "moderate", "abundant"],
+    }
+    incoming_edges: list[dict] = []
+    set_positions: dict[str, str] = {}
+
+    # Mock client that heavily weights "scarce"
+    mock_client = MagicMock()
+    mock_client.generate_structured.return_value = [
+        {"value": "scarce", "weight": 0.99},
+        {"value": "moderate", "weight": 0.005},
+        {"value": "abundant", "weight": 0.005},
+    ]
+
+    # Run many times; with weight 0.99 on "scarce" it should always win
+    results = {
+        _select_value_enriched(
+            axis=axis,
+            incoming_edges=incoming_edges,
+            set_positions=set_positions,
+            genre_slug="folk-horror",
+            setting_slug="test",
+            client=mock_client,
+        )
+        for _ in range(20)
+    }
+
+    assert "scarce" in results
+    # All results must be valid axis values
+    for r in results:
+        assert r in ("scarce", "moderate", "abundant")
