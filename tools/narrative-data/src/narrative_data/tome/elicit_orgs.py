@@ -24,6 +24,7 @@ from narrative_data.config import ELICITATION_MODEL
 from narrative_data.ollama import OllamaClient
 from narrative_data.tome.elicit_places import (
     _build_genre_profile_summary,
+    _build_settings_context,
     _build_world_preamble,
     _load_world_position,
 )
@@ -115,6 +116,7 @@ def _build_prompt(
     world_pos: dict[str, Any],
     genre_profile: dict[str, Any] | None,
     places: list[dict[str, Any]],
+    settings_context: str = "",
 ) -> str:
     """Substitute all placeholders into the org-elicitation template.
 
@@ -123,6 +125,7 @@ def _build_prompt(
         world_pos: Parsed world-position.json dict.
         genre_profile: Parsed region.json dict, or None.
         places: List of place dicts from places.json.
+        settings_context: Formatted genre settings archetypes.
 
     Returns:
         Fully substituted prompt string.
@@ -130,8 +133,13 @@ def _build_prompt(
     genre_slug = world_pos.get("genre_slug", "unknown")
     setting_slug = world_pos.get("setting_slug", "unknown")
     world_preamble = _build_world_preamble(world_pos)
-    genre_profile_summary = _build_genre_profile_summary(genre_profile)
+    genre_summary = _build_genre_profile_summary(genre_profile)
     places_context = _build_places_context(places)
+
+    # Combine genre profile and settings context
+    genre_profile_summary = genre_summary
+    if settings_context:
+        genre_profile_summary += "\n\n" + settings_context
 
     return (
         template.replace("{genre_slug}", genre_slug)
@@ -284,10 +292,11 @@ def elicit_orgs(data_path: Path, world_slug: str) -> None:
     template = template_path.read_text()
 
     # ------------------------------------------------------------------
-    # 4. Build prompt
+    # 4. Build prompt (with genre settings context)
     # ------------------------------------------------------------------
     console.print("[bold]Building prompt…[/bold]")
-    prompt = _build_prompt(template, world_pos, genre_profile, places)
+    settings_context = _build_settings_context(data_path, genre_slug)
+    prompt = _build_prompt(template, world_pos, genre_profile, places, settings_context)
     console.print(f"  Prompt length: [dim]{len(prompt)} chars[/dim]")
 
     # ------------------------------------------------------------------

@@ -111,11 +111,32 @@ def _build_world_preamble(world_pos: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _build_genre_profile_summary(genre_profile: dict[str, Any] | None) -> str:
-    """Extract key genre signals from the genre_profile dict.
+def _format_dimension_value(val: Any) -> str:
+    """Format a genre dimension value for prompt display."""
+    if isinstance(val, dict):
+        # Structured dimension with value + labels (e.g., aesthetic.sensory_density)
+        v = val.get("value")
+        low = val.get("low_label", "")
+        high = val.get("high_label", "")
+        flavor = val.get("flavor_text", "")
+        parts: list[str] = []
+        if v is not None:
+            parts.append(str(v))
+        label = low or high
+        if label:
+            parts.append(f"({label})")
+        if flavor:
+            parts.append(f"— {flavor[:120]}")
+        return " ".join(parts) if parts else str(val)
+    return str(val)
 
-    Formats world_affordances, aesthetic register, agency, and other
-    narratively-relevant dimensions as a readable summary.
+
+def _build_genre_profile_summary(genre_profile: dict[str, Any] | None) -> str:
+    """Extract key genre signals from the genre_profile dict (region.json).
+
+    The region.json structure uses top-level keys: aesthetic, tonal,
+    temporal, thematic, agency, world_affordances, epistemological,
+    locus_of_power, narrative_structure, etc.
 
     Args:
         genre_profile: Parsed region.json dict, or None if unavailable.
@@ -128,85 +149,92 @@ def _build_genre_profile_summary(genre_profile: dict[str, Any] | None) -> str:
 
     lines: list[str] = []
 
-    # World affordances
-    affordances = genre_profile.get("world_affordances", {})
-    if affordances:
-        lines.append("**World Affordances:**")
-        for key, val in affordances.items():
-            lines.append(f"- {key}: {val}")
+    # Key genre signal groups in priority order
+    _SIGNAL_GROUPS = [
+        ("world_affordances", "World Affordances"),
+        ("aesthetic", "Aesthetic Register"),
+        ("tonal", "Tonal Register"),
+        ("agency", "Agency"),
+        ("temporal", "Temporal Register"),
+        ("thematic", "Thematic Treatment"),
+        ("epistemological", "Epistemological Frame"),
+    ]
+
+    for key, label in _SIGNAL_GROUPS:
+        group = genre_profile.get(key)
+        if not group or not isinstance(group, dict):
+            continue
+        lines.append(f"**{label}:**")
+        for dim_name, dim_val in group.items():
+            formatted = _format_dimension_value(dim_val)
+            lines.append(f"- {dim_name}: {formatted}")
         lines.append("")
 
-    # Aesthetic register
-    aesthetic = genre_profile.get("aesthetic_register", {})
-    if aesthetic:
-        lines.append("**Aesthetic Register:**")
-        for key, val in aesthetic.items():
-            lines.append(f"- {key}: {val}")
-        lines.append("")
+    # List-valued signals (locus_of_power, narrative_structure, etc.)
+    _LIST_SIGNALS = [
+        ("locus_of_power", "Locus of Power"),
+        ("narrative_structure", "Narrative Structure"),
+        ("narrative_contracts", "Narrative Contracts"),
+        ("active_state_variables", "Active State Variables"),
+        ("boundaries", "Genre Boundaries"),
+    ]
 
-    # Agency
-    agency = genre_profile.get("agency", {})
-    if agency:
-        level = agency.get("level", "")
-        agency_type = agency.get("type", "")
-        if level or agency_type:
-            parts = []
-            if level:
-                parts.append(f"level: {level}")
-            if agency_type:
-                parts.append(f"type: {agency_type}")
-            lines.append(f"**Agency:** {', '.join(parts)}")
+    for key, label in _LIST_SIGNALS:
+        val = genre_profile.get(key)
+        if val and isinstance(val, list):
+            lines.append(f"**{label}:** {', '.join(str(v) for v in val)}")
             lines.append("")
-
-    # Spatial topology
-    spatial = genre_profile.get("spatial_topology", {})
-    if spatial:
-        lines.append("**Spatial Topology:**")
-        for key, val in spatial.items():
-            lines.append(f"- {key}: {val}")
-        lines.append("")
-
-    # Temporal register
-    temporal = genre_profile.get("temporal_register", {})
-    if temporal:
-        lines.append("**Temporal Register:**")
-        for key, val in temporal.items():
-            lines.append(f"- {key}: {val}")
-        lines.append("")
-
-    # Narrative contract
-    contract = genre_profile.get("narrative_contract", {})
-    if contract:
-        lines.append("**Narrative Contract:**")
-        for key, val in contract.items():
-            lines.append(f"- {key}: {val}")
-        lines.append("")
-
-    # Any remaining top-level keys not already handled
-    handled = {
-        "world_affordances",
-        "aesthetic_register",
-        "agency",
-        "spatial_topology",
-        "temporal_register",
-        "narrative_contract",
-    }
-    extras = {k: v for k, v in genre_profile.items() if k not in handled}
-    if extras:
-        lines.append("**Additional Genre Signals:**")
-        for key, val in extras.items():
-            if isinstance(val, (str, int, float, bool)):
-                lines.append(f"- {key}: {val}")
-            elif isinstance(val, dict):
-                lines.append(f"- {key}:")
-                for subk, subv in val.items():
-                    lines.append(f"    - {subk}: {subv}")
-            elif isinstance(val, list):
-                lines.append(f"- {key}: {', '.join(str(v) for v in val)}")
-        lines.append("")
 
     if not lines:
         return "Genre profile present but contains no extractable signals."
+
+    return "\n".join(lines).rstrip()
+
+
+def _build_settings_context(data_path: Path, genre_slug: str) -> str:
+    """Load genre settings from the discovery corpus and format for the prompt.
+
+    Settings data lives at {data_path}/narrative-data/discovery/settings/{genre_slug}.json
+    and contains structured setting archetypes with communicability dimensions,
+    atmospheric palettes, and narrative functions.
+
+    Args:
+        data_path: Root of storyteller-data.
+        genre_slug: Genre region slug.
+
+    Returns:
+        Markdown-formatted settings context, or empty string if unavailable.
+    """
+    settings_path = (
+        data_path / "narrative-data" / "discovery" / "settings" / f"{genre_slug}.json"
+    )
+    if not settings_path.exists():
+        return ""
+
+    try:
+        settings = json.loads(settings_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    if not isinstance(settings, list) or not settings:
+        return ""
+
+    lines = ["**Genre Setting Archetypes** (from bedrock — use as spatial inspiration):", ""]
+    for s in settings:
+        name = s.get("canonical_name", "?")
+        func = s.get("narrative_function", "")
+        comm = s.get("communicability", {})
+        palette = s.get("atmospheric_palette", [])
+
+        lines.append(f"- **{name}**")
+        if func:
+            lines.append(f"  Function: {func}")
+        if comm:
+            comm_parts = [f"{k}: {v}" for k, v in comm.items()]
+            lines.append(f"  Communicability: {', '.join(comm_parts)}")
+        if palette:
+            lines.append(f"  Atmosphere: {', '.join(str(p) for p in palette[:3])}")
+        lines.append("")
 
     return "\n".join(lines).rstrip()
 
@@ -220,6 +248,7 @@ def _build_prompt(
     template: str,
     world_pos: dict[str, Any],
     genre_profile: dict[str, Any] | None,
+    settings_context: str = "",
 ) -> str:
     """Substitute all placeholders into the place-elicitation template.
 
@@ -227,6 +256,7 @@ def _build_prompt(
         template: Raw template text with {placeholders}.
         world_pos: Parsed world-position.json dict.
         genre_profile: Parsed region.json dict, or None.
+        settings_context: Formatted genre settings archetypes.
 
     Returns:
         Fully substituted prompt string.
@@ -234,7 +264,12 @@ def _build_prompt(
     genre_slug = world_pos.get("genre_slug", "unknown")
     setting_slug = world_pos.get("setting_slug", "unknown")
     world_preamble = _build_world_preamble(world_pos)
-    genre_profile_summary = _build_genre_profile_summary(genre_profile)
+    genre_summary = _build_genre_profile_summary(genre_profile)
+
+    # Combine genre profile and settings context
+    genre_profile_summary = genre_summary
+    if settings_context:
+        genre_profile_summary += "\n\n" + settings_context
 
     return (
         template.replace("{genre_slug}", genre_slug)
@@ -370,10 +405,13 @@ def elicit_places(data_path: Path, world_slug: str) -> None:
     template = template_path.read_text()
 
     # ------------------------------------------------------------------
-    # 3. Build prompt
+    # 3. Build prompt (with genre settings context)
     # ------------------------------------------------------------------
     console.print("[bold]Building prompt…[/bold]")
-    prompt = _build_prompt(template, world_pos, genre_profile)
+    settings_context = _build_settings_context(data_path, genre_slug)
+    if settings_context:
+        console.print(f"  [dim]Loaded genre settings archetypes for {genre_slug}[/dim]")
+    prompt = _build_prompt(template, world_pos, genre_profile, settings_context)
     console.print(f"  Prompt length: [dim]{len(prompt)} chars[/dim]")
 
     # ------------------------------------------------------------------
