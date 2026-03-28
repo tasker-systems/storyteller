@@ -373,6 +373,17 @@ def tome_elicit_places(world_slug: str) -> None:
     elicit_places(data_path, world_slug)
 
 
+@tome.command("elicit-orgs")
+@click.option("--world-slug", required=True, help="World identifier")
+def tome_elicit_orgs(world_slug: str) -> None:
+    """Elicit organizations and institutions for a composed world using qwen3.5:35b."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.elicit_orgs import elicit_orgs
+
+    data_path = resolve_data_path()
+    elicit_orgs(data_path, world_slug)
+
+
 # ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------
