@@ -57,8 +57,7 @@ def _load_social_substrate(world_dir: Path) -> dict[str, Any]:
     path = world_dir / "social-substrate.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"social-substrate.json not found at {path}. "
-            "Run 'tome elicit-social-substrate' first."
+            f"social-substrate.json not found at {path}. Run 'tome elicit-social-substrate' first."
         )
     try:
         data = json.loads(path.read_text())
@@ -66,9 +65,7 @@ def _load_social_substrate(world_dir: Path) -> dict[str, Any]:
         raise ValueError(f"Could not parse social-substrate.json: {exc}") from exc
 
     if not isinstance(data.get("clusters"), list):
-        raise ValueError(
-            f"social-substrate.json does not contain a 'clusters' array at {path}."
-        )
+        raise ValueError(f"social-substrate.json does not contain a 'clusters' array at {path}.")
     return data
 
 

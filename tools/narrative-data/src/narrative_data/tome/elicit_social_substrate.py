@@ -57,8 +57,7 @@ def _load_orgs(world_dir: Path) -> list[dict[str, Any]]:
     orgs_path = world_dir / "organizations.json"
     if not orgs_path.exists():
         raise FileNotFoundError(
-            f"organizations.json not found at {orgs_path}. "
-            "Run 'tome elicit-orgs' first."
+            f"organizations.json not found at {orgs_path}. Run 'tome elicit-orgs' first."
         )
     try:
         data = json.loads(orgs_path.read_text())
@@ -114,9 +113,7 @@ def _build_orgs_context(orgs: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _extract_axis_value(
-    positions: list[dict[str, Any]], axis_slug: str
-) -> str:
+def _extract_axis_value(positions: list[dict[str, Any]], axis_slug: str) -> str:
     """Extract the value of a specific axis from world positions.
 
     Args:
@@ -379,8 +376,7 @@ def elicit_social_substrate(data_path: Path, world_slug: str) -> None:
         basis = cluster.get("basis", "?")
         position = cluster.get("hierarchy_position", "?")
         console.print(
-            f"  [green]✓[/green] [bold]{name}[/bold] "
-            f"[dim]({slug}, {basis}, {position})[/dim]"
+            f"  [green]✓[/green] [bold]{name}[/bold] [dim]({slug}, {basis}, {position})[/dim]"
         )
     if relationships:
         console.print()

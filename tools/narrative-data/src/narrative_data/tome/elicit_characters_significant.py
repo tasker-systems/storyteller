@@ -377,8 +377,15 @@ def elicit_characters_significant(data_path: Path, world_slug: str) -> None:
     console.print("[bold]Building prompt…[/bold]")
     settings_context = _build_settings_context(data_path, genre_slug)
     prompt = _build_prompt(
-        template, world_pos, genre_profile, places, orgs,
-        substrate, mundane_characters, archetypes, archetype_dynamics,
+        template,
+        world_pos,
+        genre_profile,
+        places,
+        orgs,
+        substrate,
+        mundane_characters,
+        archetypes,
+        archetype_dynamics,
         settings_context,
     )
     console.print(f"  Prompt length: [dim]{len(prompt)} chars[/dim]")
