@@ -324,6 +324,44 @@ def tome_stress_test(count: int, depth: int, seed_domain: str) -> None:
     run_stress_test(data_path, n_sketches=count, max_depth=depth, seed_domain=seed_domain)
 
 
+@tome.command("compose-world")
+@click.option("--genre", required=True, help="Genre region slug")
+@click.option("--setting", required=True, help="Setting pattern slug")
+@click.option(
+    "--seed",
+    multiple=True,
+    help="Seed axis as axis-slug=value (repeatable)",
+)
+@click.option("--world-slug", required=True, help="World identifier")
+def tome_compose_world(genre: str, setting: str, seed: tuple[str, ...], world_slug: str) -> None:
+    """Compose a fully-propagated world position for a genre + setting combination."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.compose_world import compose_world
+
+    # Parse seed options: each is "axis-slug=value"
+    seeds: dict[str, str] = {}
+    for raw in seed:
+        if "=" not in raw:
+            raise click.BadParameter(
+                f"Seed must be in axis-slug=value format, got: {raw!r}",
+                param_hint="--seed",
+            )
+        axis_slug, _, value = raw.partition("=")
+        seeds[axis_slug.strip()] = value.strip()
+
+    data_path = resolve_data_path()
+    try:
+        compose_world(
+            data_path=data_path,
+            genre_slug=genre,
+            setting_slug=setting,
+            seeds=seeds,
+            world_slug=world_slug,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 # ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------
