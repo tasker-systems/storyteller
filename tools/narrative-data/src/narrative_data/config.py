@@ -79,6 +79,7 @@ GENRE_CLUSTERS: dict[str, list[str]] = {
 }
 
 ELICITATION_MODEL = "qwen3.5:35b"
+CREATIVE_MODEL = "qwen3.5:9b"
 STRUCTURING_MODEL = "qwen2.5:7b-instruct"
 OLLAMA_BASE_URL = "http://localhost:11434"
 ELICITATION_TIMEOUT = 600.0
