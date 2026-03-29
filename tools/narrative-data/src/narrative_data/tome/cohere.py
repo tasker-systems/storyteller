@@ -99,66 +99,65 @@ def _build_coherence_prompt(
 # ---------------------------------------------------------------------------
 
 
-def _parse_coherence_response(response: str) -> list[dict[str, Any]]:
-    """Parse an LLM response as a JSON array of entity dicts.
+def _parse_coherence_response(response: str) -> list[dict[str, Any]] | dict[str, Any]:
+    """Parse an LLM response as a JSON array or object.
+
+    Most coherence calls return a JSON array of entities. The substrate
+    coherence call returns a dict with "clusters" and "relationships" keys.
+    Both forms are accepted.
 
     Three strategies are attempted in order:
     1. Direct json.loads on the stripped text.
-    2. Extract from a markdown ```json ... ``` or ``` ... ``` code fence.
-    3. Find the outermost [ ... ] array boundaries and parse that.
+    2. Extract from a markdown code fence.
+    3. Find the outermost JSON boundaries and parse.
 
     Args:
         response: Raw LLM response text.
 
     Returns:
-        Parsed list of entity dicts.
+        Parsed list of entity dicts, or dict (for substrate coherence).
 
     Raises:
-        ValueError: If all strategies fail or the result is not a list.
+        ValueError: If all strategies fail.
     """
     text = response.strip()
+
+    def _acceptable(val: object) -> bool:
+        return isinstance(val, list | dict)
 
     # Strategy 1: direct parse
     try:
         result = json.loads(text)
-        if isinstance(result, list):
+        if _acceptable(result):
             return result
     except json.JSONDecodeError:
         pass
 
-    # Strategy 2a: extract from ```json ... ``` fence
-    fence_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    # Strategy 2: extract from code fence
+    fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
     if fence_match:
         try:
             result = json.loads(fence_match.group(1))
-            if isinstance(result, list):
+            if _acceptable(result):
                 return result
         except json.JSONDecodeError:
             pass
 
-    # Strategy 2b: extract from plain ``` ... ``` fence
-    plain_fence_match = re.search(r"```\s*(\[.*?)\s*```", text, re.DOTALL)
-    if plain_fence_match:
-        try:
-            result = json.loads(plain_fence_match.group(1))
-            if isinstance(result, list):
-                return result
-        except json.JSONDecodeError:
-            pass
-
-    # Strategy 3: find outermost [ ... ] array
-    start = text.find("[")
-    end = text.rfind("]")
-    if start != -1 and end != -1 and end > start:
-        try:
-            result = json.loads(text[start : end + 1])
-            if isinstance(result, list):
-                return result
-        except json.JSONDecodeError:
-            pass
+    # Strategy 3: find outermost JSON structure
+    # Try array first, then object
+    for open_ch, close_ch in [("[", "]"), ("{", "}")]:
+        start = text.find(open_ch)
+        end = text.rfind(close_ch)
+        if start != -1 and end != -1 and end > start:
+            try:
+                result = json.loads(text[start : end + 1])
+                if _acceptable(result):
+                    return result
+            except json.JSONDecodeError:
+                pass
 
     raise ValueError(
-        f"Could not parse LLM response as a JSON entity array. Response began with: {text[:200]!r}"
+        f"Could not parse coherence response as JSON. Response began with: {text[:200]!r}"
     )
 
 
@@ -174,7 +173,7 @@ def cohere(
     draft_entities: list[dict[str, Any]],
     upstream_context: str,
     extra_context: dict[str, str] | None = None,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | dict[str, Any]:
     """Run a 35b coherence call to bind draft entities relationally.
 
     Builds a prompt from the template and world context, calls the coherence

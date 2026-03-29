@@ -183,11 +183,14 @@ class TestParseCoherenceResponse:
         with pytest.raises(ValueError, match="Could not parse"):
             _parse_coherence_response("this is not json at all")
 
-    def test_raises_on_json_object(self) -> None:
+    def test_accepts_json_object_for_substrate(self) -> None:
+        """Substrate coherence returns a dict with clusters and relationships."""
         from narrative_data.tome.cohere import _parse_coherence_response
 
-        with pytest.raises(ValueError, match="Could not parse"):
-            _parse_coherence_response('{"slug": "a", "name": "A"}')
+        substrate = {"clusters": [{"slug": "a"}], "relationships": []}
+        result = _parse_coherence_response(json.dumps(substrate))
+        assert isinstance(result, dict)
+        assert len(result["clusters"]) == 1
 
 
 # ---------------------------------------------------------------------------
