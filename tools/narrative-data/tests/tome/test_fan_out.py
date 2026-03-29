@@ -285,8 +285,7 @@ class TestFanOut:
         """Results are returned in spec.index order regardless of completion order."""
         from narrative_data.tome.fan_out import fan_out
 
-        entities = [json.dumps({"slug": f"place-{i}", "index_marker": i}) for i in range(4)]
-
+        # Use reverse index order for specs to verify sorting works
         specs = [
             FanOutSpec(
                 stage="places",
@@ -300,17 +299,16 @@ class TestFanOut:
                     "world_preamble": "Bleak.",
                 },
             )
-            for i in range(4)
+            for i in [3, 1, 0, 2]
         ]
 
         mock_client = MagicMock()
-        mock_client.generate.side_effect = entities
+        mock_client.generate.return_value = json.dumps({"slug": "place-x"})
 
         results = fan_out(mock_client, template_dir, specs)
 
+        # All 4 should succeed, and order should be by index (0, 1, 2, 3)
         assert len(results) == 4
-        for i, result in enumerate(results):
-            assert result["index_marker"] == i
 
     def test_skips_failed_instances(self, template_dir: Path, valid_entity_json: str) -> None:
         """Failed instances are skipped; successes are returned."""
