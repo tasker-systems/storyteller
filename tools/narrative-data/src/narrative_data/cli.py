@@ -421,6 +421,30 @@ def tome_elicit_characters_significant(world_slug: str) -> None:
     elicit_characters_significant(data_path, world_slug)
 
 
+@tome.command("elicit-decomposed")
+@click.option("--world-slug", required=True, help="World slug under tome/worlds/.")
+@click.option(
+    "--stage",
+    default=None,
+    help="Run only this stage (places, orgs, substrate, characters-mundane, characters-significant).",
+)
+@click.option(
+    "--coherence-only",
+    is_flag=True,
+    default=False,
+    help="Skip fan-out, use existing drafts.",
+)
+def tome_elicit_decomposed(
+    world_slug: str, stage: str | None, coherence_only: bool
+) -> None:
+    """Run the decomposed fan-out/fan-in elicitation pipeline for a world."""
+    from narrative_data.config import resolve_data_path
+    from narrative_data.tome.orchestrate_decomposed import orchestrate_world
+
+    data_path = resolve_data_path()
+    orchestrate_world(data_path, world_slug, stage=stage, coherence_only=coherence_only)
+
+
 # ---------------------------------------------------------------------------
 # list subgroup
 # ---------------------------------------------------------------------------
