@@ -426,7 +426,8 @@ def tome_elicit_characters_significant(world_slug: str) -> None:
 @click.option(
     "--stage",
     default=None,
-    help="Run only this stage (places, orgs, substrate, characters-mundane, characters-significant).",
+    help="Run only this stage (places, orgs, substrate, characters-mundane, "
+    "characters-significant).",
 )
 @click.option(
     "--coherence-only",
