@@ -249,19 +249,20 @@ class TestValidatePlan:
         with pytest.raises(ValueError, match="characters_significant"):
             _validate_plan(valid_plan)
 
-    def test_distribution_sum_mismatch_raises(self, valid_plan: dict) -> None:
+    def test_distribution_normalizes_count_to_match_sum(self, valid_plan: dict) -> None:
         from narrative_data.tome.plan_entities import _validate_plan
 
-        # Distribution sums to 10 but count says 12
+        # Distribution sums to 10 but count says 12 — validation normalizes
         valid_plan["places"]["count"] = 12
-        with pytest.raises(ValueError, match="distribution"):
-            _validate_plan(valid_plan)
+        _validate_plan(valid_plan)
+        assert valid_plan["places"]["count"] == 10
 
-    def test_distribution_sum_matches_count_passes(self, valid_plan: dict) -> None:
+    def test_distribution_filters_zero_counts(self, valid_plan: dict) -> None:
         from narrative_data.tome.plan_entities import _validate_plan
 
-        # Already correct in fixture — just verify it passes
+        valid_plan["places"]["distribution"]["liminal"] = 0
         _validate_plan(valid_plan)
+        assert "liminal" not in valid_plan["places"]["distribution"]
 
     def test_places_without_distribution_passes(self, valid_plan: dict) -> None:
         from narrative_data.tome.plan_entities import _validate_plan

@@ -166,16 +166,15 @@ def _validate_plan(plan: dict[str, Any]) -> None:
             )
 
     places = plan["places"]
-    if isinstance(places, dict) and "count" in places and "distribution" in places:
+    if isinstance(places, dict) and "distribution" in places:
         distribution = places["distribution"]
         if isinstance(distribution, dict):
-            dist_sum = sum(v for v in distribution.values() if isinstance(v, int | float))
-            count = places["count"]
-            if dist_sum != count:
-                raise ValueError(
-                    f"Entity plan places distribution sum ({dist_sum}) does not match "
-                    f"places count ({count}). Distribution: {distribution}"
-                )
+            # Filter out zero-count types and use distribution sum as authoritative count
+            places["distribution"] = {
+                k: v for k, v in distribution.items() if isinstance(v, int | float) and v > 0
+            }
+            dist_sum = sum(places["distribution"].values())
+            places["count"] = dist_sum
 
 
 # ---------------------------------------------------------------------------
