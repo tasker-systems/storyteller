@@ -334,3 +334,172 @@ class TestBuildSignificantCharacterSpecs:
         # Each spec should have a boundary_position with two cluster slugs
         for spec in specs:
             assert "boundary_position" in spec.context
+
+
+# ---------------------------------------------------------------------------
+# Tests: _build_compressed_prompt
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCompressedPrompt:
+    """Tests that compressed-mode prompts use the compressed preamble, not the full one."""
+
+    def test_places_prompt_uses_compressed_preamble(self, data_path: Path) -> None:
+        from narrative_data.tome.orchestrate_decomposed import _build_compressed_prompt
+
+        world_dir = data_path / "narrative-data" / "tome" / "worlds" / "test-world"
+        world_pos = json.loads((world_dir / "world-position.json").read_text())
+        compressed = "### Material Conditions\n- geography-climate: Isolated highland moor [seed]"
+
+        prompt = _build_compressed_prompt("places", world_pos, compressed, data_path, world_dir)
+
+        # The compressed preamble should appear in the prompt
+        assert "Isolated highland moor [seed]" in prompt
+        # Edge-trace data from world-position (confidence scores, preamble
+        # section headers) must not leak through the compressed path.
+        assert "(confidence: 0.85)" not in prompt
+        assert "(confidence: 0.78)" not in prompt
+        assert "Seed Positions (author-provided)" not in prompt
+        assert "Inferred Positions (propagated from seeds)" not in prompt
+        # The prompt should still have genre and setting
+        assert "folk-horror" in prompt
+        assert "mccallisters-barn" in prompt
+
+    def test_places_prompt_no_inferred_justifications(self, data_path: Path) -> None:
+        """Full preamble includes 'Inferred Positions' header; compressed does not."""
+        from narrative_data.tome.orchestrate_decomposed import _build_compressed_prompt
+
+        world_dir = data_path / "narrative-data" / "tome" / "worlds" / "test-world"
+        world_pos = json.loads((world_dir / "world-position.json").read_text())
+        compressed = "### Material Conditions\n- geography-climate: Isolated highland moor [seed]"
+
+        prompt = _build_compressed_prompt("places", world_pos, compressed, data_path, world_dir)
+
+        assert "Inferred Positions" not in prompt
+        assert "Seed Positions" not in prompt
+
+    def test_orgs_prompt_requires_places(self, data_path: Path) -> None:
+        """Orgs prompt builder should fail if places.json does not exist."""
+        from narrative_data.tome.orchestrate_decomposed import _build_compressed_prompt
+
+        world_dir = data_path / "narrative-data" / "tome" / "worlds" / "test-world"
+        world_pos = json.loads((world_dir / "world-position.json").read_text())
+
+        with pytest.raises(FileNotFoundError, match="places.json"):
+            _build_compressed_prompt("orgs", world_pos, "preamble", data_path, world_dir)
+
+    def test_orgs_prompt_includes_places_context(self, data_path: Path) -> None:
+        from narrative_data.tome.orchestrate_decomposed import _build_compressed_prompt
+
+        world_dir = data_path / "narrative-data" / "tome" / "worlds" / "test-world"
+        world_pos = json.loads((world_dir / "world-position.json").read_text())
+
+        # Create a places.json prerequisite
+        places_data = {
+            "places": [
+                {
+                    "name": "The Hollow",
+                    "slug": "the-hollow",
+                    "spatial_role": "threshold",
+                    "description": "A sunken field.",
+                }
+            ]
+        }
+        (world_dir / "places.json").write_text(json.dumps(places_data))
+
+        compressed = "### Material Conditions\n- geography-climate: moor [seed]"
+        prompt = _build_compressed_prompt("orgs", world_pos, compressed, data_path, world_dir)
+
+        assert "The Hollow" in prompt
+        # Edge-trace data must not appear
+        assert "(confidence: 0.85)" not in prompt
+        assert "Seed Positions (author-provided)" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Tests: _parse_compressed_response
+# ---------------------------------------------------------------------------
+
+
+class TestParseCompressedResponse:
+    def test_parses_array_stage(self) -> None:
+        from narrative_data.tome.orchestrate_decomposed import _parse_compressed_response
+
+        response = json.dumps([{"name": "The Hollow", "slug": "the-hollow"}])
+        result = _parse_compressed_response("places", response)
+
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["name"] == "The Hollow"
+
+    def test_parses_substrate_as_dict(self) -> None:
+        from narrative_data.tome.orchestrate_decomposed import _parse_compressed_response
+
+        response = json.dumps(
+            {
+                "clusters": [{"name": "Clan A", "slug": "clan-a"}],
+                "relationships": [],
+            }
+        )
+        result = _parse_compressed_response("substrate", response)
+
+        assert isinstance(result, dict)
+        assert len(result["clusters"]) == 1
+
+    def test_raises_on_bad_json(self) -> None:
+        from narrative_data.tome.orchestrate_decomposed import _parse_compressed_response
+
+        with pytest.raises(ValueError):
+            _parse_compressed_response("places", "not json at all {{{{")
+
+
+# ---------------------------------------------------------------------------
+# Tests: _save_compressed_output
+# ---------------------------------------------------------------------------
+
+
+class TestSaveCompressedOutput:
+    def test_saves_stage_file_and_instance_files(self, tmp_path: Path) -> None:
+        from narrative_data.tome.orchestrate_decomposed import _save_compressed_output
+
+        decomposed = tmp_path / "decomposed"
+        entities = [
+            {"name": "Place A", "slug": "place-a"},
+            {"name": "Place B", "slug": "place-b"},
+        ]
+
+        path = _save_compressed_output(
+            decomposed, "places", entities, "test-world", "folk-horror", "barn"
+        )
+
+        # Stage file
+        assert path.exists()
+        data = json.loads(path.read_text())
+        assert data["pipeline"] == "compressed"
+        assert data["count"] == 2
+        assert len(data["places"]) == 2
+
+        # Instance files
+        inst_dir = decomposed / "fan-out" / "places"
+        assert (inst_dir / "instance-000.json").exists()
+        assert (inst_dir / "instance-001.json").exists()
+        inst0 = json.loads((inst_dir / "instance-000.json").read_text())
+        assert inst0["name"] == "Place A"
+
+    def test_saves_substrate_with_relationships(self, tmp_path: Path) -> None:
+        from narrative_data.tome.orchestrate_decomposed import _save_compressed_output
+
+        decomposed = tmp_path / "decomposed"
+        parsed = {
+            "clusters": [{"name": "Clan A", "slug": "clan-a"}],
+            "relationships": [{"cluster_a": "clan-a", "cluster_b": "clan-b"}],
+        }
+
+        path = _save_compressed_output(
+            decomposed, "substrate", parsed, "test-world", "folk-horror", "barn"
+        )
+
+        data = json.loads(path.read_text())
+        assert data["cluster_count"] == 1
+        assert data["relationship_count"] == 1
+        assert len(data["clusters"]) == 1

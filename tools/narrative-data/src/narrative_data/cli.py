@@ -433,17 +433,30 @@ def tome_elicit_characters_significant(world_slug: str) -> None:
     "--coherence-only",
     is_flag=True,
     default=False,
-    help="Skip fan-out, use existing drafts.",
+    help="Skip fan-out, use existing drafts (fanout mode only).",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["compressed", "fanout"], case_sensitive=False),
+    default="compressed",
+    help="Pipeline mode: compressed (single 35b/stage, default) or fanout (fan-out/fan-in).",
 )
 def tome_elicit_decomposed(
-    world_slug: str, stage: str | None, coherence_only: bool
+    world_slug: str, stage: str | None, coherence_only: bool, mode: str
 ) -> None:
-    """Run the decomposed fan-out/fan-in elicitation pipeline for a world."""
+    """Run the decomposed elicitation pipeline for a world."""
     from narrative_data.config import resolve_data_path
-    from narrative_data.tome.orchestrate_decomposed import orchestrate_world
 
     data_path = resolve_data_path()
-    orchestrate_world(data_path, world_slug, stage=stage, coherence_only=coherence_only)
+
+    if mode == "compressed":
+        from narrative_data.tome.orchestrate_decomposed import orchestrate_compressed
+
+        orchestrate_compressed(data_path, world_slug, stage=stage)
+    else:
+        from narrative_data.tome.orchestrate_decomposed import orchestrate_world
+
+        orchestrate_world(data_path, world_slug, stage=stage, coherence_only=coherence_only)
 
 
 # ---------------------------------------------------------------------------
