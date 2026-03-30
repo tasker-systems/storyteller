@@ -12,10 +12,18 @@ Each stage builds FanOutSpec lists from the entity plan, dispatches fan-out call
 aggregates drafts, runs coherence, and saves per-stage output. The final step
 composes a unified world.json from all per-stage files.
 
+Two modes are available:
+  - **fanout** (original): fan-out/fan-in with model tiering (7b + 35b)
+  - **compressed** (default): compressed preamble + single 35b call per stage,
+    using the existing Phase 3b elicitation prompts.  After each stage completes
+    the response is parsed into per-entity instance files under ``decomposed/fan-out/``.
+
 Usage (called by CLI command):
     orchestrate_world(data_path, world_slug)
     orchestrate_world(data_path, world_slug, stage="orgs")
     orchestrate_world(data_path, world_slug, coherence_only=True)
+    orchestrate_compressed(data_path, world_slug)
+    orchestrate_compressed(data_path, world_slug, stage="places")
 """
 
 from __future__ import annotations
@@ -1000,6 +1008,544 @@ def orchestrate_world(
     # ------------------------------------------------------------------
     # Compose world.json
     # ------------------------------------------------------------------
+    console.print("\n[bold]Composing world.json...[/bold]")
+    world_path = _compose_world_json(decomposed_dir, world_slug, genre_slug, setting_slug)
+    console.print(f"[bold green]Written:[/bold green] {world_path}")
+
+
+# ---------------------------------------------------------------------------
+# Compressed-mode helpers
+# ---------------------------------------------------------------------------
+
+_COMPRESSED_TIMEOUT = 600.0
+_COMPRESSED_TEMPERATURE = 0.5
+
+# Template filenames (under prompts/tome/) and the entity key in the output
+_COMPRESSED_STAGE_META: dict[str, dict[str, str]] = {
+    "places": {
+        "template": "place-elicitation.md",
+        "entity_key": "places",
+        "filename": "places.json",
+    },
+    "orgs": {
+        "template": "org-elicitation.md",
+        "entity_key": "organizations",
+        "filename": "organizations.json",
+    },
+    "substrate": {
+        "template": "social-substrate-elicitation.md",
+        "entity_key": "clusters",
+        "filename": "social-substrate.json",
+    },
+    "characters-mundane": {
+        "template": "character-mundane-elicitation.md",
+        "entity_key": "characters",
+        "filename": "characters-mundane.json",
+    },
+    "characters-significant": {
+        "template": "character-significant-elicitation.md",
+        "entity_key": "characters",
+        "filename": "characters-significant.json",
+    },
+}
+
+
+def _build_compressed_prompt_places(
+    template: str,
+    world_pos: dict[str, Any],
+    compressed_preamble: str,
+    data_path: Path,
+) -> str:
+    """Build the places elicitation prompt with compressed preamble."""
+    from narrative_data.tome.elicit_places import (
+        _build_genre_profile_summary,
+        _build_settings_context,
+    )
+
+    genre_slug = world_pos.get("genre_slug", "unknown")
+    setting_slug = world_pos.get("setting_slug", "unknown")
+    genre_profile: dict[str, Any] | None = world_pos.get("genre_profile")
+
+    genre_summary = _build_genre_profile_summary(genre_profile)
+    settings_context = _build_settings_context(data_path, genre_slug)
+    genre_profile_summary = genre_summary
+    if settings_context:
+        genre_profile_summary += "\n\n" + settings_context
+
+    return (
+        template.replace("{genre_slug}", genre_slug)
+        .replace("{setting_slug}", setting_slug)
+        .replace("{world_preamble}", compressed_preamble)
+        .replace("{genre_profile_summary}", genre_profile_summary)
+    )
+
+
+def _build_compressed_prompt_orgs(
+    template: str,
+    world_pos: dict[str, Any],
+    compressed_preamble: str,
+    data_path: Path,
+    world_dir: Path,
+) -> str:
+    """Build the orgs elicitation prompt with compressed preamble."""
+    from narrative_data.tome.elicit_orgs import _build_places_context, _load_places
+    from narrative_data.tome.elicit_places import (
+        _build_genre_profile_summary,
+        _build_settings_context,
+    )
+
+    genre_slug = world_pos.get("genre_slug", "unknown")
+    setting_slug = world_pos.get("setting_slug", "unknown")
+    genre_profile: dict[str, Any] | None = world_pos.get("genre_profile")
+
+    genre_summary = _build_genre_profile_summary(genre_profile)
+    settings_context = _build_settings_context(data_path, genre_slug)
+    genre_profile_summary = genre_summary
+    if settings_context:
+        genre_profile_summary += "\n\n" + settings_context
+
+    places = _load_places(world_dir)
+    places_context = _build_places_context(places)
+
+    return (
+        template.replace("{genre_slug}", genre_slug)
+        .replace("{setting_slug}", setting_slug)
+        .replace("{world_preamble}", compressed_preamble)
+        .replace("{genre_profile_summary}", genre_profile_summary)
+        .replace("{places_context}", places_context)
+    )
+
+
+def _build_compressed_prompt_substrate(
+    template: str,
+    world_pos: dict[str, Any],
+    compressed_preamble: str,
+    data_path: Path,
+    world_dir: Path,
+) -> str:
+    """Build the social-substrate elicitation prompt with compressed preamble."""
+    from narrative_data.tome.elicit_orgs import _build_places_context, _load_places
+    from narrative_data.tome.elicit_places import (
+        _build_genre_profile_summary,
+        _build_settings_context,
+    )
+    from narrative_data.tome.elicit_social_substrate import (
+        _build_orgs_context,
+        _extract_axis_value,
+        _load_orgs,
+    )
+
+    genre_slug = world_pos.get("genre_slug", "unknown")
+    setting_slug = world_pos.get("setting_slug", "unknown")
+    genre_profile: dict[str, Any] | None = world_pos.get("genre_profile")
+    positions = world_pos.get("positions", [])
+
+    genre_summary = _build_genre_profile_summary(genre_profile)
+    settings_context = _build_settings_context(data_path, genre_slug)
+    genre_profile_summary = genre_summary
+    if settings_context:
+        genre_profile_summary += "\n\n" + settings_context
+
+    places = _load_places(world_dir)
+    orgs = _load_orgs(world_dir)
+    places_context = _build_places_context(places)
+    orgs_context = _build_orgs_context(orgs)
+
+    kinship_value = _extract_axis_value(positions, "kinship-system")
+    stratification_value = _extract_axis_value(positions, "social-stratification")
+
+    return (
+        template.replace("{genre_slug}", genre_slug)
+        .replace("{setting_slug}", setting_slug)
+        .replace("{world_preamble}", compressed_preamble)
+        .replace("{genre_profile_summary}", genre_profile_summary)
+        .replace("{places_context}", places_context)
+        .replace("{orgs_context}", orgs_context)
+        .replace("{kinship_system_value}", kinship_value)
+        .replace("{stratification_value}", stratification_value)
+    )
+
+
+def _build_compressed_prompt_characters_mundane(
+    template: str,
+    world_pos: dict[str, Any],
+    compressed_preamble: str,
+    data_path: Path,
+    world_dir: Path,
+) -> str:
+    """Build the mundane character elicitation prompt with compressed preamble."""
+    from narrative_data.tome.elicit_characters_mundane import (
+        _build_social_substrate_context,
+        _load_social_substrate,
+    )
+    from narrative_data.tome.elicit_orgs import _build_places_context, _load_places
+    from narrative_data.tome.elicit_places import (
+        _build_genre_profile_summary,
+        _build_settings_context,
+    )
+    from narrative_data.tome.elicit_social_substrate import (
+        _build_orgs_context,
+        _load_orgs,
+    )
+
+    genre_slug = world_pos.get("genre_slug", "unknown")
+    setting_slug = world_pos.get("setting_slug", "unknown")
+    genre_profile: dict[str, Any] | None = world_pos.get("genre_profile")
+
+    genre_summary = _build_genre_profile_summary(genre_profile)
+    settings_context = _build_settings_context(data_path, genre_slug)
+    genre_profile_summary = genre_summary
+    if settings_context:
+        genre_profile_summary += "\n\n" + settings_context
+
+    places = _load_places(world_dir)
+    orgs = _load_orgs(world_dir)
+    substrate = _load_social_substrate(world_dir)
+    places_context = _build_places_context(places)
+    orgs_context = _build_orgs_context(orgs)
+    substrate_context = _build_social_substrate_context(substrate)
+
+    return (
+        template.replace("{genre_slug}", genre_slug)
+        .replace("{setting_slug}", setting_slug)
+        .replace("{world_preamble}", compressed_preamble)
+        .replace("{genre_profile_summary}", genre_profile_summary)
+        .replace("{places_context}", places_context)
+        .replace("{orgs_context}", orgs_context)
+        .replace("{social_substrate_context}", substrate_context)
+    )
+
+
+def _build_compressed_prompt_characters_significant(
+    template: str,
+    world_pos: dict[str, Any],
+    compressed_preamble: str,
+    data_path: Path,
+    world_dir: Path,
+) -> str:
+    """Build the significant character elicitation prompt with compressed preamble."""
+    from narrative_data.tome.elicit_characters_mundane import (
+        _build_social_substrate_context,
+        _load_social_substrate,
+    )
+    from narrative_data.tome.elicit_characters_significant import (
+        _build_archetypes_context,
+        _build_dynamics_context,
+        _build_mundane_characters_context,
+        _load_archetype_dynamics,
+        _load_archetypes,
+        _load_mundane_characters,
+    )
+    from narrative_data.tome.elicit_orgs import _build_places_context, _load_places
+    from narrative_data.tome.elicit_places import (
+        _build_genre_profile_summary,
+        _build_settings_context,
+    )
+    from narrative_data.tome.elicit_social_substrate import (
+        _build_orgs_context,
+        _load_orgs,
+    )
+
+    genre_slug = world_pos.get("genre_slug", "unknown")
+    setting_slug = world_pos.get("setting_slug", "unknown")
+    genre_profile: dict[str, Any] | None = world_pos.get("genre_profile")
+
+    genre_summary = _build_genre_profile_summary(genre_profile)
+    settings_context = _build_settings_context(data_path, genre_slug)
+    genre_profile_summary = genre_summary
+    if settings_context:
+        genre_profile_summary += "\n\n" + settings_context
+
+    places = _load_places(world_dir)
+    orgs = _load_orgs(world_dir)
+    substrate = _load_social_substrate(world_dir)
+    mundane_characters = _load_mundane_characters(world_dir)
+
+    places_context = _build_places_context(places)
+    orgs_context = _build_orgs_context(orgs)
+    substrate_context = _build_social_substrate_context(substrate)
+    mundane_context = _build_mundane_characters_context(mundane_characters)
+
+    archetypes = _load_archetypes(data_path, genre_slug)
+    archetype_dynamics = _load_archetype_dynamics(data_path, genre_slug)
+    archetypes_context = _build_archetypes_context(archetypes)
+    dynamics_context = _build_dynamics_context(archetype_dynamics)
+
+    return (
+        template.replace("{genre_slug}", genre_slug)
+        .replace("{setting_slug}", setting_slug)
+        .replace("{world_preamble}", compressed_preamble)
+        .replace("{genre_profile_summary}", genre_profile_summary)
+        .replace("{places_context}", places_context)
+        .replace("{orgs_context}", orgs_context)
+        .replace("{social_substrate_context}", substrate_context)
+        .replace("{mundane_characters_context}", mundane_context)
+        .replace("{archetypes_context}", archetypes_context)
+        .replace("{archetype_dynamics_context}", dynamics_context)
+    )
+
+
+def _build_compressed_prompt(
+    stage: str,
+    world_pos: dict[str, Any],
+    compressed_preamble: str,
+    data_path: Path,
+    world_dir: Path,
+) -> str:
+    """Build a prompt for a compressed-mode stage.
+
+    Loads the existing Phase 3b template and substitutes the compressed
+    preamble (instead of the full ``_build_world_preamble`` output) while
+    using the existing helper functions for all other placeholders.
+
+    Args:
+        stage: Pipeline stage name.
+        world_pos: Parsed world-position.json dict.
+        compressed_preamble: Compressed world preamble string.
+        data_path: Root of the storyteller-data checkout.
+        world_dir: Path to the world directory.
+
+    Returns:
+        Fully substituted prompt string.
+    """
+    meta = _COMPRESSED_STAGE_META[stage]
+    template_path = _PROMPTS_DIR / "tome" / meta["template"]
+    template = template_path.read_text()
+
+    builders = {
+        "places": _build_compressed_prompt_places,
+        "orgs": _build_compressed_prompt_orgs,
+        "substrate": _build_compressed_prompt_substrate,
+        "characters-mundane": _build_compressed_prompt_characters_mundane,
+        "characters-significant": _build_compressed_prompt_characters_significant,
+    }
+
+    builder = builders[stage]
+
+    # places takes 4 args; the rest take 5 (world_dir)
+    if stage == "places":
+        return builder(template, world_pos, compressed_preamble, data_path)
+    return builder(template, world_pos, compressed_preamble, data_path, world_dir)
+
+
+def _parse_compressed_response(
+    stage: str,
+    response: str,
+) -> list[dict[str, Any]] | dict[str, Any]:
+    """Parse an LLM response for a compressed-mode stage.
+
+    Args:
+        stage: Pipeline stage name.
+        response: Raw LLM response text.
+
+    Returns:
+        Parsed entities — a list for most stages, a dict for substrate.
+
+    Raises:
+        ValueError: If parsing fails.
+    """
+    if stage == "substrate":
+        from narrative_data.tome.elicit_social_substrate import (
+            _parse_substrate_response,
+        )
+
+        return _parse_substrate_response(response)
+
+    # All other stages return JSON arrays
+    from narrative_data.tome.elicit_places import _parse_places_response
+
+    return _parse_places_response(response)
+
+
+def _save_compressed_output(
+    decomposed_dir: Path,
+    stage: str,
+    parsed: list[dict[str, Any]] | dict[str, Any],
+    world_slug: str,
+    genre_slug: str,
+    setting_slug: str,
+) -> Path:
+    """Save compressed-mode output to decomposed/{filename} and per-entity instance files.
+
+    Args:
+        decomposed_dir: Root of decomposed pipeline outputs.
+        stage: Pipeline stage name.
+        parsed: Parsed response — list for most stages, dict for substrate.
+        world_slug: World identifier.
+        genre_slug: Genre identifier.
+        setting_slug: Setting identifier.
+
+    Returns:
+        Path to the written stage output file.
+    """
+    meta = _COMPRESSED_STAGE_META[stage]
+    entity_key = meta["entity_key"]
+    filename = meta["filename"]
+
+    # Determine the entity list for instance files
+    if stage == "substrate" and isinstance(parsed, dict):
+        entities = parsed.get("clusters", [])
+        relationships = parsed.get("relationships", [])
+        output: dict[str, Any] = {
+            "world_slug": world_slug,
+            "genre_slug": genre_slug,
+            "setting_slug": setting_slug,
+            "generated_at": now_iso(),
+            "pipeline": "compressed",
+            "cluster_count": len(entities),
+            "relationship_count": len(relationships),
+            "clusters": entities,
+            "relationships": relationships,
+        }
+    else:
+        entities = parsed if isinstance(parsed, list) else []
+        output = {
+            "world_slug": world_slug,
+            "genre_slug": genre_slug,
+            "setting_slug": setting_slug,
+            "generated_at": now_iso(),
+            "pipeline": "compressed",
+            "count": len(entities),
+            entity_key: entities,
+        }
+
+    # Write full stage output
+    decomposed_dir.mkdir(parents=True, exist_ok=True)
+    output_path = decomposed_dir / filename
+    output_path.write_text(json.dumps(output, indent=2))
+
+    # Write per-entity instance files
+    instance_dir = decomposed_dir / "fan-out" / stage
+    instance_dir.mkdir(parents=True, exist_ok=True)
+    for i, entity in enumerate(entities):
+        instance_path = instance_dir / f"instance-{i:03d}.json"
+        instance_path.write_text(json.dumps(entity, indent=2))
+
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# Public entry point: compressed mode
+# ---------------------------------------------------------------------------
+
+
+def orchestrate_compressed(
+    data_path: Path,
+    world_slug: str,
+    stage: str | None = None,
+) -> None:
+    """Run the compressed-preamble pipeline: single 35b call per stage.
+
+    Uses existing Phase 3b elicitation templates with the compressed preamble
+    substituted for the full world preamble.  Saves output to the decomposed/
+    directory and writes per-entity instance files under decomposed/fan-out/.
+
+    Args:
+        data_path: Root of the storyteller-data checkout (STORYTELLER_DATA_PATH).
+        world_slug: World identifier.
+        stage: If set, run only this stage.  Upstream data must already exist
+            (e.g. places.json for running the orgs stage).
+    """
+    from rich.console import Console
+
+    from narrative_data.config import ELICITATION_MODEL
+    from narrative_data.ollama import OllamaClient
+
+    console = Console()
+    console.print(
+        f"[bold]Compressed pipeline for[/bold] [cyan]{world_slug}[/cyan] "
+        f"[dim](mode=compressed)[/dim]"
+    )
+
+    world_dir = data_path / "narrative-data" / "tome" / "worlds" / world_slug
+    domains_dir = data_path / "narrative-data" / "domains"
+    decomposed_dir = _ensure_decomposed_dir(data_path, world_slug)
+
+    # Load world position and build compressed preamble
+    wp_path = world_dir / "world-position.json"
+    if not wp_path.exists():
+        console.print(f"[red]Error:[/red] world-position.json not found at {wp_path}")
+        raise SystemExit(1)
+
+    world_pos = json.loads(wp_path.read_text())
+    summary = build_world_summary(world_pos, domains_dir)
+    compressed_preamble = summary["compressed_preamble"]
+    genre_slug = world_pos.get("genre_slug", "unknown")
+    setting_slug = world_pos.get("setting_slug", "unknown")
+
+    console.print(
+        f"  genre=[cyan]{genre_slug}[/cyan]  "
+        f"setting=[cyan]{setting_slug}[/cyan]  "
+        f"preamble=[dim]{len(compressed_preamble)} chars[/dim]"
+    )
+
+    client = OllamaClient()
+    stages_to_run = [stage] if stage else _STAGES
+
+    for current_stage in _STAGES:
+        if current_stage not in stages_to_run:
+            continue
+
+        console.print(f"\n[bold blue]--- Stage: {current_stage} ---[/bold blue]")
+
+        # Build prompt
+        console.print("[bold]Building prompt...[/bold]")
+        prompt = _build_compressed_prompt(
+            current_stage, world_pos, compressed_preamble, data_path, world_dir
+        )
+        console.print(f"  Prompt length: [dim]{len(prompt)} chars[/dim]")
+
+        # Call LLM
+        console.print(
+            f"[bold]Calling[/bold] [cyan]{ELICITATION_MODEL}[/cyan] "
+            f"[dim](timeout={_COMPRESSED_TIMEOUT}s, "
+            f"temperature={_COMPRESSED_TEMPERATURE})[/dim]"
+        )
+        response = client.generate(
+            model=ELICITATION_MODEL,
+            prompt=prompt,
+            timeout=_COMPRESSED_TIMEOUT,
+            temperature=_COMPRESSED_TEMPERATURE,
+        )
+        console.print(f"  Response length: [dim]{len(response)} chars[/dim]")
+
+        # Parse
+        console.print("[bold]Parsing response...[/bold]")
+        try:
+            parsed = _parse_compressed_response(current_stage, response)
+        except ValueError as exc:
+            console.print(f"[red]Parse error:[/red] {exc}")
+            raise SystemExit(1) from exc
+
+        # Save
+        output_path = _save_compressed_output(
+            decomposed_dir, current_stage, parsed, world_slug, genre_slug, setting_slug
+        )
+        if current_stage == "substrate" and isinstance(parsed, dict):
+            entity_count = len(parsed.get("clusters", []))
+        elif isinstance(parsed, list):
+            entity_count = len(parsed)
+        else:
+            entity_count = 0
+        console.print(
+            f"  [green]{entity_count}[/green] entities written to [dim]{output_path}[/dim]"
+        )
+
+        # Copy to the standard location so downstream stages can load prerequisites.
+        # Backs up existing files to {name}.baseline.json to preserve Phase 3b data.
+        standard_path = world_dir / _COMPRESSED_STAGE_META[current_stage]["filename"]
+        if standard_path.resolve() != output_path.resolve():
+            import shutil
+
+            if standard_path.exists():
+                backup = standard_path.with_suffix(".baseline.json")
+                if not backup.exists():
+                    shutil.copy2(standard_path, backup)
+                    console.print(f"  [dim]Backed up baseline to {backup.name}[/dim]")
+            shutil.copy2(output_path, standard_path)
+            console.print(f"  [dim]Copied to {standard_path}[/dim]")
+
+    # Compose world.json
     console.print("\n[bold]Composing world.json...[/bold]")
     world_path = _compose_world_json(decomposed_dir, world_slug, genre_slug, setting_slug)
     console.print(f"[bold green]Written:[/bold green] {world_path}")
